@@ -1,0 +1,14 @@
+<libraries>
+  <library
+      name="androidx.annotation:annotation-jvm:1.9.0@jar"
+      jars="D:\gradle\.gradle\caches\modules-2\files-2.1\androidx.annotation\annotation-jvm\1.9.0\3a2db038d9b614a6be762cb37e84bbf2bef69cfa\annotation-jvm-1.9.0.jar"
+      resolved="androidx.annotation:annotation-jvm:1.9.0"/>
+  <library
+      name="org.jetbrains.kotlin:kotlin-stdlib:2.2.10@jar"
+      jars="D:\gradle\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\2.2.10\30de6faa127a4a012db8e71bf1b9c0a99b1402b2\kotlin-stdlib-2.2.10.jar"
+      resolved="org.jetbrains.kotlin:kotlin-stdlib:2.2.10"/>
+  <library
+      name="org.jetbrains:annotations:13.0@jar"
+      jars="D:\gradle\.gradle\caches\modules-2\files-2.1\org.jetbrains\annotations\13.0\919f0dfe192fb4e063e7dacadee7f8bb9a2672a9\annotations-13.0.jar"
+      resolved="org.jetbrains:annotations:13.0"/>
+</libraries>

@@ -1,0 +1,32 @@
+<dependencies>
+  <compile
+      roots=":@@:terminal-emulator::release,androidx.annotation:annotation-jvm:1.9.0@jar,org.jetbrains.kotlin:kotlin-stdlib:2.2.10@jar,org.jetbrains:annotations:13.0@jar">
+    <dependency
+        name=":@@:terminal-emulator::release"
+        simpleName="Randroid:terminal-emulator"/>
+    <dependency
+        name="androidx.annotation:annotation-jvm:1.9.0@jar"
+        simpleName="androidx.annotation:annotation-jvm"/>
+    <dependency
+        name="org.jetbrains.kotlin:kotlin-stdlib:2.2.10@jar"
+        simpleName="org.jetbrains.kotlin:kotlin-stdlib"/>
+    <dependency
+        name="org.jetbrains:annotations:13.0@jar"
+        simpleName="org.jetbrains:annotations"/>
+  </compile>
+  <package
+      roots=":@@:terminal-emulator::release,androidx.annotation:annotation-jvm:1.9.0@jar,org.jetbrains.kotlin:kotlin-stdlib:2.2.10@jar,org.jetbrains:annotations:13.0@jar">
+    <dependency
+        name=":@@:terminal-emulator::release"
+        simpleName="Randroid:terminal-emulator"/>
+    <dependency
+        name="androidx.annotation:annotation-jvm:1.9.0@jar"
+        simpleName="androidx.annotation:annotation-jvm"/>
+    <dependency
+        name="org.jetbrains.kotlin:kotlin-stdlib:2.2.10@jar"
+        simpleName="org.jetbrains.kotlin:kotlin-stdlib"/>
+    <dependency
+        name="org.jetbrains:annotations:13.0@jar"
+        simpleName="org.jetbrains:annotations"/>
+  </package>
+</dependencies>

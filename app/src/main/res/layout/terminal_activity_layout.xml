@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"> <!-- 设置 Activity 背景为黑色 -->
+
+    <com.termux.view.TerminalView
+        android:id="@+id/terminal_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="true"
+        android:focusableInTouchMode="true" /> <!-- 允许获取焦点 -->
+
+</FrameLayout>

@@ -1,0 +1,14 @@
+-- Merging decision tree log ---
+manifest
+ADDED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml:1:1-2:12
+INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml:1:1-2:12
+	package
+		INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml
+uses-sdk
+INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml
+INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from D:\Project\AndroidProjects\Randroid\terminal-emulator\src\main\AndroidManifest.xml

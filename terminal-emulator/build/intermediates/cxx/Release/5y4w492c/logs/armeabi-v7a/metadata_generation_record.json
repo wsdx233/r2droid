@@ -1,0 +1,145 @@
+[
+  {
+    "level_": 0,
+    "message_": "Start JSON generation. Platform version: 21 min SDK version: armeabi-v7a",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "rebuilding JSON D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\build\\.cxx\\Release\\5y4w492c\\armeabi-v7a\\android_gradle_build.json due to:",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "- no fingerprint file, will remove stale configuration folder",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "removing stale contents from \u0027D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\build\\.cxx\\Release\\5y4w492c\\armeabi-v7a\u0027",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "created folder \u0027D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\build\\.cxx\\Release\\5y4w492c\\armeabi-v7a\u0027",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "executing ndkBuild @echo off\n\"D:\\\\Software\\\\AndroidSDK\\\\ndk\\\\29.0.14206865\\\\ndk-build.cmd\" ^\n  \"NDK_PROJECT_PATH\u003dnull\" ^\n  \"APP_BUILD_SCRIPT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\src\\\\main\\\\jni\\\\Android.mk\" ^\n  \"APP_ABI\u003darmeabi-v7a\" ^\n  \"NDK_ALL_ABIS\u003darmeabi-v7a\" ^\n  \"NDK_DEBUG\u003d0\" ^\n  \"APP_PLATFORM\u003dandroid-21\" ^\n  \"NDK_OUT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\build\\\\intermediates\\\\cxx\\\\Release\\\\5y4w492c/obj\" ^\n  \"NDK_LIBS_OUT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\build\\\\intermediates\\\\cxx\\\\Release\\\\5y4w492c/lib\" ^\n  \"APP_CFLAGS+\u003d-std\u003dc11\" ^\n  \"APP_CFLAGS+\u003d-Wall\" ^\n  \"APP_CFLAGS+\u003d-Wextra\" ^\n  \"APP_CFLAGS+\u003d-Werror\" ^\n  \"APP_CFLAGS+\u003d-Os\" ^\n  \"APP_CFLAGS+\u003d-fno-stack-protector\" ^\n  \"APP_CFLAGS+\u003d-Wl,--gc-sections\" ^\n  \"APP_SHORT_COMMANDS\u003dfalse\" ^\n  \"LOCAL_SHORT_COMMANDS\u003dfalse\" ^\n  -B ^\n  -n\n",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "@echo off\n\"D:\\\\Software\\\\AndroidSDK\\\\ndk\\\\29.0.14206865\\\\ndk-build.cmd\" ^\n  \"NDK_PROJECT_PATH\u003dnull\" ^\n  \"APP_BUILD_SCRIPT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\src\\\\main\\\\jni\\\\Android.mk\" ^\n  \"APP_ABI\u003darmeabi-v7a\" ^\n  \"NDK_ALL_ABIS\u003darmeabi-v7a\" ^\n  \"NDK_DEBUG\u003d0\" ^\n  \"APP_PLATFORM\u003dandroid-21\" ^\n  \"NDK_OUT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\build\\\\intermediates\\\\cxx\\\\Release\\\\5y4w492c/obj\" ^\n  \"NDK_LIBS_OUT\u003dD:\\\\Project\\\\AndroidProjects\\\\Randroid\\\\terminal-emulator\\\\build\\\\intermediates\\\\cxx\\\\Release\\\\5y4w492c/lib\" ^\n  \"APP_CFLAGS+\u003d-std\u003dc11\" ^\n  \"APP_CFLAGS+\u003d-Wall\" ^\n  \"APP_CFLAGS+\u003d-Wextra\" ^\n  \"APP_CFLAGS+\u003d-Werror\" ^\n  \"APP_CFLAGS+\u003d-Os\" ^\n  \"APP_CFLAGS+\u003d-fno-stack-protector\" ^\n  \"APP_CFLAGS+\u003d-Wl,--gc-sections\" ^\n  \"APP_SHORT_COMMANDS\u003dfalse\" ^\n  \"LOCAL_SHORT_COMMANDS\u003dfalse\" ^\n  -B ^\n  -n\n",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "Received process result: 0",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "parse and convert ndk-build output to build configuration JSON",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "done executing ndkBuild",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  },
+  {
+    "level_": 0,
+    "message_": "JSON generation completed without problems",
+    "file_": "D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk",
+    "tag_": "release|armeabi-v7a",
+    "diagnosticCode_": 0,
+    "memoizedIsInitialized": 1,
+    "unknownFields": {
+      "fields": {}
+    },
+    "memoizedSize": -1,
+    "memoizedHashCode": 0
+  }
+]

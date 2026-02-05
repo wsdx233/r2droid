@@ -1,0 +1,18 @@
+@echo off
+"D:\\Software\\AndroidSDK\\ndk\\29.0.14206865\\ndk-build.cmd" ^
+  "NDK_PROJECT_PATH=null" ^
+  "APP_BUILD_SCRIPT=D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\src\\main\\jni\\Android.mk" ^
+  "APP_ABI=armeabi-v7a" ^
+  "NDK_ALL_ABIS=armeabi-v7a" ^
+  "NDK_DEBUG=0" ^
+  "APP_PLATFORM=android-21" ^
+  "NDK_OUT=D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\build\\intermediates\\cxx\\Release\\5y4w492c/obj" ^
+  "NDK_LIBS_OUT=D:\\Project\\AndroidProjects\\Randroid\\terminal-emulator\\build\\intermediates\\cxx\\Release\\5y4w492c/lib" ^
+  "APP_CFLAGS+=-std=c11" ^
+  "APP_CFLAGS+=-Wall" ^
+  "APP_CFLAGS+=-Wextra" ^
+  "APP_CFLAGS+=-Werror" ^
+  "APP_CFLAGS+=-Os" ^
+  "APP_CFLAGS+=-fno-stack-protector" ^
+  "APP_CFLAGS+=-Wl,--gc-sections" ^
+  termux

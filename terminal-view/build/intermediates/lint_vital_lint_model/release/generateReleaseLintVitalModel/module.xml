@@ -1,0 +1,20 @@
+<lint-module
+    format="1"
+    dir="D:\Project\AndroidProjects\Randroid\terminal-view"
+    name=":terminal-view"
+    type="LIBRARY"
+    maven="Randroid:terminal-view:unspecified"
+    agpVersion="9.0.0"
+    buildFolder="build"
+    bootClassPath="D:\Software\AndroidSDK\platforms\android-36\android.jar;D:\Software\AndroidSDK\build-tools\36.0.0\core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-36"
+    neverShrinking="true"
+    highlightGradualR8Api="false">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>
