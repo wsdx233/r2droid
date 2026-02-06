@@ -12,7 +12,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.data.model.*
+import top.wsdx233.r2droid.ui.component.FilterableList
 
 @Composable
 fun OverviewCard(info: BinInfo) {
@@ -71,20 +73,12 @@ fun InfoRow(label: String, value: String) {
 
 @Composable
 fun SectionList(sections: List<Section>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-             Text(
-                text = "Sections (${sections.size})",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
-        items(sections) { section ->
-            SectionItem(section)
-        }
+    FilterableList(
+        items = sections,
+        filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
+        placeholder = "Search Sections..."
+    ) { section ->
+        SectionItem(section)
     }
 }
 
@@ -132,13 +126,12 @@ fun SectionItem(section: Section) {
 
 @Composable
 fun SymbolList(symbols: List<Symbol>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(symbols) { symbol ->
-            SymbolItem(symbol)
-        }
+    FilterableList(
+        items = symbols,
+        filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
+        placeholder = "Search Symbols..."
+    ) { symbol ->
+        SymbolItem(symbol)
     }
 }
 
@@ -176,13 +169,12 @@ fun SymbolItem(symbol: Symbol) {
 
 @Composable
 fun ImportList(imports: List<ImportInfo>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(imports) { item ->
-            ImportItem(item)
-        }
+    FilterableList(
+        items = imports,
+        filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
+        placeholder = "Search Imports..."
+    ) { item ->
+        ImportItem(item)
     }
 }
 
@@ -219,13 +211,12 @@ fun ImportItem(importInfo: ImportInfo) {
 
 @Composable
 fun RelocationList(relocations: List<Relocation>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(relocations) { relocation ->
-            RelocationItem(relocation)
-        }
+    FilterableList(
+        items = relocations,
+        filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
+        placeholder = "Search Relocations..."
+    ) { relocation ->
+        RelocationItem(relocation)
     }
 }
 
@@ -247,13 +238,12 @@ fun RelocationItem(relocation: Relocation) {
 
 @Composable
 fun StringList(strings: List<StringInfo>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(strings) { str ->
-            StringItem(str)
-        }
+    FilterableList(
+        items = strings,
+        filterPredicate = { item, query -> item.string.contains(query, ignoreCase = true) },
+        placeholder = "Search Strings..."
+    ) { str ->
+        StringItem(str)
     }
 }
 
@@ -293,13 +283,12 @@ fun StringItem(stringInfo: StringInfo) {
 
 @Composable
 fun FunctionList(functions: List<FunctionInfo>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(functions) { func ->
-            FunctionItem(func)
-        }
+    FilterableList(
+        items = functions,
+        filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
+        placeholder = "Search Functions..."
+    ) { func ->
+        FunctionItem(func)
     }
 }
 

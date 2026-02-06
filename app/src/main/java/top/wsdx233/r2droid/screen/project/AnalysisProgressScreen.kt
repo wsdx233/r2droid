@@ -34,7 +34,16 @@ fun AnalysisProgressScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.size(12.dp))
-                        Text("Analyzing...")
+                        Column {
+                            Text("Analyzing...")
+                            androidx.compose.material3.LinearProgressIndicator(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .size(100.dp, 2.dp),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
