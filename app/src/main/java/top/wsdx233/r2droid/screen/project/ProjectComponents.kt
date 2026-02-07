@@ -89,7 +89,7 @@ fun UnifiedListItemWrapper(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Xrefs (afxj)") },
+                            text = { Text("Xrefs") },
                             onClick = { 
                                 expanded = false
                                 actions.onShowXrefs(address)
@@ -524,31 +524,156 @@ fun FunctionItem(func: FunctionInfo, actions: ListItemActions) {
 
 @Composable
 fun XrefsDialog(
-    xrefs: List<Xref>,
+    xrefsData: XrefsData,
+    targetAddress: Long,
     onDismiss: () -> Unit,
     onJump: (Long) -> Unit
 ) {
+    val hasRefsFrom = xrefsData.refsFrom.isNotEmpty()
+    val hasRefsTo = xrefsData.refsTo.isNotEmpty()
+    val hasNoRefs = !hasRefsFrom && !hasRefsTo
+    
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cross References (Xrefs)") },
+        title = { 
+            Column {
+                Text("Cross References")
+                Text(
+                    text = "@ 0x${targetAddress.toString(16).uppercase()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
         text = {
-            if (xrefs.isEmpty()) {
-                Text("No cross references found.")
-            } else {
-                LazyColumn(
-                    modifier = Modifier.height(300.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
+            if (hasNoRefs) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    items(xrefs) { xref ->
-                        ListItem(
-                            headlineContent = { 
-                                Text("From: 0x${xref.from.toString(16)}", fontFamily = FontFamily.Monospace) 
-                            },
-                            supportingContent = { 
-                                Text("Type: ${xref.type} -> To: 0x${xref.to.toString(16)}", fontFamily = FontFamily.Monospace) 
-                            },
-                            modifier = Modifier.clickable { onJump(xref.from) } // Jump to "From" usually for xrefs
-                        )
+                    Text("No cross references found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Left column: Refs FROM (axfj) - references from current address to other addresses
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    ) {
+                        // Header
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Refs From →",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "(${xrefsData.refsFrom.size})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        
+                        // List
+                        if (xrefsData.refsFrom.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No outgoing refs",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(xrefsData.refsFrom) { xrefWithDisasm ->
+                                    XrefItem(
+                                        xref = xrefWithDisasm,
+                                        isRefsFrom = true,
+                                        onClick = { onJump(xrefWithDisasm.xref.to) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Divider
+                    VerticalDivider()
+                    
+                    // Right column: Refs TO (axtj) - references from other addresses to current address
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    ) {
+                        // Header
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "← Refs To",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = "(${xrefsData.refsTo.size})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                        
+                        // List
+                        if (xrefsData.refsTo.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No incoming refs",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(xrefsData.refsTo) { xrefWithDisasm ->
+                                    XrefItem(
+                                        xref = xrefWithDisasm,
+                                        isRefsFrom = false,
+                                        onClick = { onJump(xrefWithDisasm.xref.from) }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -559,6 +684,102 @@ fun XrefsDialog(
             }
         }
     )
+}
+
+/**
+ * Individual xref item with detailed info.
+ */
+@Composable
+private fun XrefItem(
+    xref: XrefWithDisasm,
+    isRefsFrom: Boolean,
+    onClick: () -> Unit
+) {
+    val address = if (isRefsFrom) xref.xref.to else xref.xref.from
+    
+    // Color based on type
+    val typeColor = when (xref.xref.type.uppercase()) {
+        "CALL" -> Color(0xFF42A5F5) // Blue
+        "JMP", "CJMP" -> Color(0xFF66BB6A) // Green
+        "DATA" -> Color(0xFFFFCA28) // Yellow/Orange
+        "CODE" -> Color(0xFFAB47BC) // Purple
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp)
+        ) {
+            // Address and Type
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "0x${address.toString(16).uppercase()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Surface(
+                    color = typeColor.copy(alpha = 0.2f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = xref.xref.type,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = typeColor,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            
+            // Disassembly
+            if (xref.disasm.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = xref.disasm,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+            }
+            
+            // Function name (show for both refs from and refs to)
+            if (xref.xref.fcnName.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (isRefsFrom) "→ ${xref.xref.fcnName}" else "in ${xref.xref.fcnName}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    maxLines = 1
+                )
+            }
+            
+            // Bytes
+            if (xref.bytes.isNotBlank()) {
+                Text(
+                    text = xref.bytes.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1
+                )
+            }
+        }
+    }
 }
 
 @Composable

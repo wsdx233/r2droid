@@ -194,7 +194,8 @@ fun ProjectScreen(
             // Xrefs Dialog
             if (xrefsState.visible) {
                 XrefsDialog(
-                    xrefs = xrefsState.data,
+                    xrefsData = xrefsState.data,
+                    targetAddress = xrefsState.targetAddress,
                     onDismiss = { viewModel.dismissXrefs() },
                     onJump = { addr ->
                         selectedCategory = MainCategory.Detail

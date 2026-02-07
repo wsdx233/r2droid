@@ -192,22 +192,130 @@ class ProjectRepository {
         }
     }
 
-    suspend fun getXrefs(addr: Long): Result<List<Xref>> {
-        // afxj: Analyze function references
-        // Use s addr; afxj to ensure we analyze refs for the function at/containing addr
-        // But afxj takes an argument usually or works on current seek.
-        // Better: afxj @ addr
-        return R2PipeManager.executeJson("afxj @ $addr").mapCatching { output ->
-             if (output.isBlank()) return@mapCatching emptyList()
-            val jsonArray = JSONArray(output)
-            val list = mutableListOf<Xref>()
-            for (i in 0 until jsonArray.length()) {
-                list.add(Xref.fromJson(jsonArray.getJSONObject(i)))
+    /**
+     * Get cross-references using axfj (refs from) and axtj (refs to).
+     * Also fetches disassembly info for each referenced address via pdj1.
+     * 
+     * axfj @ addr: References FROM current address TO other addresses
+     * axtj @ addr: References FROM other addresses TO current address
+     */
+    suspend fun getXrefs(addr: Long): Result<XrefsData> {
+        return runCatching {
+            // Get refs FROM current address (axfj)
+            val axfResult = R2PipeManager.executeJson("axfj @ $addr")
+            val refsFrom = mutableListOf<XrefWithDisasm>()
+            if (axfResult.isSuccess) {
+                val output = axfResult.getOrDefault("")
+                if (output.isNotBlank()) {
+                    val jsonArray = JSONArray(output)
+                    for (i in 0 until jsonArray.length()) {
+                        val json = jsonArray.getJSONObject(i)
+                        // axfj doesn't have fcn_name, so we need to look it up via afij
+                        val toAddr = json.optLong("to", 0)
+                        val fcnName = getFunctionNameForAddress(toAddr)
+                        val xref = Xref(
+                            type = json.optString("type", ""),
+                            from = json.optLong("from", 0),
+                            to = toAddr,
+                            opcode = json.optString("opcode", ""),
+                            fcnName = fcnName,
+                            refName = ""
+                        )
+                        // Get disasm info for the target address (to)
+                        val disasmInfo = getDisasmForAddress(xref.to)
+                        refsFrom.add(XrefWithDisasm(
+                            xref = xref,
+                            disasm = disasmInfo.first,
+                            instrType = disasmInfo.second,
+                            bytes = disasmInfo.third
+                        ))
+                    }
+                }
             }
-            list
+            
+            // Get refs TO current address (axtj)
+            val axtResult = R2PipeManager.executeJson("axtj @ $addr")
+            val refsTo = mutableListOf<XrefWithDisasm>()
+            if (axtResult.isSuccess) {
+                val output = axtResult.getOrDefault("")
+                if (output.isNotBlank()) {
+                    val jsonArray = JSONArray(output)
+                    for (i in 0 until jsonArray.length()) {
+                        val json = jsonArray.getJSONObject(i)
+                        // axtj returns: from (source), type, opcode, fcn_addr, fcn_name, refname
+                        // Note: axtj doesn't have 'to' field, the 'to' is the current addr
+                        val xref = Xref(
+                            type = json.optString("type", ""),
+                            from = json.optLong("from", 0),
+                            to = addr, // The target is the current address
+                            opcode = json.optString("opcode", ""),
+                            fcnName = json.optString("fcn_name", ""),
+                            refName = json.optString("refname", "")
+                        )
+                        // Get disasm info for the source address (from)
+                        val disasmInfo = getDisasmForAddress(xref.from)
+                        refsTo.add(XrefWithDisasm(
+                            xref = xref,
+                            disasm = disasmInfo.first,
+                            instrType = disasmInfo.second,
+                            bytes = disasmInfo.third
+                        ))
+                    }
+                }
+            }
+            
+            XrefsData(refsFrom = refsFrom, refsTo = refsTo)
         }
     }
     
+    /**
+     * Get disassembly info for a single address using pdj1.
+     * Returns Triple of (disasm, type, bytes).
+     */
+    private suspend fun getDisasmForAddress(addr: Long): Triple<String, String, String> {
+        return try {
+            val result = R2PipeManager.executeJson("pdj 1 @ $addr")
+            if (result.isSuccess) {
+                val output = result.getOrDefault("")
+                if (output.isNotBlank()) {
+                    val jsonArray = JSONArray(output)
+                    if (jsonArray.length() > 0) {
+                        val json = jsonArray.getJSONObject(0)
+                        return Triple(
+                            json.optString("disasm", json.optString("opcode", "")),
+                            json.optString("type", ""),
+                            json.optString("bytes", "")
+                        )
+                    }
+                }
+            }
+            Triple("", "", "")
+        } catch (e: Exception) {
+            Triple("", "", "")
+        }
     }
-
+    
+    /**
+     * Get function name for an address using afij.
+     * Returns the function name if the address is within a function, empty string otherwise.
+     */
+    private suspend fun getFunctionNameForAddress(addr: Long): String {
+        return try {
+            val result = R2PipeManager.executeJson("afij @ $addr")
+            if (result.isSuccess) {
+                val output = result.getOrDefault("")
+                if (output.isNotBlank() && output != "[]") {
+                    val jsonArray = JSONArray(output)
+                    if (jsonArray.length() > 0) {
+                        val json = jsonArray.getJSONObject(0)
+                        return json.optString("name", "")
+                    }
+                }
+            }
+            ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+}
 

@@ -292,8 +292,9 @@ class ProjectViewModel : ViewModel() {
     // === Xrefs ===
     data class XrefsState(
         val visible: Boolean = false,
-        val data: List<Xref> = emptyList(),
-        val isLoading: Boolean = false
+        val data: XrefsData = XrefsData(),
+        val isLoading: Boolean = false,
+        val targetAddress: Long = 0L  // The address being analyzed
     )
     
     private val _xrefsState = MutableStateFlow(XrefsState())
@@ -301,12 +302,17 @@ class ProjectViewModel : ViewModel() {
     
     fun fetchXrefs(addr: Long) {
         // Show loading
-        _xrefsState.value = _xrefsState.value.copy(visible = true, isLoading = true, data = emptyList())
+        _xrefsState.value = _xrefsState.value.copy(
+            visible = true, 
+            isLoading = true, 
+            data = XrefsData(),
+            targetAddress = addr
+        )
         
         viewModelScope.launch {
             val result = repository.getXrefs(addr)
-            val xrefs = result.getOrElse { emptyList() }
-            _xrefsState.value = _xrefsState.value.copy(isLoading = false, data = xrefs)
+            val xrefsData = result.getOrElse { XrefsData() }
+            _xrefsState.value = _xrefsState.value.copy(isLoading = false, data = xrefsData)
         }
     }
     

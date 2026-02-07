@@ -233,18 +233,47 @@ data class EntryPoint(
 }
 
 
+/**
+ * Basic Xref entry from axfj or axtj.
+ * axfj returns: from (current addr), to (target addr), type, opcode
+ * axtj returns: from (source addr), type, opcode, fcn_addr, fcn_name, refname
+ */
 data class Xref(
     val type: String,
     val from: Long,
-    val to: Long
+    val to: Long,
+    val opcode: String = "",
+    val fcnName: String = "",
+    val refName: String = ""
 ) {
     companion object {
         fun fromJson(json: JSONObject): Xref {
             return Xref(
                 type = json.optString("type", ""),
                 from = json.optLong("from", 0),
-                to = json.optLong("to", 0)
+                to = json.optLong("to", 0),
+                opcode = json.optString("opcode", ""),
+                fcnName = json.optString("fcn_name", ""),
+                refName = json.optString("refname", "")
             )
         }
     }
 }
+
+/**
+ * Xref with additional disassembly info from pdj1 @ addr.
+ */
+data class XrefWithDisasm(
+    val xref: Xref,
+    val disasm: String = "",      // Disassembly text of the address
+    val instrType: String = "",   // Instruction type (call, jmp, etc.)
+    val bytes: String = ""        // Instruction bytes
+)
+
+/**
+ * Combined xrefs data holding both "refs from" (axfj) and "refs to" (axtj).
+ */
+data class XrefsData(
+    val refsFrom: List<XrefWithDisasm> = emptyList(),  // axfj - references FROM current address TO other addresses
+    val refsTo: List<XrefWithDisasm> = emptyList()     // axtj - references FROM other addresses TO current address
+)

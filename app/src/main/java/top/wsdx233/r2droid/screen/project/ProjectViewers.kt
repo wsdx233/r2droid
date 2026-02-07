@@ -726,11 +726,7 @@ fun DisassemblyViewer(
                             }
                         },
                         onLongClick = {
-                            // 先更新选中状态
-                            if (instr.addr != cursorAddress) {
-                                onInstructionClick(instr.addr)
-                            }
-                            // 然后设置菜单目标地址并显示菜单
+                            // 仅设置菜单目标地址并显示菜单，不改变当前选中状态
                             menuTargetAddress = instr.addr
                             showMenu = true
                         },
@@ -866,7 +862,8 @@ fun DisassemblyViewer(
                  )
              } else {
                  XrefsDialog(
-                     xrefs = xrefsState.data,
+                     xrefsData = xrefsState.data,
+                     targetAddress = xrefsState.targetAddress,
                      onDismiss = { viewModel.dismissXrefs() },
                      onJump = { addr ->
                          viewModel.jumpToAddress(addr)
