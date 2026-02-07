@@ -60,6 +60,11 @@ class ProjectViewModel : ViewModel() {
     // Expose logs from LogManager
     val logs: StateFlow<List<top.wsdx233.r2droid.util.LogEntry>> = top.wsdx233.r2droid.util.LogManager.logs
     
+    // Clear logs
+    fun clearLogs() {
+        top.wsdx233.r2droid.util.LogManager.clear()
+    }
+    
     // Save project state
     private val _saveProjectState = MutableStateFlow<SaveProjectState>(SaveProjectState.Idle)
     val saveProjectState: StateFlow<SaveProjectState> = _saveProjectState.asStateFlow()
@@ -184,6 +189,9 @@ class ProjectViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = ProjectUiState.Analyzing
             
+            // Clear logs before starting new session
+            clearLogs()
+            
             // Open Session without restore flags (just open the binary)
             val openResult = R2PipeManager.open(context, path, "")
             
@@ -228,6 +236,9 @@ class ProjectViewModel : ViewModel() {
          if (currentState is ProjectUiState.Configuring) {
              viewModelScope.launch {
                  _uiState.value = ProjectUiState.Analyzing
+                 
+                 // Clear logs before starting new session
+                 clearLogs()
                  
                  val flags = if (writable) "-w $startupFlags" else startupFlags
                  
@@ -859,6 +870,7 @@ class ProjectViewModel : ViewModel() {
         super.onCleared()
         hexDataManager?.clearCache()
         disasmDataManager?.clearCache()
+        clearLogs()
         R2PipeManager.close()
     }
 }

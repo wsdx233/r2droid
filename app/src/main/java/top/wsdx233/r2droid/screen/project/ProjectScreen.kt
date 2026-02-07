@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuOpen
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MenuOpen
@@ -224,13 +225,13 @@ fun ProjectScreen(
     // State for navigation
     var selectedCategory by remember { mutableStateOf(MainCategory.List) }
     var selectedListTabIndex by remember { mutableIntStateOf(0) }
-    var selectedDetailTabIndex by remember { mutableIntStateOf(0) }
-    var selectedProjectTabIndex by remember { mutableIntStateOf(2) } // Default to Logs (index 2)
+    var selectedDetailTabIndex by remember { mutableIntStateOf(1) } // Default to Disassembly (index 1)
+    var selectedProjectTabIndex by remember { mutableIntStateOf(0) } // Default to Settings (index 0)
     var showJumpDialog by remember { mutableStateOf(false) }
 
     val listTabs = listOf("Overview", "Sections", "Symbols", "Imports", "Relocs", "Strings", "Functions")
     val detailTabs = listOf("Hex", "Disassembly", "Decompile")
-    val projectTabs = listOf("Settings", "Terminal", "Logs")
+    val projectTabs = listOf("Settings", "Terminal", "Command", "Logs")
     
     // Xrefs State
     val xrefsState by viewModel.xrefsState.collectAsState()
@@ -513,8 +514,9 @@ fun ProjectScreen(
                              // Project Category
                             when (selectedProjectTabIndex) {
                                 0 -> ProjectSettingsScreen(viewModel)
-                                1 -> PlaceholderScreen("Terminal (Coming Soon)")
-                                2 -> LogList(logs)
+                                1 -> TerminalScreen()
+                                2 -> CommandScreen()
+                                3 -> LogList(logs, onClearLogs = { viewModel.clearLogs() })
                             }
                         }
                     }
@@ -951,7 +953,7 @@ fun AnalysisConfigScreen(
 }
 
 @Composable
-fun LogList(logs: List<top.wsdx233.r2droid.util.LogEntry>) {
+fun LogList(logs: List<top.wsdx233.r2droid.util.LogEntry>, onClearLogs: () -> Unit = {}) {
     val listState = rememberLazyListState()
 
     // Auto scroll to bottom
@@ -965,17 +967,34 @@ fun LogList(logs: List<top.wsdx233.r2droid.util.LogEntry>) {
         modifier = Modifier.fillMaxSize(),
         color = androidx.compose.ui.graphics.Color(0xFF1E1E1E) // Dark background for logs
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(logs) { entry ->
-                LogItem(entry)
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(logs) { entry ->
+                    LogItem(entry)
+                }
+            }
+            
+            // Clear button in top-right corner
+            androidx.compose.material3.FilledTonalIconButton(
+                onClick = onClearLogs,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Clear Logs",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
         }
     }
 }
+
 
 @Composable
 fun LogItem(entry: top.wsdx233.r2droid.util.LogEntry) {
