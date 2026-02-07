@@ -51,6 +51,7 @@ fun TerminalScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color.Black)
+            .imePadding() // Adjust for keyboard
     ) {
         AndroidView(
             factory = { ctx ->
@@ -207,6 +208,7 @@ fun CommandScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color(0xFF1E1E1E))
+            .imePadding()
     ) {
         // Command history and output area
         Box(
@@ -265,7 +267,7 @@ fun CommandScreen() {
                 text = "$ ",
                 color = MaterialTheme.colorScheme.primary,
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge
             )
             
             // Input field
