@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -37,6 +38,7 @@ import androidx.compose.runtime.remember
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.data.HexDataManager
 import top.wsdx233.r2droid.data.model.*
+import top.wsdx233.r2droid.R
 
 /**
  * Virtualized Hex Viewer - uses items(count) pattern for smooth scrolling.
@@ -128,12 +130,25 @@ fun HexViewer(
     // Light paper yellow for highlighting - 30% transparent overlay
     val highlightColor = Color(0x4DFFFDE7) // ~30% alpha yellow
     
+    // Load colors from resources for theme support
+    val hexHeaderBackground = colorResource(R.color.hex_header_background)
+    val hexContentBackground = colorResource(R.color.hex_content_background)
+    val hexFooterBackground = colorResource(R.color.hex_footer_background)
+    val hexAddressBackground = colorResource(R.color.hex_address_background)
+    val hexAddressText = colorResource(R.color.hex_address_text)
+    val hexRowEven = colorResource(R.color.hex_row_even)
+    val hexRowOdd = colorResource(R.color.hex_row_odd)
+    val hexDivider = colorResource(R.color.hex_divider)
+    val hexSeparatorLine = colorResource(R.color.hex_separator_line)
+    val hexByteText = colorResource(R.color.hex_byte_text)
+    val hexColumnHeaderText = colorResource(R.color.hex_column_header_text)
+    
     Column(Modifier.fillMaxSize()) {
         // Sticky Header: 0 1 2 3 4 5 6 7
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFE0E0E0))
+                .background(hexHeaderBackground)
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -159,7 +174,7 @@ fun HexViewer(
                             modifier = Modifier
                                 .width(1.dp)
                                 .fillMaxHeight()
-                                .background(Color(0xFFBDBDBD))
+                                .background(hexDivider)
                         )
                     }
                     Box(
@@ -179,7 +194,7 @@ fun HexViewer(
                             colIndex.toString(),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = hexColumnHeaderText
                         )
                     }
                 }
@@ -209,7 +224,7 @@ fun HexViewer(
                         Text(
                             i.toString(),
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = hexColumnHeaderText
                         )
                     }
                 }
@@ -222,7 +237,7 @@ fun HexViewer(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(Color(0xFFAAAAAA))
+                .background(hexSeparatorLine)
         )
 
         
@@ -230,7 +245,7 @@ fun HexViewer(
             SelectionContainer {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().background(Color(0xFFF0F0F0)),
+                    modifier = Modifier.fillMaxSize().background(hexContentBackground),
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     // Virtualized items - use count instead of list
@@ -263,7 +278,13 @@ fun HexViewer(
                                 cursorAddress = cursorAddress,
                                 selectedColumn = selectedColumn,
                                 highlightColor = highlightColor,
-                                onByteClick = onByteClick
+                                onByteClick = onByteClick,
+                                hexAddressBackground = hexAddressBackground,
+                                hexAddressText = hexAddressText,
+                                hexRowEven = hexRowEven,
+                                hexRowOdd = hexRowOdd,
+                                hexDivider = hexDivider,
+                                hexByteText = hexByteText
                             )
                             if (b2.isNotEmpty()) {
                                 HexVisualRow(
@@ -273,12 +294,18 @@ fun HexViewer(
                                     cursorAddress = cursorAddress,
                                     selectedColumn = selectedColumn,
                                     highlightColor = highlightColor,
-                                    onByteClick = onByteClick
+                                    onByteClick = onByteClick,
+                                    hexAddressBackground = hexAddressBackground,
+                                    hexAddressText = hexAddressText,
+                                    hexRowEven = hexRowEven,
+                                    hexRowOdd = hexRowOdd,
+                                    hexDivider = hexDivider,
+                                    hexByteText = hexByteText
                                 )
                             }
                         } else {
                             // Placeholder row (skeleton)
-                            HexPlaceholderRow(addr)
+                            HexPlaceholderRow(addr, hexAddressBackground, hexAddressText, hexDivider)
                         }
                     }
                 }
@@ -336,14 +363,14 @@ fun HexViewer(
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(hexFooterBackground)
                 .padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             val currentPos = hexDataManager.getRowAddress(listState.firstVisibleItemIndex)
-            Text("Pos: ${"0x%X".format(currentPos)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text("Pos: ${"0x%X".format(currentPos)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = hexByteText)
             if (totalSize > 0L) {
-                Text("Range: ${"0x%X".format(hexDataManager.viewStartAddress)}-${"0x%X".format(hexDataManager.viewEndAddress)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text("Range: ${"0x%X".format(hexDataManager.viewStartAddress)}-${"0x%X".format(hexDataManager.viewEndAddress)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = hexByteText)
             }
         }
     }
@@ -353,11 +380,19 @@ fun HexViewer(
  * Placeholder row shown when data is not yet loaded.
  */
 @Composable
-fun HexPlaceholderRow(addr: Long) {
+fun HexPlaceholderRow(
+    addr: Long,
+    hexAddressBackground: Color = Color(0xFFDDDDDD),
+    hexAddressText: Color = Color.Black,
+    hexDivider: Color = Color(0xFFBDBDBD)
+) {
+    val hexPlaceholderRow = colorResource(R.color.hex_placeholder_row)
+    val hexPlaceholderBlock = colorResource(R.color.hex_placeholder_block)
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFFAFAFA))
+            .background(hexPlaceholderRow)
             .height(IntrinsicSize.Min)
     ) {
         // Address
@@ -365,12 +400,12 @@ fun HexPlaceholderRow(addr: Long) {
             modifier = Modifier
                 .width(70.dp)
                 .fillMaxHeight()
-                .background(Color(0xFFDDDDDD))
+                .background(hexAddressBackground)
                 .padding(start = 4.dp, top = 2.dp)
         ) {
             Text(
                 text = "%06X".format(addr),
-                color = Color.Black,
+                color = hexAddressText,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 lineHeight = 14.sp
@@ -387,7 +422,7 @@ fun HexPlaceholderRow(addr: Long) {
                         .weight(1f)
                         .height(20.dp)
                         .padding(2.dp)
-                        .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                        .background(hexPlaceholderBlock, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
                 )
             }
         }
@@ -400,7 +435,7 @@ fun HexPlaceholderRow(addr: Long) {
                 .width(100.dp)
                 .height(20.dp)
                 .padding(4.dp)
-                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                .background(hexPlaceholderBlock, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
     }
 }
@@ -413,7 +448,13 @@ fun HexVisualRow(
     cursorAddress: Long,
     selectedColumn: Int,
     highlightColor: Color,
-    onByteClick: (Long) -> Unit
+    onByteClick: (Long) -> Unit,
+    hexAddressBackground: Color = Color(0xFFDDDDDD),
+    hexAddressText: Color = Color(0xFF424242),
+    hexRowEven: Color = Color.White,
+    hexRowOdd: Color = Color(0xFFE8EAF6),
+    hexDivider: Color = Color(0xFFBDBDBD),
+    hexByteText: Color = Color.Black
 ) {
     // 8 bytes row
     val oddRow = (addr / 8) % 2 == 1L
@@ -424,7 +465,7 @@ fun HexVisualRow(
     val isRowSelected = cursorAddress >= rowStartAddr && cursorAddress <= rowEndAddr
     
     // Base background: alternating colors (zebra stripes)
-    val baseBgColor = if (oddRow) Color(0xFFE8EAF6) else Color.White
+    val baseBgColor = if (oddRow) hexRowOdd else hexRowEven
 
     Row(
         modifier = Modifier
@@ -437,12 +478,12 @@ fun HexVisualRow(
             modifier = Modifier
                 .width(70.dp)
                 .fillMaxHeight()
-                .background(Color(0xFFDDDDDD)), // Gray background for address
+                .background(hexAddressBackground), // Gray background for address
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "%06X".format(addr), 
-                color = Color(0xFF424242), // Dark gray
+                color = hexAddressText, // Dark gray
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
@@ -465,7 +506,7 @@ fun HexVisualRow(
                         modifier = Modifier
                             .width(1.dp)
                             .fillMaxHeight()
-                            .background(Color(0xFFBDBDBD))
+                            .background(hexDivider)
                     )
                 }
                 
@@ -493,7 +534,7 @@ fun HexVisualRow(
                          text = "%02X".format(b),
                          fontFamily = FontFamily.Monospace,
                          fontSize = 13.sp,
-                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black,
+                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else hexByteText,
                          textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                          fontWeight = FontWeight.Medium
                     )
@@ -508,7 +549,7 @@ fun HexVisualRow(
                          modifier = Modifier
                              .width(1.dp)
                              .fillMaxHeight()
-                             .background(Color(0xFFBDBDBD))
+                             .background(hexDivider)
                      )
                  }
                  Spacer(Modifier.weight(1f))
@@ -549,7 +590,7 @@ fun HexVisualRow(
                         text = charStr,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else hexByteText
                     )
                 }
             }
@@ -910,6 +951,8 @@ fun DisassemblyViewer(
  */
 @Composable
 fun DisasmPlaceholderRow() {
+    val disasmPlaceholderBg = colorResource(R.color.disasm_placeholder_background)
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -921,7 +964,7 @@ fun DisasmPlaceholderRow() {
                 .width(90.dp)
                 .height(18.dp)
                 .padding(end = 4.dp)
-                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                .background(disasmPlaceholderBg, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
         // Bytes placeholder
         Box(
@@ -929,14 +972,14 @@ fun DisasmPlaceholderRow() {
                 .width(100.dp)
                 .height(18.dp)
                 .padding(end = 4.dp)
-                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                .background(disasmPlaceholderBg, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
         // Disasm placeholder
         Box(
             modifier = Modifier
                 .weight(1f)
                 .height(18.dp)
-                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                .background(disasmPlaceholderBg, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
     }
 }

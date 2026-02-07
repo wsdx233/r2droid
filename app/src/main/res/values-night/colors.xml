@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- Hex Viewer Colors (Dark Mode) -->
+    <color name="hex_header_background">#FF2D2D2D</color>
+    <color name="hex_content_background">#FF1E1E1E</color>
+    <color name="hex_footer_background">#FF252525</color>
+    <color name="hex_address_background">#FF3A3A3A</color>
+    <color name="hex_address_text">#FFB0B0B0</color>
+    <color name="hex_row_even">#FF1E1E1E</color>
+    <color name="hex_row_odd">#FF262630</color>
+    <color name="hex_placeholder_row">#FF2A2A2A</color>
+    <color name="hex_placeholder_block">#FF3A3A3A</color>
+    <color name="hex_divider">#FF4A4A4A</color>
+    <color name="hex_separator_line">#FF4A4A4A</color>
+    <color name="hex_byte_text">#FFE0E0E0</color>
+    <color name="hex_column_header_text">#FF808080</color>
+    
+    <!-- Custom Command Dialog Colors (Dark Mode) -->
+    <color name="command_output_background">#FF2D2D2D</color>
+    <color name="command_output_text">#FFE0E0E0</color>
+    <color name="command_output_placeholder">#FF808080</color>
+    
+    <!-- Disasm Placeholder Colors (Dark Mode) -->
+    <color name="disasm_placeholder_background">#FF3A3A3A</color>
+</resources>

@@ -9,10 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.data.model.*
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.data.model.*
 import top.wsdx233.r2droid.ui.component.FilterableList
+import top.wsdx233.r2droid.R
 
 data class ListItemActions(
     val onCopy: (String) -> Unit,
@@ -880,11 +881,15 @@ fun CustomCommandDialog(
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 
+                val commandOutputBg = colorResource(R.color.command_output_background)
+                val commandOutputText = colorResource(R.color.command_output_text)
+                val commandOutputPlaceholder = colorResource(R.color.command_output_placeholder)
+                
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp)
-                        .background(Color(0xFFEEEEEE), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .background(commandOutputBg, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                         .padding(8.dp)
                         .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 ) {
@@ -892,7 +897,7 @@ fun CustomCommandDialog(
                         text = output.ifEmpty { "No output" },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
-                        color = if (output.isEmpty()) Color.Gray else Color.Black
+                        color = if (output.isEmpty()) commandOutputPlaceholder else commandOutputText
                     )
                 }
             }

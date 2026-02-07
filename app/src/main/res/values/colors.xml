@@ -7,4 +7,27 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Hex Viewer Colors (Light Mode) -->
+    <color name="hex_header_background">#FFE0E0E0</color>
+    <color name="hex_content_background">#FFF0F0F0</color>
+    <color name="hex_footer_background">#FFFFFFFF</color>
+    <color name="hex_address_background">#FFDDDDDD</color>
+    <color name="hex_address_text">#FF424242</color>
+    <color name="hex_row_even">#FFFFFFFF</color>
+    <color name="hex_row_odd">#FFE8EAF6</color>
+    <color name="hex_placeholder_row">#FFFAFAFA</color>
+    <color name="hex_placeholder_block">#FFE0E0E0</color>
+    <color name="hex_divider">#FFBDBDBD</color>
+    <color name="hex_separator_line">#FFAAAAAA</color>
+    <color name="hex_byte_text">#FF000000</color>
+    <color name="hex_column_header_text">#FF9E9E9E</color>
+    
+    <!-- Custom Command Dialog Colors (Light Mode) -->
+    <color name="command_output_background">#FFEEEEEE</color>
+    <color name="command_output_text">#FF000000</color>
+    <color name="command_output_placeholder">#FF9E9E9E</color>
+    
+    <!-- Disasm Placeholder Colors (Light Mode) -->
+    <color name="disasm_placeholder_background">#FFE0E0E0</color>
 </resources>
