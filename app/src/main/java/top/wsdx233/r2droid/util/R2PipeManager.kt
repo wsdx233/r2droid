@@ -37,6 +37,10 @@ object R2PipeManager {
 
     // 待处理的文件路径，由 HomeViewModel 设置，ProjectViewModel 读取
     var pendingFilePath: String? = null
+    
+    // 当前已打开的文件路径
+    var currentFilePath: String? = null
+        private set
 
     /**
      * 状态封装类
@@ -94,9 +98,11 @@ object R2PipeManager {
                          }
 
                         _isConnected.set(true)
+                        currentFilePath = filePath // 保存当前文件路径
                         _state.value = State.Success("Open R2Pipe session", "Session started successfully")
                         Result.success(Unit)
                     } else {
+                        currentFilePath = null
                         throw RuntimeException("R2Pipe process failed to start immediately.")
                     }
                 } catch (e: Exception) {

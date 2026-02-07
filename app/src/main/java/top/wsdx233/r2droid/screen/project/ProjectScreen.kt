@@ -17,9 +17,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -124,6 +126,25 @@ fun ProjectScreen(
                         },
                 actions = {
                     if (selectedCategory == MainCategory.Detail) {
+                         // Show back navigation button (undo)
+                         val canGoBack by viewModel.canGoBack.collectAsState()
+                         androidx.compose.material3.IconButton(
+                             onClick = { viewModel.navigateBack() },
+                             enabled = canGoBack
+                         ) {
+                             Icon(
+                                 Icons.AutoMirrored.Filled.ArrowBack,
+                                 contentDescription = "Go Back",
+                                 tint = if (canGoBack) MaterialTheme.colorScheme.onSurface 
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                             )
+                         }
+                         // Show scroll-to-selection button for Hex, Disassembly and Decompile tabs
+                         if (selectedDetailTabIndex == 0 || selectedDetailTabIndex == 1 || selectedDetailTabIndex == 2) {
+                             androidx.compose.material3.IconButton(onClick = { viewModel.requestScrollToSelection() }) {
+                                 Icon(Icons.Filled.MyLocation, contentDescription = "Scroll to Selection")
+                             }
+                         }
                          androidx.compose.material3.IconButton(onClick = { showJumpDialog = true }) {
                              Icon(Icons.Filled.PlayArrow, contentDescription = "Jump")
                          }
@@ -302,35 +323,29 @@ fun ProjectScreen(
                             }
                             
                             when(selectedDetailTabIndex) {
-                                0 -> if (state.hexRows == null) {
+                                0 -> if (!state.hexReady) {
                                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 } else {
-                                    val totalSize = state.binInfo?.size ?: 0L
-                                    val currentPos = state.hexRows.firstOrNull()?.addr ?: 0L
                                     HexViewer(
-                                        hexRows = state.hexRows,
-                                        totalSize = totalSize,
-                                        currentPos = currentPos,
+                                        viewModel = viewModel,
                                         cursorAddress = state.cursorAddress,
-                                        onLoadMore = { append -> viewModel.loadHexMore(append) },
-                                        onScrollTo = { addr -> viewModel.jumpToAddress(addr) },
                                         onByteClick = { addr -> viewModel.updateCursor(addr) }
                                     )
                                 }
-                                1 -> if (state.disassembly == null) {
+                                1 -> if (!state.disasmReady) {
                                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 } else {
                                     DisassemblyViewer(
-                                        instructions = state.disassembly,
+                                        viewModel = viewModel,
                                         cursorAddress = state.cursorAddress,
-                                        onInstructionClick = { addr -> viewModel.updateCursor(addr) },
-                                        onLoadMore = { append -> viewModel.loadDisasmMore(append) }
+                                        onInstructionClick = { addr -> viewModel.updateCursor(addr) }
                                     )
                                 }
                                 2 -> if (state.decompilation == null) {
                                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                                 } else {
                                     DecompilationViewer(
+                                        viewModel = viewModel,
                                         data = state.decompilation,
                                         cursorAddress = state.cursorAddress,
                                         onAddressClick = { addr -> viewModel.updateCursor(addr) }

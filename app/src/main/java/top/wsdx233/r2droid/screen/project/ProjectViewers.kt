@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,58 +27,99 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+import top.wsdx233.r2droid.data.HexDataManager
 import top.wsdx233.r2droid.data.model.*
 
+/**
+ * Virtualized Hex Viewer - uses items(count) pattern for smooth scrolling.
+ * 
+ * Core design:
+ * - LazyColumn knows total rows upfront (totalSize / 16)
+ * - Each row is identified by index (stable key)
+ * - Data is loaded on-demand from HexDataManager cache
+ * - Placeholder shown for unloaded rows
+ */
 @Composable
 fun HexViewer(
-    hexRows: List<HexRow>, 
-    totalSize: Long = 0L, 
-    currentPos: Long = 0L,
-    cursorAddress: Long = 0L, 
-    onLoadMore: (Boolean) -> Unit,
-    onScrollTo: (Long) -> Unit,
+    viewModel: ProjectViewModel,
+    cursorAddress: Long,
     onByteClick: (Long) -> Unit
 ) {
-    if (hexRows.isEmpty()) {
+    val hexDataManager = viewModel.hexDataManager
+    
+    // Observe cache version to trigger recomposition when chunks load
+    val cacheVersion by viewModel.hexCacheVersion.collectAsState()
+    
+    if (hexDataManager == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+    
+    val totalRows = hexDataManager.totalRows
+    if (totalRows <= 0) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No Data", style = MaterialTheme.typography.bodyLarge)
         }
         return
     }
-
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     
-    // Infinite Scroll Logic
-    androidx.compose.runtime.LaunchedEffect(listState) {
-        androidx.compose.runtime.snapshotFlow { 
+    // Total file size for scrollbar calculation
+    val totalSize = totalRows.toLong() * 16
+    
+    // Calculate initial scroll position based on cursor
+    // Use getRowIndexForAddress for correct mapping with virtual address offsets
+    val initialRowIndex = hexDataManager.getRowIndexForAddress(cursorAddress).coerceIn(0, maxOf(0, totalRows - 1))
+    
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = initialRowIndex.coerceAtLeast(0)
+    )
+    
+    // Coroutine scope for scrollbar interactions
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    
+    // Auto-scroll to cursor when it changes
+    LaunchedEffect(cursorAddress) {
+        val targetRowIndex = hexDataManager.getRowIndexForAddress(cursorAddress)
+        if (targetRowIndex in 0 until totalRows) {
+            // Calculate centering
             val layoutInfo = listState.layoutInfo
-            val totalItems = layoutInfo.totalItemsCount
-            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
-            Pair(firstVisible < 5, totalItems > 0 && lastVisible >= totalItems - 5)
-        }.collect { (nearTop, nearBottom) ->
-            if (nearBottom) onLoadMore(true)
-            if (nearTop) onLoadMore(false)
+            val visibleItems = layoutInfo.visibleItemsInfo.size
+            val centerOffset = if (visibleItems > 0) visibleItems / 2 else 5
+            val scrollIndex = (targetRowIndex - centerOffset).coerceIn(0, totalRows - 1)
+            listState.animateScrollToItem(scrollIndex)
         }
     }
-
-    // Auto-scroll to cursor
-    androidx.compose.runtime.LaunchedEffect(cursorAddress, hexRows) {
-        if (hexRows.isNotEmpty()) {
-            val targetIndex = hexRows.indexOfFirst { it.addr <= cursorAddress && (it.addr + 16) > cursorAddress }
-            if (targetIndex != -1) {
+    
+    // Observe scroll to selection trigger from TopAppBar button
+    val scrollToSelectionTrigger by viewModel.scrollToSelectionTrigger.collectAsState()
+    LaunchedEffect(scrollToSelectionTrigger) {
+        if (scrollToSelectionTrigger > 0) {
+            val targetRowIndex = hexDataManager.getRowIndexForAddress(cursorAddress)
+            if (targetRowIndex in 0 until totalRows) {
                 // Calculate centering
                 val layoutInfo = listState.layoutInfo
                 val visibleItems = layoutInfo.visibleItemsInfo.size
                 val centerOffset = if (visibleItems > 0) visibleItems / 2 else 5
-                val scrollIndex = (targetIndex - centerOffset).coerceAtLeast(0)
+                val scrollIndex = (targetRowIndex - centerOffset).coerceIn(0, totalRows - 1)
                 listState.animateScrollToItem(scrollIndex)
             }
         }
     }
+    
+    // Preload chunks based on visible items
+    LaunchedEffect(listState.firstVisibleItemIndex, cacheVersion) {
+        val firstVisible = listState.firstVisibleItemIndex
+        val addr = hexDataManager.getRowAddress(firstVisible)
+        viewModel.preloadHexAround(addr)
+    }
 
     Column(Modifier.fillMaxSize()) {
-        // Sticky Header: 0 1 2 3 ...
+        // Sticky Header: 0 1 2 3 4 5 6 7
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -99,38 +141,59 @@ fun HexViewer(
             Text("01234567", fontSize = 12.sp, color = Color.Gray, letterSpacing = 2.sp)
             Spacer(Modifier.width(4.dp))
         }
+
+        //Dark Gray Line
+
         
         Box(Modifier.weight(1f)) {
             SelectionContainer {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().background(Color(0xFFF0F0F0)), // Light bg
-                    contentPadding = PaddingValues(0.dp) 
+                    modifier = Modifier.fillMaxSize().background(Color(0xFFF0F0F0)),
+                    contentPadding = PaddingValues(0.dp)
                 ) {
-                    items(hexRows) { row ->
-                        // Determine if we split into 8-byte sub-rows
-                        // 16 bytes total. 
-                        // Row 1: bytes 0-7
-                        // Row 2: bytes 8-15
+                    // Virtualized items - use count instead of list
+                    items(
+                        count = totalRows,
+                        key = { index -> index } // Stable key for smooth scrolling
+                    ) { rowIndex ->
+                        // Calculate address using HexDataManager (supports virtual address offsets)
+                        val addr = hexDataManager.getRowAddress(rowIndex)
                         
-                        val b1 = row.bytes.take(8)
-                        val b2 = row.bytes.drop(8)
+                        // Trigger loading for this row's chunk
+                        LaunchedEffect(rowIndex) {
+                            viewModel.loadHexChunkForAddress(addr)
+                        }
                         
-                        HexVisualRow(
-                            addr = row.addr, 
-                            bytes = b1, 
-                            index = 0, 
-                            cursorAddress = cursorAddress, 
-                            onByteClick = onByteClick
-                        )
-                        if (b2.isNotEmpty()) {
+                        // Force re-read when cache version changes
+                        val bytes = remember(cacheVersion, rowIndex) {
+                            hexDataManager.getRowData(rowIndex)
+                        }
+                        
+                        if (bytes != null) {
+                            // Split into 8-byte rows for display
+                            val b1 = bytes.take(8).toList()
+                            val b2 = bytes.drop(8).toList()
+                            
                             HexVisualRow(
-                                addr = row.addr + 8, 
-                                bytes = b2, 
-                                index = 1,
+                                addr = addr,
+                                bytes = b1.map { it },
+                                index = 0,
                                 cursorAddress = cursorAddress,
                                 onByteClick = onByteClick
                             )
+                            if (b2.isNotEmpty()) {
+                                HexVisualRow(
+                                    addr = addr + 8,
+                                    bytes = b2.map { it },
+                                    index = 1,
+                                    cursorAddress = cursorAddress,
+                                    onByteClick = onByteClick
+                                )
+                            }
+                        } else {
+                            // Placeholder row (skeleton)
+                            HexPlaceholderRow(addr)
                         }
                     }
                 }
@@ -138,12 +201,10 @@ fun HexViewer(
             
             // Fast Scrollbar
             if (totalSize > 0) {
-                 var sliderPos by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+                 // Current scroll position in virtual address space
+                 val currentPos = hexDataManager.getRowAddress(listState.firstVisibleItemIndex)
+                 val viewStart = hexDataManager.viewStartAddress
                  
-                 androidx.compose.runtime.LaunchedEffect(currentPos) {
-                     sliderPos = (currentPos.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f)
-                 }
-
                  // Custom Vertical Scrollbar
                  Box(
                      modifier = Modifier
@@ -152,19 +213,29 @@ fun HexViewer(
                          .width(24.dp)
                          .background(Color.Transparent)
                          .pointerInput(Unit) {
-                             detectVerticalDragGestures { change, dragAmount ->
+                             detectVerticalDragGestures { change, _ ->
                                  val height = size.height
                                  val newY = (change.position.y / height).coerceIn(0f, 1f)
-                                 onScrollTo((newY * totalSize).toLong())
+                                 val targetRow = (newY * totalRows).toInt()
+                                 // Scroll to the target row
+                                 coroutineScope.launch {
+                                     listState.scrollToItem(targetRow.coerceIn(0, maxOf(0, totalRows - 1)))
+                                 }
                              }
+                         }
+                         .pointerInput(Unit) {
                              detectTapGestures { offset ->
                                  val height = size.height
                                  val newY = (offset.y / height).coerceIn(0f, 1f)
-                                 onScrollTo((newY * totalSize).toLong())
+                                 val targetRow = (newY * totalRows).toInt()
+                                 coroutineScope.launch {
+                                     listState.scrollToItem(targetRow.coerceIn(0, maxOf(0, totalRows - 1)))
+                                 }
                              }
                          }
                  ) {
-                     val thumbY = (currentPos.toFloat() / totalSize.toFloat())
+                     // Calculate thumb position relative to virtual address range
+                     val thumbY = ((currentPos - viewStart).toFloat() / totalSize.toFloat()).coerceIn(0f, 1f)
                      val bias = (thumbY * 2 - 1).coerceIn(-1f, 1f)
                      Box(
                          Modifier
@@ -184,11 +255,68 @@ fun HexViewer(
                 .padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-              Text("Pos: ${"0x%X".format(currentPos)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-              if (totalSize > 0L) {
-                  Text("Size: ${"0x%X".format(totalSize)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-              }
+            val currentPos = hexDataManager.getRowAddress(listState.firstVisibleItemIndex)
+            Text("Pos: ${"0x%X".format(currentPos)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            if (totalSize > 0L) {
+                Text("Range: ${"0x%X".format(hexDataManager.viewStartAddress)}-${"0x%X".format(hexDataManager.viewEndAddress)}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
         }
+    }
+}
+
+/**
+ * Placeholder row shown when data is not yet loaded.
+ */
+@Composable
+fun HexPlaceholderRow(addr: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFFAFAFA))
+            .height(IntrinsicSize.Min)
+    ) {
+        // Address
+        Box(
+            modifier = Modifier
+                .width(70.dp)
+                .fillMaxHeight()
+                .background(Color(0xFFDDDDDD))
+                .padding(start = 4.dp, top = 2.dp)
+        ) {
+            Text(
+                text = "%06X".format(addr),
+                color = Color.Black,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                lineHeight = 14.sp
+            )
+        }
+        
+        VerticalDivider()
+        
+        // Placeholder hex area
+        Row(Modifier.weight(1f)) {
+            repeat(8) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(20.dp)
+                        .padding(2.dp)
+                        .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                )
+            }
+        }
+        
+        VerticalDivider()
+        
+        // Placeholder ASCII area
+        Box(
+            modifier = Modifier
+                .width(100.dp)
+                .height(20.dp)
+                .padding(4.dp)
+                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+        )
     }
 }
 
@@ -290,65 +418,280 @@ fun HexVisualRow(
 }
 
 
+/**
+ * Virtualized Disassembly Viewer - uses DisasmDataManager for smooth infinite scrolling.
+ * 
+ * Core design:
+ * - LazyColumn displays loaded instructions from DisasmDataManager
+ * - Data is loaded on-demand as user scrolls
+ * - Custom fast scrollbar for quick navigation
+ * - Placeholder shown for unloaded regions
+ */
 @Composable
 fun DisassemblyViewer(
-    instructions: List<DisasmInstruction>, 
+    viewModel: ProjectViewModel,
     cursorAddress: Long,
-    onInstructionClick: (Long) -> Unit,
-    onLoadMore: (Boolean) -> Unit
+    onInstructionClick: (Long) -> Unit
 ) {
-    if (instructions.isEmpty()) {
-         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No Instructions", style = MaterialTheme.typography.bodyLarge)
+    val disasmDataManager = viewModel.disasmDataManager
+    
+    // Observe cache version to trigger recomposition when chunks load
+    val cacheVersion by viewModel.disasmCacheVersion.collectAsState()
+    
+    if (disasmDataManager == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
         return
     }
-
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-
-    androidx.compose.runtime.LaunchedEffect(listState) {
-        androidx.compose.runtime.snapshotFlow {
+    
+    val loadedCount = remember(cacheVersion) { disasmDataManager.loadedInstructionCount }
+    
+    if (loadedCount <= 0) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(8.dp))
+                Text("Loading instructions...", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        return
+    }
+    // Virtual address range for scrollbar calculation
+    val viewStartAddr = remember { disasmDataManager.viewStartAddress }
+    val viewEndAddr = remember { disasmDataManager.viewEndAddress }
+    val totalAddressRange = viewEndAddr - viewStartAddr
+    
+    // Calculate initial scroll position based on cursor
+    val initialIndex = remember(cursorAddress) {
+        disasmDataManager.findClosestIndex(cursorAddress).coerceAtLeast(0)
+    }
+    
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = initialIndex.coerceIn(0, maxOf(0, loadedCount - 1))
+    )
+    
+    // Coroutine scope for scrollbar interactions
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    
+    // Track previous cursor address to only scroll when it actually changes
+    var previousCursorAddress by remember { androidx.compose.runtime.mutableStateOf(cursorAddress) }
+    var hasInitiallyScrolled by remember { androidx.compose.runtime.mutableStateOf(false) }
+    
+    // Auto-scroll to cursor ONLY when cursorAddress changes (not on data load)
+    LaunchedEffect(cursorAddress) {
+        // Skip if this is just the initial composition with same address
+        if (hasInitiallyScrolled && cursorAddress == previousCursorAddress) {
+            return@LaunchedEffect
+        }
+        
+        previousCursorAddress = cursorAddress
+        hasInitiallyScrolled = true
+        
+        val targetIndex = disasmDataManager.findClosestIndex(cursorAddress)
+        if (targetIndex >= 0 && targetIndex < disasmDataManager.loadedInstructionCount) {
+            // Calculate centering
             val layoutInfo = listState.layoutInfo
-            val totalItems = layoutInfo.totalItemsCount
-            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-             val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
-            
-            Pair(
-               firstVisible < 5, 
-               totalItems > 0 && lastVisible >= totalItems - 5
-            )
-        }.collect { (nearTop, nearBottom) ->
-            if (nearBottom) onLoadMore(true)
-            if (nearTop) onLoadMore(false)
+            val visibleItems = layoutInfo.visibleItemsInfo.size
+            val centerOffset = if (visibleItems > 0) visibleItems / 2 else 5
+            val scrollIndex = (targetIndex - centerOffset).coerceIn(0, disasmDataManager.loadedInstructionCount - 1)
+            listState.animateScrollToItem(scrollIndex)
         }
     }
-
-    // Auto-scroll to cursor
-    androidx.compose.runtime.LaunchedEffect(cursorAddress, instructions) {
-        if (instructions.isNotEmpty()) {
-            val targetIndex = instructions.indexOfFirst { it.addr == cursorAddress }
-            if (targetIndex != -1) {
-                // Determine centering
+    
+    // Observe scroll to selection trigger from TopAppBar button
+    val scrollToSelectionTrigger by viewModel.scrollToSelectionTrigger.collectAsState()
+    LaunchedEffect(scrollToSelectionTrigger) {
+        if (scrollToSelectionTrigger > 0) {
+            val targetIndex = disasmDataManager.findClosestIndex(cursorAddress)
+            if (targetIndex >= 0 && targetIndex < disasmDataManager.loadedInstructionCount) {
+                // Calculate centering
                 val layoutInfo = listState.layoutInfo
                 val visibleItems = layoutInfo.visibleItemsInfo.size
                 val centerOffset = if (visibleItems > 0) visibleItems / 2 else 5
-                val scrollIndex = (targetIndex - centerOffset).coerceAtLeast(0)
+                val scrollIndex = (targetIndex - centerOffset).coerceIn(0, disasmDataManager.loadedInstructionCount - 1)
                 listState.animateScrollToItem(scrollIndex)
             }
         }
     }
-
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(8.dp),
-             contentPadding = PaddingValues(bottom = 80.dp)
-    ) {
-        items(instructions) { instr ->
-            DisasmRow(instr, isSelected = instr.addr == cursorAddress, onClick = { onInstructionClick(instr.addr) })
+    
+    // Load more when near edges - use snapshotFlow for better control
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
+                disasmDataManager.loadedInstructionCount
+            )
+        }.collect { (firstVisible, lastVisible, total) ->
+            // Preload around visible area
+            val currentInstr = disasmDataManager.getInstructionAt(firstVisible)
+            if (currentInstr != null) {
+                viewModel.preloadDisasmAround(currentInstr.addr)
+            }
+            
+            // Load more at top
+            if (firstVisible < 10 && firstVisible > 0) {
+                viewModel.loadDisasmMore(false)
+            }
+            
+            // Load more at bottom
+            if (total > 0 && lastVisible > total - 10) {
+                viewModel.loadDisasmMore(true)
+            }
         }
+    }
+    
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(start = 8.dp, end = 32.dp, top = 8.dp, bottom = 8.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
+        ) {
+            items(
+                count = loadedCount,
+                key = { index -> 
+                    disasmDataManager.getInstructionAt(index)?.addr ?: index.toLong()
+                }
+            ) { index ->
+                // Force re-read when cache version changes
+                val instr = remember(cacheVersion, index) {
+                    disasmDataManager.getInstructionAt(index)
+                }
+                
+                if (instr != null) {
+                    DisasmRow(
+                        instr = instr, 
+                        isSelected = instr.addr == cursorAddress, 
+                        onClick = { onInstructionClick(instr.addr) }
+                    )
+                } else {
+                    // Placeholder row
+                    DisasmPlaceholderRow()
+                }
+            }
+        }
+        
+        // Fast Scrollbar
+        val currentIndex = listState.firstVisibleItemIndex
+        val currentAddr = remember(cacheVersion, currentIndex) {
+            disasmDataManager.getAddressAt(currentIndex) ?: 0L
+        }
+        
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(24.dp)
+                .background(Color.Transparent)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { change, _ ->
+                        val height = size.height
+                        val newY = (change.position.y / height).coerceIn(0f, 1f)
+                        // Estimate target address based on position within virtual address range
+                        val targetAddr = viewStartAddr + (newY * totalAddressRange).toLong()
+                        // Find closest index
+                        val targetIndex = disasmDataManager.estimateIndexForAddress(targetAddr)
+                        val clampedIndex = targetIndex.coerceIn(0, maxOf(0, disasmDataManager.loadedInstructionCount - 1))
+                        // Scroll and load more if needed
+                        coroutineScope.launch {
+                            listState.scrollToItem(clampedIndex)
+                            // Also trigger loading around this address
+                            viewModel.loadDisasmChunkForAddress(targetAddr)
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val height = size.height
+                        val newY = (offset.y / height).coerceIn(0f, 1f)
+                        // Estimate target address within virtual address range
+                        val targetAddr = viewStartAddr + (newY * totalAddressRange).toLong()
+                        val targetIndex = disasmDataManager.estimateIndexForAddress(targetAddr)
+                        val clampedIndex = targetIndex.coerceIn(0, maxOf(0, disasmDataManager.loadedInstructionCount - 1))
+                        coroutineScope.launch {
+                            listState.scrollToItem(clampedIndex)
+                            viewModel.loadDisasmChunkForAddress(targetAddr)
+                        }
+                    }
+                }
+        ) {
+            // Calculate thumb position relative to virtual address range
+            val thumbY = if (totalAddressRange > 0 && currentAddr >= viewStartAddr) {
+                ((currentAddr - viewStartAddr).toFloat() / totalAddressRange.toFloat()).coerceIn(0f, 1f)
+            } else if (loadedCount > 0) {
+                (currentIndex.toFloat() / loadedCount.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+            val bias = (thumbY * 2 - 1).coerceIn(-1f, 1f)
+            Box(
+                Modifier
+                    .align(androidx.compose.ui.BiasAlignment(0f, bias))
+                    .size(8.dp, 40.dp)
+                    .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+            )
+        }
+        
+        // Footer: Position Info
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "Addr: ${"0x%X".format(currentAddr)}", 
+                fontSize = 12.sp, 
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                "Loaded: $loadedCount instrs", 
+                fontSize = 12.sp, 
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+/**
+ * Placeholder row shown when instruction data is not yet loaded.
+ */
+@Composable
+fun DisasmPlaceholderRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp)
+    ) {
+        // Address placeholder
+        Box(
+            modifier = Modifier
+                .width(90.dp)
+                .height(18.dp)
+                .padding(end = 4.dp)
+                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+        )
+        // Bytes placeholder
+        Box(
+            modifier = Modifier
+                .width(100.dp)
+                .height(18.dp)
+                .padding(end = 4.dp)
+                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+        )
+        // Disasm placeholder
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(18.dp)
+                .background(Color(0xFFE0E0E0), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+        )
     }
 }
 
@@ -364,9 +707,6 @@ fun DisasmRow(instr: DisasmInstruction, isSelected: Boolean, onClick: () -> Unit
         "nop" -> Color.Gray
         else -> MaterialTheme.colorScheme.onSurface
     }
-    
-    // Highlight fork/fail in comments if present? R2 pdj doesn't give comments easily in that struct unless in separate field.
-    // We just show disasm.
 
     Row(
         modifier = Modifier
@@ -385,7 +725,6 @@ fun DisasmRow(instr: DisasmInstruction, isSelected: Boolean, onClick: () -> Unit
         )
         
         // Bytes (Optional - usually hidden in graph mode but shown in linear)
-        // Let's show up to 8 bytes hex, if more then '..'
         val bytesStr = if (instr.bytes.length > 12) instr.bytes.take(12) + ".." else instr.bytes
         Text(
             text = bytesStr.padEnd(14),
@@ -409,6 +748,7 @@ fun DisasmRow(instr: DisasmInstruction, isSelected: Boolean, onClick: () -> Unit
 
 @Composable
 fun DecompilationViewer(
+    viewModel: ProjectViewModel,
     data: DecompilationData,
     cursorAddress: Long,
     onAddressClick: (Long) -> Unit
@@ -423,6 +763,38 @@ fun DecompilationViewer(
     var textLayoutResult by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val scrollState = androidx.compose.foundation.rememberScrollState()
 
+    // Split code into lines for line number display
+    val lines = data.code.lines()
+    
+    // Build line-to-offset mapping for scrolling
+    val lineToOffset = remember(data.code) {
+        var offset = 0
+        lines.mapIndexed { index, line ->
+            val start = offset
+            offset += line.length + 1 // +1 for newline
+            index to start
+        }.toMap()
+    }
+    
+    // Find which line corresponds to cursor address
+    val cursorLineIndex = remember(cursorAddress, data.annotations) {
+        if (cursorAddress == 0L) -1
+        else {
+            val note = data.annotations.firstOrNull { it.offset == cursorAddress }
+            if (note != null && note.start >= 0 && note.start < data.code.length) {
+                // Find line number for this offset
+                var charCount = 0
+                lines.indexOfFirst { line ->
+                    charCount += line.length + 1
+                    charCount > note.start
+                }
+            } else -1
+        }
+    }
+    
+    // Dark Blue background for highlighted line (adapted for dark theme)
+    val highlightBackgroundColor = Color(0xFF1A3A60)
+    
     // Process annotations
     val annotatedString = buildAnnotatedString {
         append(data.code)
@@ -437,7 +809,7 @@ fun DecompilationViewer(
                 // If annotation corresponds to current cursor address, highlight background
                 if (note.offset == cursorAddress && cursorAddress != 0L) {
                     addStyle(
-                        style = SpanStyle(background = MaterialTheme.colorScheme.primaryContainer),
+                        style = SpanStyle(background = highlightBackgroundColor),
                         start = start,
                         end = end
                     )
@@ -470,9 +842,21 @@ fun DecompilationViewer(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val config = androidx.compose.ui.platform.LocalConfiguration.current
     
+    // Track previous cursor address to only scroll when it actually changes
+    var previousCursorAddress by remember { androidx.compose.runtime.mutableStateOf(cursorAddress) }
+    var hasInitiallyScrolled by remember { androidx.compose.runtime.mutableStateOf(false) }
+    
     androidx.compose.runtime.LaunchedEffect(cursorAddress, textLayoutResult) {
         val layout = textLayoutResult ?: return@LaunchedEffect
         if (cursorAddress == 0L) return@LaunchedEffect
+        
+        // Skip if this is just the initial composition with same address
+        if (hasInitiallyScrolled && cursorAddress == previousCursorAddress) {
+            return@LaunchedEffect
+        }
+        
+        previousCursorAddress = cursorAddress
+        hasInitiallyScrolled = true
         
         // Find annotation for cursor
         val note = data.annotations.firstOrNull { it.offset == cursorAddress }
@@ -487,35 +871,97 @@ fun DecompilationViewer(
             scrollState.animateScrollTo(targetScroll)
         }
     }
+    
+    // Observe scroll to selection trigger from TopAppBar button
+    val scrollToSelectionTrigger by viewModel.scrollToSelectionTrigger.collectAsState()
+    LaunchedEffect(scrollToSelectionTrigger) {
+        if (scrollToSelectionTrigger > 0) {
+            val layout = textLayoutResult ?: return@LaunchedEffect
+            if (cursorAddress == 0L) return@LaunchedEffect
+            
+            val note = data.annotations.firstOrNull { it.offset == cursorAddress }
+            if (note != null && note.start < layout.layoutInput.text.length) {
+                val line = layout.getLineForOffset(note.start)
+                val top = layout.getLineTop(line)
+                
+                val screenHeightPx = with(density) { config.screenHeightDp.dp.toPx() }
+                val targetScroll = (top - screenHeightPx / 3).toInt().coerceAtLeast(0)
+                
+                scrollState.animateScrollTo(targetScroll)
+            }
+        }
+    }
+
+    // Calculate line number width based on total lines
+    val lineNumberWidth = remember(lines.size) {
+        val digits = lines.size.toString().length
+        (digits * 10 + 16).dp // Approximate width per digit + padding
+    }
 
     SelectionContainer {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF1E1E1E))
-                .verticalScroll(scrollState)
-                .padding(8.dp)
         ) {
-            Text(
-                text = annotatedString,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                color = Color(0xFFD4D4D4), // Standard light gray text
-                lineHeight = 18.sp,
-                onTextLayout = { textLayoutResult = it },
-                modifier = Modifier.pointerInput(Unit) {
-                    detectTapGestures { pos ->
-                        val layout = textLayoutResult ?: return@detectTapGestures
-                        if (pos.y <= layout.size.height) {
-                            val offset = layout.getOffsetForPosition(pos)
-                            val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
-                            if (note != null && note.offset != 0L) {
-                                onAddressClick(note.offset)
-                            }
+            // Line numbers column
+            Box(
+                modifier = Modifier
+                    .width(lineNumberWidth)
+                    .verticalScroll(scrollState)
+                    .background(Color(0xFF252526))
+                    .padding(top = 8.dp, bottom = 8.dp)
+            ) {
+                Column {
+                    lines.forEachIndexed { index, _ ->
+                        val isCurrentLine = index == cursorLineIndex
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(18.dp)
+                                .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Text(
+                                text = (index + 1).toString(),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 13.sp,
+                                color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
                         }
                     }
                 }
-            )
+            }
+            
+            // Code content
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
+            ) {
+                Text(
+                    text = annotatedString,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    color = Color(0xFFD4D4D4), // Standard light gray text
+                    lineHeight = 18.sp,
+                    onTextLayout = { textLayoutResult = it },
+                    modifier = Modifier.pointerInput(Unit) {
+                        detectTapGestures { pos ->
+                            val layout = textLayoutResult ?: return@detectTapGestures
+                            if (pos.y <= layout.size.height) {
+                                val offset = layout.getOffsetForPosition(pos)
+                                val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
+                                if (note != null && note.offset != 0L) {
+                                    onAddressClick(note.offset)
+                                }
+                            }
+                        }
+                    }
+                )
+            }
         }
     }
 }

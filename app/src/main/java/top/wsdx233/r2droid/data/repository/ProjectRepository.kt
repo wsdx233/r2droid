@@ -19,6 +19,22 @@ class ProjectRepository {
         }
     }
 
+    /**
+     * Get file size using r2 command.
+     * `?v $s` returns the file size in hex, we convert to decimal.
+     */
+    suspend fun getFileSize(): Result<Long> {
+        return R2PipeManager.execute("?v \$s").mapCatching { output ->
+            val trimmed = output.toString().trim()
+            // Parse hex value (e.g., "0x1234" or just "1234")
+            if (trimmed.startsWith("0x", ignoreCase = true)) {
+                trimmed.drop(2).toLong(16)
+            } else {
+                trimmed.toLongOrNull() ?: 0L
+            }
+        }
+    }
+
     suspend fun getSections(): Result<List<Section>> {
         // iSj: Sections
         return R2PipeManager.executeJson("iSj").mapCatching { output ->

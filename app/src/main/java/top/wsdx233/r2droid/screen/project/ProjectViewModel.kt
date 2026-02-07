@@ -1,31 +1,18 @@
 package top.wsdx233.r2droid.screen.project
 
 import android.content.Context
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import top.wsdx233.r2droid.data.DisasmDataManager
+import top.wsdx233.r2droid.data.HexDataManager
 import top.wsdx233.r2droid.data.model.*
 import top.wsdx233.r2droid.data.repository.ProjectRepository
 import top.wsdx233.r2droid.util.R2PipeManager
-
-data class HexRow(val addr: Long, val bytes: ByteArray) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-        other as HexRow
-        if (addr != other.addr) return false
-        if (!bytes.contentEquals(other.bytes)) return false
-        return true
-    }
-    override fun hashCode(): Int {
-        var result = addr.hashCode()
-        result = 31 * result + bytes.contentHashCode()
-        return result
-    }
-}
 
 sealed class ProjectUiState {
     object Idle : ProjectUiState()
@@ -40,7 +27,8 @@ sealed class ProjectUiState {
         val relocations: List<Relocation>? = null,
         val strings: List<StringInfo>? = null,
         val functions: List<FunctionInfo>? = null,
-        val hexRows: List<HexRow>? = null,
+        val hexReady: Boolean = false, // Indicates hex viewer is ready (virtualized)
+        val disasmReady: Boolean = false, // Indicates disasm viewer is ready (virtualized)
         val disassembly: List<DisasmInstruction>? = null,
         val decompilation: DecompilationData? = null,
         val cursorAddress: Long = 0L
@@ -57,9 +45,77 @@ class ProjectViewModel : ViewModel() {
     // Expose logs from LogManager
     val logs: StateFlow<List<top.wsdx233.r2droid.util.LogEntry>> = top.wsdx233.r2droid.util.LogManager.logs
     
+    // === Hex Virtualization ===
+    // HexDataManager for virtualized hex viewing
+    var hexDataManager: HexDataManager? = null
+        private set
+    
+    // Cache version counter - increment to trigger UI recomposition when chunks load
+    private val _hexCacheVersion = MutableStateFlow(0)
+    val hexCacheVersion: StateFlow<Int> = _hexCacheVersion.asStateFlow()
+    
+    // === Disasm Virtualization ===
+    // DisasmDataManager for virtualized disassembly viewing
+    var disasmDataManager: DisasmDataManager? = null
+        private set
+    
+    // Cache version counter for disasm - increment to trigger UI recomposition when chunks load
+    private val _disasmCacheVersion = MutableStateFlow(0)
+    val disasmCacheVersion: StateFlow<Int> = _disasmCacheVersion.asStateFlow()
+    
+    // Scroll to selection trigger - increment to trigger scroll to current cursor position
+    private val _scrollToSelectionTrigger = MutableStateFlow(0)
+    val scrollToSelectionTrigger: StateFlow<Int> = _scrollToSelectionTrigger.asStateFlow()
+    
+    /**
+     * Request the active viewer to scroll to the current cursor position (centered).
+     * Called from TopAppBar button.
+     */
+    fun requestScrollToSelection() {
+        _scrollToSelectionTrigger.value++
+    }
+    
+    // === Address History Navigation ===
+    // Stack to store previous addresses for back navigation
+    private val addressHistory = ArrayDeque<Long>()
+    private val MAX_HISTORY_SIZE = 50 // Limit history size to avoid memory issues
+    
+    // StateFlow to notify UI about history availability
+    private val _canGoBack = MutableStateFlow(false)
+    val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
+    
+    /**
+     * Push current address to history before navigating to a new address.
+     */
+    private fun pushAddressToHistory(addr: Long) {
+        // Don't push if it's the same as the last address in history
+        if (addressHistory.lastOrNull() == addr) return
+        
+        addressHistory.addLast(addr)
+        
+        // Trim history if it exceeds max size
+        while (addressHistory.size > MAX_HISTORY_SIZE) {
+            addressHistory.removeFirst()
+        }
+        
+        _canGoBack.value = addressHistory.isNotEmpty()
+    }
+    
+    /**
+     * Navigate back to the previous address in history.
+     */
+    fun navigateBack() {
+        if (addressHistory.isEmpty()) return
+        
+        val previousAddr = addressHistory.removeLast()
+        _canGoBack.value = addressHistory.isNotEmpty()
+        
+        // Navigate to previous address without adding to history
+        jumpToAddressInternal(previousAddr)
+    }
+    
     // Global pointer
     private var currentOffset: Long = 0L
-    private val HEX_CHUNK_SIZE = 256
     private val DISASM_CHUNK_SIZE = 50
 
     init {
@@ -103,7 +159,6 @@ class ProjectViewModel : ViewModel() {
                          R2PipeManager.execute("$analysisCmd; iIj")
                      }
                      // Load Data (Overview only)
-                     // Load Data (Overview only)
                      loadOverview()
                      
                      // Set initial offset to entry point if possible, else 0
@@ -133,13 +188,6 @@ class ProjectViewModel : ViewModel() {
 
     private fun loadOverview() {
         viewModelScope.launch {
-            // If completely new, show loading
-            if (_uiState.value !is ProjectUiState.Success) {
-                // We don't want to override Analyzing too early if we want to show it, 
-                // but loadOverview is called AFTER analysis.
-                // However, getting overview is fast.
-            }
-            
             val binInfoResult = repository.getOverview()
             if (binInfoResult.isFailure) {
                 _uiState.value = ProjectUiState.Error("Failed to load binary info: ${binInfoResult.exceptionOrNull()?.message}")
@@ -232,39 +280,104 @@ class ProjectViewModel : ViewModel() {
         }
     }
 
+    // === Virtualized Hex Viewer ===
+    
+    /**
+     * Initialize hex viewer with virtualization.
+     * Uses Section info to calculate virtual address range.
+     */
     fun loadHex() {
         val current = _uiState.value as? ProjectUiState.Success ?: return
-        if (current.hexRows != null) return
+        if (current.hexReady) return // Already initialized
         
         viewModelScope.launch {
-            // Center around currentOffset
-            var hexStart = currentOffset - (HEX_CHUNK_SIZE / 2)
-            if (hexStart < 0) hexStart = 0
-            loadHexChunk(hexStart, append = true)
+            // Get sections to determine virtual address range
+            val sectionsResult = repository.getSections()
+            val sections = sectionsResult.getOrDefault(emptyList())
+            
+            var startAddress = 0L
+            var endAddress = 0L
+            
+            if (sections.isNotEmpty()) {
+                // Find min vAddr and max (vAddr + vSize) from all sections
+                startAddress = sections.minOf { it.vAddr }
+                endAddress = sections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+            }
+            
+            // Fallback if sections are empty or invalid
+            if (endAddress <= startAddress) {
+                // Try Java File API as fallback (file offset based)
+                R2PipeManager.currentFilePath?.let { path ->
+                    try {
+                        val file = java.io.File(path)
+                        if (file.exists() && file.isFile) {
+                            startAddress = 0L
+                            endAddress = file.length()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            
+            // Final fallback - use a reasonable default range
+            if (endAddress <= startAddress) {
+                startAddress = 0L
+                endAddress = 1024L * 1024L // 1MB default
+            }
+            
+            // Create HexDataManager with virtual address range
+            hexDataManager = HexDataManager(startAddress, endAddress, repository).apply {
+                onChunkLoaded = { _ ->
+                    // Increment version to trigger recomposition
+                    _hexCacheVersion.value++
+                }
+            }
+            
+            // Mark hex as ready
+            val currentState = _uiState.value
+            if (currentState is ProjectUiState.Success) {
+                _uiState.value = currentState.copy(hexReady = true)
+            }
+            
+            // Preload initial chunks around cursor
+            hexDataManager?.loadChunkIfNeeded(currentOffset)
+            hexDataManager?.preloadAround(currentOffset, 3)
         }
     }
     
-    fun loadHexMore(append: Boolean) {
-        val current = _uiState.value as? ProjectUiState.Success ?: return
-        val rows = current.hexRows ?: return
-        
-        if (append) {
-            val lastRow = rows.lastOrNull() ?: return
-            val nextAddr = lastRow.addr + 16 
-            viewModelScope.launch { loadHexChunk(nextAddr, true) }
-        } else {
-            val firstRow = rows.firstOrNull() ?: return
-            var prevAddr = firstRow.addr - HEX_CHUNK_SIZE
-            if (prevAddr < 0) {
-                 if (firstRow.addr == 0L) return
-                 prevAddr = 0
-            }
-            viewModelScope.launch { loadHexChunk(prevAddr, false) }
+    /**
+     * Load a hex chunk for a specific address (called from UI during scroll).
+     */
+    fun loadHexChunkForAddress(addr: Long) {
+        val manager = hexDataManager ?: return
+        viewModelScope.launch {
+            manager.loadChunkIfNeeded(addr)
+        }
+    }
+    
+    /**
+     * Preload hex chunks around an address (called when user scrolls quickly).
+     */
+    fun preloadHexAround(addr: Long) {
+        val manager = hexDataManager ?: return
+        viewModelScope.launch {
+            manager.preloadAround(addr, 2)
         }
     }
 
+    /**
+     * Update cursor position and save previous address to history.
+     * This is called when user clicks on a byte/instruction.
+     */
     fun updateCursor(addr: Long) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        
+        // Save current address to history before updating (only if significantly different)
+        // We add to history when the address change is significant (not just scrolling)
+        if (kotlin.math.abs(addr - currentOffset) > 16) {
+            pushAddressToHistory(currentOffset)
+        }
         
         // Update state immediately for UI highlight
         currentOffset = addr
@@ -276,156 +389,175 @@ class ProjectViewModel : ViewModel() {
         }
     }
 
+    // === Virtualized Disasm Viewer ===
+    
+    /**
+     * Initialize disassembly viewer with virtualization.
+     * Uses Section info to calculate virtual address range (prioritizing executable sections).
+     */
     fun loadDisassembly() {
         val current = _uiState.value as? ProjectUiState.Success ?: return
-        
-        // Check if we need reload (if current cursor is not visible/loaded)
-        val existing = current.disassembly
-        if (existing != null && existing.any { it.addr == currentOffset }) {
-             // We have the address in memory, but is it centered?
-             // Since we use auto-scroll in Viewer, it's fine.
-             return
+        if (current.disasmReady && disasmDataManager != null) {
+            // Already initialized, just preload around current cursor
+            viewModelScope.launch {
+                disasmDataManager?.preloadAround(currentOffset, 2)
+            }
+            return
         }
-
+        
         viewModelScope.launch {
-             // Centering logic: seek to target, seek back 20 instrs, read.
-             R2PipeManager.execute("s $currentOffset")
-             R2PipeManager.execute("so -20") 
-             val currentSeekAddrStr = R2PipeManager.execute("?v .")
-             val startDisasmAddr = currentSeekAddrStr.toString().trim().toLongOrNull() ?: currentOffset
-             
-             loadDisasmChunk(startDisasmAddr, true)
-             
-             // Restore seek to cursor
-             R2PipeManager.execute("s $currentOffset")
+            // Get sections to determine virtual address range
+            val sectionsResult = repository.getSections()
+            val sections = sectionsResult.getOrDefault(emptyList())
+            
+            var startAddress = 0L
+            var endAddress = 0L
+            
+            if (sections.isNotEmpty()) {
+                // For disassembly, prefer executable sections (containing 'x' in perm)
+                val execSections = sections.filter { it.perm.contains("x") }
+                
+                if (execSections.isNotEmpty()) {
+                    // Use executable sections range
+                    startAddress = execSections.minOf { it.vAddr }
+                    endAddress = execSections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+                } else {
+                    // Fallback to all sections
+                    startAddress = sections.minOf { it.vAddr }
+                    endAddress = sections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+                }
+            }
+            
+            // Fallback if sections are empty or invalid
+            if (endAddress <= startAddress) {
+                // Try Java File API as fallback (file offset based)
+                R2PipeManager.currentFilePath?.let { path ->
+                    try {
+                        val file = java.io.File(path)
+                        if (file.exists() && file.isFile) {
+                            startAddress = 0L
+                            endAddress = file.length()
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            
+            // Final fallback - use a reasonable default range
+            if (endAddress <= startAddress) {
+                startAddress = 0L
+                endAddress = 1024L * 1024L // 1MB default
+            }
+            
+            // Create DisasmDataManager with virtual address range
+            disasmDataManager = DisasmDataManager(startAddress, endAddress, repository).apply {
+                onChunkLoaded = { _ ->
+                    // Increment version to trigger recomposition
+                    _disasmCacheVersion.value++
+                }
+            }
+            
+            // Load initial data around cursor
+            disasmDataManager?.resetAndLoadAround(currentOffset)
+            
+            // Mark disasm as ready
+            val currentState = _uiState.value
+            if (currentState is ProjectUiState.Success) {
+                _uiState.value = currentState.copy(disasmReady = true)
+            }
+        }
+    }
+    
+    /**
+     * Load a disasm chunk for a specific address (called from UI during scroll).
+     */
+    fun loadDisasmChunkForAddress(addr: Long) {
+        val manager = disasmDataManager ?: return
+        viewModelScope.launch {
+            manager.loadChunkAroundAddress(addr)
+        }
+    }
+    
+    /**
+     * Preload disasm chunks around an address (called when user scrolls quickly).
+     */
+    fun preloadDisasmAround(addr: Long) {
+        val manager = disasmDataManager ?: return
+        viewModelScope.launch {
+            manager.preloadAround(addr, 2)
+        }
+    }
+    
+    /**
+     * Load more disasm instructions (forward or backward).
+     */
+    fun loadDisasmMore(forward: Boolean) {
+        val manager = disasmDataManager ?: return
+        viewModelScope.launch {
+            manager.loadMore(forward)
         }
     }
 
+    /**
+     * Jump to a specific address - updates cursor and reloads views.
+     * Saves current address to history for back navigation.
+     */
     fun jumpToAddress(addr: Long) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
         
-        // Clamp addr
-        val fileSize = current.binInfo?.size ?: Long.MAX_VALUE
-        val target = addr.coerceIn(0, fileSize)
+        // Save current address to history before jumping
+        pushAddressToHistory(currentOffset)
+        
+        jumpToAddressInternal(addr)
+    }
+    
+    /**
+     * Internal jump implementation without adding to history.
+     * Used by both jumpToAddress and navigateBack.
+     */
+    private fun jumpToAddressInternal(addr: Long) {
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        
+        // Clamp addr using virtual address ranges from managers
+        val hexStart = hexDataManager?.viewStartAddress ?: 0L
+        val hexEnd = hexDataManager?.viewEndAddress ?: Long.MAX_VALUE
+        val disasmStart = disasmDataManager?.viewStartAddress ?: 0L
+        val disasmEnd = disasmDataManager?.viewEndAddress ?: Long.MAX_VALUE
+        
+        // Use the widest valid range (covers both hex and disasm)
+        val minAddr = minOf(hexStart, disasmStart)
+        val maxAddr = maxOf(hexEnd, disasmEnd)
+        
+        val target = addr.coerceIn(minAddr, maxAddr)
         
         currentOffset = target
         
         viewModelScope.launch {
-            // Load Hex: Center around target
-            // Start loading from target - 128 (approx) to show context
-            var hexStart = target - (HEX_CHUNK_SIZE / 2)
-            if (hexStart < 0) hexStart = 0
+            // For virtualized hex: just preload around target
+            hexDataManager?.let { manager ->
+                manager.loadChunkIfNeeded(target)
+                manager.preloadAround(target, 3)
+            }
             
-            val hexResult = repository.getHexDump(hexStart, HEX_CHUNK_SIZE)
-            val bytes = hexResult.getOrNull() ?: ByteArray(0)
-            
-            val newRows = bytes.toList().chunked(16).mapIndexed { index, chunk ->
-                 HexRow(hexStart + index * 16, chunk.toByteArray())
-             }
+            // For virtualized disasm: preload around target
+            disasmDataManager?.let { manager ->
+                manager.loadChunkAroundAddress(target)
+                manager.preloadAround(target, 3)
+            }
              
-             // Load Disassembly: Center around target
-             // Strategy: Seek to target, seek back 20 instructions, read 50 instructions.
-             // This ensures target is roughly in the middle.
-             R2PipeManager.execute("s $target") // Move to target first
-             R2PipeManager.execute("so -20") // Go back 20 opcodes
-             val disasmStartOffsetResult = R2PipeManager.execute("s") // Get current offset (optional, for debug)
+            // Update r2 seek
+            R2PipeManager.execute("s $target")
              
-             // Now read disassembly from this new position
-             // Note: getDisassembly uses 'pdj' which reads from current seek if no addr specified? 
-             // Repository method `getDisassembly(addr, count)` does `pdj count @ addr`.
-             // We need to know the address we just seeked to.
-             // Helper: `?v .` returns current address.
-             val currentSeekAddrStr = R2PipeManager.execute("?v .")
-             val startDisasmAddr = currentSeekAddrStr.toString().trim().toLongOrNull() ?: target
-             
-             val disasmResult = repository.getDisassembly(startDisasmAddr, DISASM_CHUNK_SIZE)
-             val newInstrs = disasmResult.getOrNull() ?: emptyList()
-             
-             // Reset seek to target for consistency (cursor position)
-             R2PipeManager.execute("s $target")
-             
-             _uiState.value = current.copy(
-                 hexRows = newRows, 
-                 disassembly = newInstrs, 
-                 decompilation = null,
-                 cursorAddress = target
-             )
+            _uiState.value = current.copy(
+                decompilation = null,
+                cursorAddress = target
+            )
         }
-    }
-
-    private suspend fun loadHexChunk(startAddr: Long, append: Boolean) {
-         val result = repository.getHexDump(startAddr, HEX_CHUNK_SIZE)
-         val bytes = result.getOrNull() ?: ByteArray(0)
-         if (bytes.isEmpty()) return
-         
-         val newRows = bytes.toList().chunked(16).mapIndexed { index, chunk ->
-             HexRow(startAddr + index * 16, chunk.toByteArray())
-         }
-         
-         val currentState = _uiState.value
-         if (currentState is ProjectUiState.Success) {
-             val currentList = currentState.hexRows ?: emptyList()
-             // Avoid duplicates?
-             // Since this is infinite scroll, we just append or prepend.
-             val merged = if (append) currentList + newRows else newRows + currentList
-             // Limit size? Maybe keep 1000 rows max to avoid memory issues?
-             // For now, let it grow.
-             _uiState.value = currentState.copy(hexRows = merged)
-         }
-    }
-
-//    fun loadDisassembly() {
-//        val current = _uiState.value as? ProjectUiState.Success ?: return
-//        if (current.disassembly != null) return
-//
-//        viewModelScope.launch {
-//            loadDisasmChunk(currentOffset, true)
-//        }
-//    }
-    
-    fun loadDisasmMore(append: Boolean) {
-        val current = _uiState.value as? ProjectUiState.Success ?: return
-        val instrs = current.disassembly ?: return
-         if (append) {
-            val last = instrs.lastOrNull() ?: return
-            // We need to know where the last instruction ended.
-            // But getting disasm at addr+size might not be aligned if we just guessed.
-            val nextAddr = last.addr + last.size
-            viewModelScope.launch { loadDisasmChunk(nextAddr, true) }
-        } else {
-             val first = instrs.firstOrNull() ?: return
-             var prevAddr = first.addr - (DISASM_CHUNK_SIZE * 4) 
-             if (prevAddr < 0) {
-                 if (first.addr == 0L) return
-                 prevAddr = 0
-             }
-             viewModelScope.launch { loadDisasmChunk(prevAddr, false) }
-        }
-    }
-    
-    private suspend fun loadDisasmChunk(startAddr: Long, append: Boolean) {
-        val result = repository.getDisassembly(startAddr, DISASM_CHUNK_SIZE)
-        val newInstrs = result.getOrNull() ?: emptyList()
-        if (newInstrs.isEmpty()) return
-        
-        val currentState = _uiState.value
-         if (currentState is ProjectUiState.Success) {
-             val currentList = currentState.disassembly ?: emptyList()
-             val merged = if (append) currentList + newInstrs else newInstrs + currentList
-             
-             // Deduplicate by addr
-             val distinct = merged.distinctBy { it.addr }.sortedBy { it.addr }
-             
-             _uiState.value = currentState.copy(disassembly = distinct)
-         }
     }
 
     fun loadDecompilation() {
         val current = _uiState.value as? ProjectUiState.Success ?: return
-        // Reload always or only if null? 
-        // If currentOffset changed, we might want to reload. 
-        // But for now let's assume one-shot load upon tab click, unless explicit refresh?
-        // User wants global pointer.
         
         viewModelScope.launch {
             // "Get function where pointer is located"
@@ -450,6 +582,8 @@ class ProjectViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
+        hexDataManager?.clearCache()
+        disasmDataManager?.clearCache()
         R2PipeManager.close()
     }
 }
