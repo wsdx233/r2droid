@@ -30,4 +30,12 @@
     
     <!-- Disasm Placeholder Colors (Light Mode) -->
     <color name="disasm_placeholder_background">#FFE0E0E0</color>
+    
+    <!-- Disasm Viewer Column Colors (Light Mode) -->
+    <color name="disasm_col_jump">#FFF3F8FF</color>
+    <color name="disasm_col_address">#FFEFF8EE</color>
+    <color name="disasm_col_bytes">#FFFFF8E1</color>
+    <color name="disasm_col_opcode">#FFFFFFFF</color>
+    <color name="disasm_col_comment">#FFF8F0FF</color>
+    <color name="disasm_secondary_row">#FFF5F5F5</color>
 </resources>

@@ -1024,6 +1024,23 @@ fun DisasmPlaceholderRow() {
     }
 }
 
+/**
+ * Helper function to format address in a compact way
+ * Removes 0x prefix and leading zeros for shorter display
+ */
+private fun formatCompactAddress(addr: Long): String {
+    val hex = "%X".format(addr)
+    // Keep at least 4 characters for readability
+    return if (hex.length <= 4) hex else hex.trimStart('0').ifEmpty { "0" }
+}
+
+/**
+ * Format jump index - show only last 2 digits
+ */
+private fun formatJumpIndex(index: Int): String {
+    return (index % 100).toString().padStart(2, '0')
+}
+
 @Composable
 fun DisasmRow(
     instr: DisasmInstruction, 
@@ -1035,6 +1052,14 @@ fun DisasmRow(
     jumpIndex: Int? = null,           // Index for this jump (if it's a jump instruction)
     jumpTargetIndex: Int? = null      // Index if this is a jump target
 ) {
+    // Column background colors (themed)
+    val colJumpBg = colorResource(R.color.disasm_col_jump)
+    val colAddressBg = colorResource(R.color.disasm_col_address)
+    val colBytesBg = colorResource(R.color.disasm_col_bytes)
+    val colOpcodeBg = colorResource(R.color.disasm_col_opcode)
+    val colCommentBg = colorResource(R.color.disasm_col_comment)
+    val secondaryRowBg = colorResource(R.color.disasm_secondary_row)
+    
     // Color definitions
     val commentColor = Color(0xFF6A9955)  // Green for comments
     val flagColor = Color(0xFF4EC9B0)     // Teal for flags
@@ -1043,6 +1068,8 @@ fun DisasmRow(
     val jumpOutColor = Color(0xFF66BB6A)  // Green arrow for jump out (external)
     val jumpInColor = Color(0xFFFFCA28)   // Yellow arrow for jump in (external)
     val jumpInternalColor = Color(0xFF64B5F6) // Blue for internal jumps
+    val addressColor = Color(0xFF888888)  // Gray for address
+    val bytesColor = Color(0xFF999999)    // Lighter gray for bytes
     
     // Cutter style coloring logic
     val opcodeColor = when (instr.type) {
@@ -1053,7 +1080,7 @@ fun DisasmRow(
         "cmp", "test", "acmp" -> Color(0xFFFFCA28) // Orange/Yellow
         "nop" -> Color.Gray
         "lea" -> Color(0xFF4FC3F7) // Light Blue
-        "mov" -> Color(0xFFE0E0E0) // White/Light Gray
+        "mov" -> Color(0xFFA25410) // White/Light Gray
         else -> MaterialTheme.colorScheme.onSurface
     }
     
@@ -1072,6 +1099,27 @@ fun DisasmRow(
     val jumpDirection = if (isInternalJump && instr.jump != null) {
         if (instr.jump > instr.addr) "↓" else "↑"
     } else null
+    
+    // Prepare bytes - always truncate with ... if too long (max 10 chars displayed)
+    val bytesStr = instr.bytes.lowercase()
+    val displayBytes = if (bytesStr.length > 10) bytesStr.take(8) + "…" else bytesStr
+    
+    // Prepare inline comment
+    val inlineComment = buildString {
+        if (instr.ptr != null) {
+            append("; ${formatCompactAddress(instr.ptr)}")
+        }
+        if (instr.refptr && instr.refs.isNotEmpty()) {
+            val dataRef = instr.refs.firstOrNull { it.type == "DATA" }
+            if (dataRef != null) {
+                if (isNotEmpty()) append(" ")
+                append("[${formatCompactAddress(dataRef.addr)}]")
+            }
+        }
+    }.trim()
+    
+    // Only comments go to secondary row (not bytes)
+    val hasInlineComment = inlineComment.isNotEmpty()
     
     Box {
         Column(
@@ -1093,14 +1141,14 @@ fun DisasmRow(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 24.dp),
+                            .padding(start = 80.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = ";-- $flag:",
                             color = flagColor,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -1116,7 +1164,7 @@ fun DisasmRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 2.dp),
+                        .padding(start = 80.dp, top = 2.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Blue function icon
@@ -1124,7 +1172,7 @@ fun DisasmRow(
                         text = "▶",
                         color = funcIconColor,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(end = 4.dp)
                     )
@@ -1132,38 +1180,41 @@ fun DisasmRow(
                         text = "$funcSize: ",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                     Text(
                         text = "$funcName ();",
                         color = funcNameColor,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
             
-            // === Main instruction row ===
+            // === Main instruction row (compact, single line) ===
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 1.dp),
+                    .height(IntrinsicSize.Min),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Jump indicator column (fixed width)
+                // Jump indicator column (fixed width) - with background color
                 Box(
-                    modifier = Modifier.width(28.dp),
-                    contentAlignment = Alignment.CenterStart
+                    modifier = Modifier
+                        .width(22.dp)
+                        .fillMaxHeight()
+                        .background(if (isSelected) Color.Transparent else colJumpBg),
+                    contentAlignment = Alignment.Center
                 ) {
                     when {
                         // External jump out - green left arrow
                         isExternalJumpOut -> {
                             Text(
                                 text = "←",
-                                color = jumpOutColor,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else jumpOutColor,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -1171,117 +1222,138 @@ fun DisasmRow(
                         hasExternalJumpIn -> {
                             Text(
                                 text = "→",
-                                color = jumpInColor,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else jumpInColor,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        // Internal jump instruction - blue arrow with direction and number
+                        // Internal jump instruction - blue arrow with direction and last 2 digits
                         isInternalJump && jumpIndex != null -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = jumpDirection ?: "",
-                                    color = jumpInternalColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${jumpIndex}",
-                                    color = jumpInternalColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp
-                                )
-                            }
+                            Text(
+                                text = "${jumpDirection ?: ""}${formatJumpIndex(jumpIndex)}",
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else jumpInternalColor,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
-                        // Jump target - show target indicator with number
+                        // Jump target - show target indicator with last 2 digits
                         jumpTargetIndex != null -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "▸",
-                                    color = jumpInternalColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp
-                                )
-                                Text(
-                                    text = "${jumpTargetIndex}",
-                                    color = jumpInternalColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp
-                                )
-                            }
+                            Text(
+                                text = "▸${formatJumpIndex(jumpTargetIndex)}",
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else jumpInternalColor,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp
+                            )
                         }
                     }
                 }
                 
-                // Address
-                Text(
-                    text = "0x%08x".format(instr.addr),
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.Gray,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(82.dp)
-                )
-                
-                // Bytes
-                val bytesStr = if (instr.bytes.length > 16) instr.bytes.take(16) + ".." else instr.bytes
-                Text(
-                    text = bytesStr.padEnd(18),
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.DarkGray,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(110.dp)
-                )
-                
-                // Opcode / Disasm
-                Text(
-                    text = instr.disasm,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else opcodeColor,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    fontWeight = if(instr.type in listOf("call", "jmp", "cjmp", "ret")) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
-                )
-                
-                // Inline comment for ptr/refs
-                val inlineComment = buildString {
-                    if (instr.ptr != null) {
-                        append("; 0x${"%x".format(instr.ptr)}")
-                    }
-                    if (instr.refptr && instr.refs.isNotEmpty()) {
-                        val dataRef = instr.refs.firstOrNull { it.type == "DATA" }
-                        if (dataRef != null) {
-                            if (isNotEmpty()) append(" ")
-                            append("; [0x${"%x".format(dataRef.addr)}]")
-                        }
-                    }
-                }.trim()
-                
-                if (inlineComment.isNotEmpty()) {
+                // Address column - compact format with background
+                Box(
+                    modifier = Modifier
+                        .width(56.dp)
+                        .fillMaxHeight()
+                        .background(if (isSelected) Color.Transparent else colAddressBg)
+                        .padding(horizontal = 2.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
                     Text(
-                        text = inlineComment,
-                        color = commentColor,
+                        text = formatCompactAddress(instr.addr),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else addressColor,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 4.dp)
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                // Bytes column - always visible, truncated with ...
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .fillMaxHeight()
+                        .background(if (isSelected) Color.Transparent else colBytesBg)
+                        .padding(horizontal = 2.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = displayBytes,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else bytesColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp
+                    )
+                }
+                
+                // Opcode / Disasm column - with background, takes remaining space
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(if (isSelected) Color.Transparent else colOpcodeBg)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = instr.disasm,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else opcodeColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = if(instr.type in listOf("call", "jmp", "cjmp", "ret")) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+                
+                // Inline comment column (if present and short enough for same line)
+                if (hasInlineComment && inlineComment.length <= 20) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .background(if (isSelected) Color.Transparent else colCommentBg)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = inlineComment,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else commentColor,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+            
+            // === Secondary row for long inline comments (only comments, not bytes) ===
+            if (hasInlineComment && inlineComment.length > 20) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else secondaryRowBg)
+                        .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = inlineComment,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f) else commentColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp
                     )
                 }
             }
             
-            // === Post-instruction comment ===
+            // === Post-instruction comment (from radare2) ===
             if (!instr.comment.isNullOrEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 28.dp),
+                        .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else colCommentBg.copy(alpha = 0.3f))
+                        .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "; ${instr.comment}",
-                        color = commentColor,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else commentColor,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp
+                        fontSize = 10.sp
                     )
                 }
             }
@@ -1293,19 +1365,20 @@ fun DisasmRow(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 28.dp),
+                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else colCommentBg.copy(alpha = 0.2f))
+                            .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val xrefText = if (codeXrefs.size == 1) {
-                            "; XREF from 0x${"%x".format(codeXrefs[0].addr)}"
+                            "; XREF from ${formatCompactAddress(codeXrefs[0].addr)}"
                         } else {
                             "; XREF from ${codeXrefs.size} locations"
                         }
                         Text(
                             text = xrefText,
-                            color = commentColor.copy(alpha = 0.7f),
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else commentColor.copy(alpha = 0.7f),
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp
+                            fontSize = 10.sp
                         )
                     }
                 }

@@ -14,3 +14,5 @@
 .cxx
 local.properties
 /*/build/
+app/release/*
+*.apk

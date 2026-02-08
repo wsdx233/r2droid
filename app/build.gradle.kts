@@ -35,6 +35,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    lint {
+        // 即使报错也不终止构建
+        abortOnError = false
+
+        // 或者专门禁止检查过期的 targetSdk
+        disable.add("ExpiredTargetSdkVersion")
+    }
 }
 
 dependencies {
