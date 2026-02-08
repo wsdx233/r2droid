@@ -231,7 +231,7 @@ fun ProjectScreen(
 
     val listTabs = listOf("Overview", "Sections", "Symbols", "Imports", "Relocs", "Strings", "Functions")
     val detailTabs = listOf("Hex", "Disassembly", "Decompile")
-    val projectTabs = listOf("Settings", "Terminal", "Cmd", "Logs")
+    val projectTabs = listOf("Settings", "Cmd", "Logs")
     
     // Xrefs State
     val xrefsState by viewModel.xrefsState.collectAsState()
@@ -514,9 +514,8 @@ fun ProjectScreen(
                              // Project Category
                             when (selectedProjectTabIndex) {
                                 0 -> ProjectSettingsScreen(viewModel)
-                                1 -> TerminalScreen()
-                                2 -> CommandScreen()
-                                3 -> LogList(logs, onClearLogs = { viewModel.clearLogs() })
+                                1 -> CommandScreen()
+                                2 -> LogList(logs, onClearLogs = { viewModel.clearLogs() })
                             }
                         }
                     }
@@ -698,6 +697,51 @@ fun ProjectSettingsScreen(viewModel: ProjectViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        
+        // Terminal Section
+        Text(
+            text = stringResource(top.wsdx233.r2droid.R.string.terminal),
+            style = MaterialTheme.typography.titleMedium
+        )
+        
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { 
+                    val intent = android.content.Intent(context, top.wsdx233.r2droid.activity.TerminalActivity::class.java)
+                    context.startActivity(intent)
+                },
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(top.wsdx233.r2droid.R.string.terminal),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "Open shell terminal with radare2 environment",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+            }
         }
         
         // Session Info

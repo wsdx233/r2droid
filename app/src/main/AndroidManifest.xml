@@ -21,7 +21,6 @@
             android:name="top.wsdx233.r2droid.activity.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.R2droid">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -32,6 +31,7 @@
 
         <activity android:name="top.wsdx233.r2droid.activity.TerminalActivity"
             android:theme="@android:style/Theme.DeviceDefault.Light.DarkActionBar"
+            android:windowSoftInputMode="adjustResize"
             android:label="@string/terminal"/>
     </application>
 
