@@ -6,6 +6,7 @@ import top.wsdx233.r2droid.R
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
@@ -73,13 +74,28 @@ fun <T> FilterableList(
         
         Spacer(modifier = Modifier.height(4.dp))
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(filteredItems) { item ->
-                itemContent(item)
+        // Wrap LazyColumn in Box for scrollbar overlay
+        Box(modifier = Modifier.weight(1f)) {
+            val listState = rememberLazyListState()
+            
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredItems) { item ->
+                    itemContent(item)
+                }
+            }
+            
+            // Auto-hiding scrollbar
+            if (filteredItems.isNotEmpty()) {
+                AutoHideScrollbar(
+                    listState = listState,
+                    totalItems = filteredItems.size,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
             }
         }
     }

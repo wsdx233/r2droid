@@ -57,6 +57,7 @@ import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
+import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
 /**
@@ -218,6 +219,7 @@ fun HexViewer(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(hexHeaderBackground)
+                .padding(end = 8.dp)
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -315,7 +317,7 @@ fun HexViewer(
             // (java.lang.IllegalArgumentException: Comparison method violates its general contract!)
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().background(hexContentBackground),
+                    modifier = Modifier.fillMaxSize().background(hexContentBackground).padding(end = 8.dp),
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     // Virtualized items - use count instead of list
@@ -470,53 +472,17 @@ fun HexViewer(
                 }
             // End of LazyColumn (SelectionContainer was removed)
             
-            // Fast Scrollbar
+            // Auto-hiding Fast Scrollbar
             if (totalSize > 0) {
-                 // Current scroll position in virtual address space
-                 val currentPos = hexDataManager.getRowAddress(listState.firstVisibleItemIndex)
-                 val viewStart = hexDataManager.viewStartAddress
-                 
-                 // Custom Vertical Scrollbar
-                 Box(
-                     modifier = Modifier
-                         .align(Alignment.CenterEnd)
-                         .fillMaxHeight()
-                         .width(24.dp)
-                         .background(Color.Transparent)
-                         .pointerInput(Unit) {
-                             detectVerticalDragGestures { change, _ ->
-                                 val height = size.height
-                                 val newY = (change.position.y / height).coerceIn(0f, 1f)
-                                 val targetRow = (newY * totalRows).toInt()
-                                 // Scroll to the target row
-                                 coroutineScope.launch {
-                                     listState.scrollToItem(targetRow.coerceIn(0, maxOf(0, totalRows - 1)))
-                                 }
-                             }
-                         }
-                         .pointerInput(Unit) {
-                             detectTapGestures { offset ->
-                                 val height = size.height
-                                 val newY = (offset.y / height).coerceIn(0f, 1f)
-                                 val targetRow = (newY * totalRows).toInt()
-                                 coroutineScope.launch {
-                                     listState.scrollToItem(targetRow.coerceIn(0, maxOf(0, totalRows - 1)))
-                                 }
-                             }
-                         }
-                 ) {
-                     // Calculate thumb position relative to virtual address range
-                     val thumbY = ((currentPos - viewStart).toFloat() / totalSize.toFloat()).coerceIn(0f, 1f)
-                     val bias = (thumbY * 2 - 1).coerceIn(-1f, 1f)
-                     Box(
-                         Modifier
-                             .align(BiasAlignment(0f, bias))
-                             .size(8.dp, 40.dp)
-                             .background(MaterialTheme.colorScheme.primary,
-                                 RoundedCornerShape(4.dp)
-                             )
-                     )
-                 }
+                AutoHideScrollbar(
+                    listState = listState,
+                    totalItems = totalRows,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    alwaysShow = true,
+                    onScrollToIndex = { targetRow ->
+                        // Index-based scrollbar, no additional action needed
+                    }
+                )
             }
         }
         

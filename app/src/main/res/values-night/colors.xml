@@ -43,4 +43,6 @@
     <color name="disasm_col_r2_comment">#FF401A28</color>
     <color name="disasm_col_xref">#FF40301A</color>
     <color name="disasm_col_inline_comment">#FF301A40</color>
+
+    <color name="thumb_color">#444444</color>
 </resources>

@@ -46,6 +46,7 @@ import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 
+import top.wsdx233.r2droid.core.ui.components.AutoHideAddressScrollbar
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
 /**
@@ -220,7 +221,7 @@ fun DisassemblyViewer(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(start = 8.dp, end = 32.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             items(
@@ -294,66 +295,30 @@ fun DisassemblyViewer(
             }
         }
         
-        // Fast Scrollbar
+        // Current address for scrollbar and footer display
         val currentIndex = listState.firstVisibleItemIndex
         val currentAddr = remember(cacheVersion, currentIndex) {
             disasmDataManager.getAddressAt(currentIndex) ?: 0L
         }
         
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(24.dp)
-                .background(Color.Transparent)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures { change, _ ->
-                        val height = size.height
-                        val newY = (change.position.y / height).coerceIn(0f, 1f)
-                        // Estimate target address based on position within virtual address range
-                        val targetAddr = viewStartAddr + (newY * totalAddressRange).toLong()
-                        // Find closest index
-                        val targetIndex = disasmDataManager.estimateIndexForAddress(targetAddr)
-                        val clampedIndex = targetIndex.coerceIn(0, maxOf(0, disasmDataManager.loadedInstructionCount - 1))
-                        // Scroll and load more if needed
-                        coroutineScope.launch {
-                            listState.scrollToItem(clampedIndex)
-                            // Also trigger loading around this address
-                            viewModel.loadDisasmChunkForAddress(targetAddr)
-                        }
-                    }
+        // Auto-hiding Fast Scrollbar
+        AutoHideAddressScrollbar(
+            listState = listState,
+            totalItems = loadedCount,
+            viewStartAddress = viewStartAddr,
+            viewEndAddress = viewEndAddr,
+            currentAddress = currentAddr,
+            modifier = Modifier.align(Alignment.CenterEnd),
+            alwaysShow = true,
+            onScrollToAddress = { targetAddr ->
+                val targetIndex = disasmDataManager.estimateIndexForAddress(targetAddr)
+                val clampedIndex = targetIndex.coerceIn(0, maxOf(0, disasmDataManager.loadedInstructionCount - 1))
+                coroutineScope.launch {
+                    listState.scrollToItem(clampedIndex)
+                    viewModel.loadDisasmChunkForAddress(targetAddr)
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val height = size.height
-                        val newY = (offset.y / height).coerceIn(0f, 1f)
-                        // Estimate target address within virtual address range
-                        val targetAddr = viewStartAddr + (newY * totalAddressRange).toLong()
-                        val targetIndex = disasmDataManager.estimateIndexForAddress(targetAddr)
-                        val clampedIndex = targetIndex.coerceIn(0, maxOf(0, disasmDataManager.loadedInstructionCount - 1))
-                        coroutineScope.launch {
-                            listState.scrollToItem(clampedIndex)
-                            viewModel.loadDisasmChunkForAddress(targetAddr)
-                        }
-                    }
-                }
-        ) {
-            // Calculate thumb position relative to virtual address range
-            val thumbY = if (totalAddressRange > 0 && currentAddr >= viewStartAddr) {
-                ((currentAddr - viewStartAddr).toFloat() / totalAddressRange.toFloat()).coerceIn(0f, 1f)
-            } else if (loadedCount > 0) {
-                (currentIndex.toFloat() / loadedCount.toFloat()).coerceIn(0f, 1f)
-            } else {
-                0f
             }
-            val bias = (thumbY * 2 - 1).coerceIn(-1f, 1f)
-            Box(
-                Modifier
-                    .align(BiasAlignment(0f, bias))
-                    .size(8.dp, 40.dp)
-                    .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-            )
-        }
+        )
         
         // Footer: Position Info
         Row(
