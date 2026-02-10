@@ -109,6 +109,16 @@
     <string name="search_strings_hint">搜索字符串...</string>
     <string name="search_functions_hint">搜索函数...</string>
 
+    <!-- Global Search -->
+    <string name="proj_tab_search">搜索</string>
+    <string name="search_type_label">搜索类型</string>
+    <string name="search_btn">搜索</string>
+    <string name="search_custom_flags">自定义标志</string>
+    <string name="search_custom_flags_hint">例如 !b</string>
+    <string name="search_custom_hint">输入完整的 r2 搜索命令，例如 /x 9090</string>
+    <string name="search_idle_hint">输入查询内容并点击搜索</string>
+    <string name="search_no_results">未找到结果</string>
+
     <string name="xrefs_title">交叉引用</string>
     <string name="xrefs_no_found">未找到交叉引用。</string>
     <string name="xrefs_refs_from">引用自 →</string>
@@ -246,5 +256,62 @@
     <string name="home_delete_cancel">取消</string>
     <string name="home_project_deleted">项目已删除</string>
     <string name="home_binary_not_accessible">无法访问二进制文件</string>
+
+    <!-- Function Submenu -->
+    <string name="menu_function_submenu">函数...</string>
+    <string name="menu_function_analyze">分析函数 (af)</string>
+    <string name="menu_function_info">函数信息</string>
+    <string name="menu_function_xrefs">函数引用</string>
+    <string name="menu_function_variables">函数变量</string>
+
+    <!-- Function Info Dialog -->
+    <string name="func_info_title">函数信息</string>
+    <string name="func_info_name">名称</string>
+    <string name="func_info_address">地址</string>
+    <string name="func_info_size">大小</string>
+    <string name="func_info_real_size">实际大小</string>
+    <string name="func_info_signature">签名</string>
+    <string name="func_info_call_type">调用类型</string>
+    <string name="func_info_complexity">圈复杂度</string>
+    <string name="func_info_basic_blocks">基本块</string>
+    <string name="func_info_instructions">指令数</string>
+    <string name="func_info_edges">边数</string>
+    <string name="func_info_stack_frame">栈帧</string>
+    <string name="func_info_locals">局部变量</string>
+    <string name="func_info_args">参数</string>
+    <string name="func_info_range">范围</string>
+    <string name="func_info_no_function">此地址未找到函数。</string>
+    <string name="func_info_rename_title">重命名函数</string>
+    <string name="func_info_rename_hint">新函数名</string>
+    <string name="func_info_indegree">入度</string>
+    <string name="func_info_outdegree">出度</string>
+    <string name="func_info_noreturn">无返回</string>
+    <string name="func_info_pure">纯函数</string>
+
+    <!-- Function Xrefs Dialog -->
+    <string name="func_xrefs_title">函数引用</string>
+    <string name="func_xrefs_no_found">未找到函数引用。</string>
+    <string name="func_xrefs_calls_from">调用来源</string>
+    <string name="func_xrefs_calls_to">调用目标</string>
+
+    <!-- Function Variables Dialog -->
+    <string name="func_vars_title">函数变量</string>
+    <string name="func_vars_no_found">未找到变量。</string>
+    <string name="func_vars_section_reg">寄存器变量</string>
+    <string name="func_vars_section_sp">栈变量 (SP)</string>
+    <string name="func_vars_section_bp">栈变量 (BP)</string>
+    <string name="func_vars_rename_title">重命名变量</string>
+    <string name="func_vars_rename_hint">新变量名</string>
+
+    <!-- Common for function dialogs -->
+    <string name="func_close">关闭</string>
+    <string name="func_rename">重命名</string>
+    <string name="func_cancel">取消</string>
+    <string name="func_confirm">确认</string>
+
+    <!-- History Dialog -->
+    <string name="history_title">导航历史</string>
+    <string name="history_subtitle">%1$d 条记录</string>
+    <string name="history_empty">暂无导航历史。</string>
 
 </resources>

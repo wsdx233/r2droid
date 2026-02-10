@@ -139,10 +139,37 @@ class ProjectViewModel @Inject constructor(
     // Stack to store previous addresses for back navigation
     private val addressHistory = ArrayDeque<Long>()
     private val MAX_HISTORY_SIZE = 50 // Limit history size to avoid memory issues
-    
+
     // StateFlow to notify UI about history availability
     private val _canGoBack = MutableStateFlow(false)
     val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
+
+    // History dialog state
+    data class HistoryState(
+        val visible: Boolean = false,
+        val isLoading: Boolean = false,
+        val entries: List<top.wsdx233.r2droid.core.data.model.HistoryEntry> = emptyList()
+    )
+
+    private val _historyState = MutableStateFlow(HistoryState())
+    val historyState: StateFlow<HistoryState> = _historyState.asStateFlow()
+
+    fun showHistoryDialog() {
+        if (addressHistory.isEmpty()) return
+        _historyState.value = HistoryState(visible = true, isLoading = true)
+        viewModelScope.launch {
+            val addresses = addressHistory.toList().reversed()
+            val result = repository.getHistoryDetails(addresses)
+            val entries = result.getOrDefault(
+                addresses.map { top.wsdx233.r2droid.core.data.model.HistoryEntry(address = it) }
+            )
+            _historyState.value = _historyState.value.copy(isLoading = false, entries = entries)
+        }
+    }
+
+    fun dismissHistoryDialog() {
+        _historyState.value = _historyState.value.copy(visible = false)
+    }
     
     /**
      * Push current address to history before navigating to a new address.

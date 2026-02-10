@@ -23,6 +23,7 @@ import top.wsdx233.r2droid.feature.bininfo.ui.StringList
 import top.wsdx233.r2droid.feature.bininfo.ui.SymbolList
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
+import top.wsdx233.r2droid.feature.search.ui.SearchScreen
 
 @Composable
 fun ProjectListView(
@@ -38,7 +39,7 @@ fun ProjectListView(
     
     val listItemActions = remember(viewModel, disasmViewModel, clipboardManager) {
         ListItemActions(
-            onCopy = { text -> 
+            onCopy = { text ->
                 clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
             },
             onJumpToHex = { addr ->
@@ -53,24 +54,61 @@ fun ProjectListView(
         )
     }
 
+    val functionListActions = remember(viewModel, disasmViewModel, clipboardManager) {
+        ListItemActions(
+            onCopy = { text ->
+                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+            },
+            onJumpToHex = { addr ->
+                onNavigateToDetail(addr, 0)
+            },
+            onJumpToDisasm = { addr ->
+                onNavigateToDetail(addr, 1)
+            },
+            onShowXrefs = { addr ->
+                disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr))
+            },
+            onAnalyzeFunction = { addr ->
+                disasmViewModel.onEvent(DisasmEvent.AnalyzeFunction(addr))
+            },
+            onFunctionInfo = { addr ->
+                disasmViewModel.onEvent(DisasmEvent.FetchFunctionInfo(addr))
+            },
+            onFunctionXrefs = { addr ->
+                disasmViewModel.onEvent(DisasmEvent.FetchFunctionXrefs(addr))
+            },
+            onFunctionVariables = { addr ->
+                disasmViewModel.onEvent(DisasmEvent.FetchFunctionVariables(addr))
+            }
+        )
+    }
+
     androidx.compose.runtime.LaunchedEffect(tabIndex) {
         when (tabIndex) {
-            1 -> viewModel.onEvent(ProjectEvent.LoadSections())
-            2 -> viewModel.onEvent(ProjectEvent.LoadSymbols())
-            3 -> viewModel.onEvent(ProjectEvent.LoadImports())
-            4 -> viewModel.onEvent(ProjectEvent.LoadRelocations())
-            5 -> viewModel.onEvent(ProjectEvent.LoadStrings())
-            6 -> viewModel.onEvent(ProjectEvent.LoadFunctions())
+            2 -> viewModel.onEvent(ProjectEvent.LoadSections())
+            3 -> viewModel.onEvent(ProjectEvent.LoadSymbols())
+            4 -> viewModel.onEvent(ProjectEvent.LoadImports())
+            5 -> viewModel.onEvent(ProjectEvent.LoadRelocations())
+            6 -> viewModel.onEvent(ProjectEvent.LoadStrings())
+            7 -> viewModel.onEvent(ProjectEvent.LoadFunctions())
         }
     }
 
     when (tabIndex) {
-        0 -> state.binInfo?.let { OverviewCard(it) } ?: Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
-        1 -> if (state.sections == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else SectionList(state.sections, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSections(forceRefresh = true)) })
-        2 -> if (state.symbols == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else SymbolList(state.symbols, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSymbols(forceRefresh = true)) })
-        3 -> if (state.imports == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else ImportList(state.imports, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadImports(forceRefresh = true)) })
-        4 -> if (state.relocations == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else RelocationList(state.relocations, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadRelocations(forceRefresh = true)) })
-        5 -> if (state.strings == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else StringList(state.strings, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadStrings(forceRefresh = true)) })
-        6 -> if (state.functions == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } else FunctionList(state.functions, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true)) })
+        0 -> state.binInfo?.let { OverviewCard(it) }
+            ?: Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
+        1 -> SearchScreen(actions = listItemActions)
+        2 -> if (state.sections == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else SectionList(state.sections, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSections(forceRefresh = true)) })
+        3 -> if (state.symbols == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else SymbolList(state.symbols, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSymbols(forceRefresh = true)) })
+        4 -> if (state.imports == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else ImportList(state.imports, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadImports(forceRefresh = true)) })
+        5 -> if (state.relocations == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else RelocationList(state.relocations, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadRelocations(forceRefresh = true)) })
+        6 -> if (state.strings == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else StringList(state.strings, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadStrings(forceRefresh = true)) })
+        7 -> if (state.functions == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else FunctionList(state.functions, functionListActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true)) })
     }
 }

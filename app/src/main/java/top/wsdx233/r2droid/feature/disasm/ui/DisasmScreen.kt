@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 
@@ -87,8 +90,12 @@ fun DisassemblyViewer(
         return
     }
     
-    val loadedCount = remember(cacheVersion) { disasmDataManager.loadedInstructionCount }
-    
+    // Capture a single consistent snapshot to avoid race conditions in key/content lambdas.
+    // Reading the volatile allInstructions multiple times during a layout pass can cause
+    // duplicate keys if mergeInstructions swaps the list between reads.
+    val instructionSnapshot = remember(cacheVersion) { disasmDataManager.getSnapshot() }
+    val loadedCount = instructionSnapshot.size
+
     if (loadedCount <= 0) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -231,13 +238,11 @@ fun DisassemblyViewer(
             items(
                 count = loadedCount,
                 key = { index ->
-                    disasmDataManager.getInstructionAt(index)?.addr ?: -(index.toLong() + 1)
+                    instructionSnapshot.getOrNull(index)?.addr ?: -(index.toLong() + 1)
                 }
             ) { index ->
-                // Force re-read when cache version changes
-                val instr = remember(cacheVersion, index) {
-                    disasmDataManager.getInstructionAt(index)
-                }
+                // Use the captured snapshot for consistent reads
+                val instr = instructionSnapshot.getOrNull(index)
                 
                 if (instr != null) {
                     val isThisRowMenuTarget = showMenu && menuTargetAddress == instr.addr
@@ -285,6 +290,22 @@ fun DisassemblyViewer(
                                 },
                                 onCustomCommand = {
                                     showCustomCommandDialog = true
+                                    showMenu = false
+                                },
+                                onAnalyzeFunction = {
+                                    viewModel.onEvent(DisasmEvent.AnalyzeFunction(instr.addr))
+                                    showMenu = false
+                                },
+                                onFunctionInfo = {
+                                    viewModel.onEvent(DisasmEvent.FetchFunctionInfo(instr.addr))
+                                    showMenu = false
+                                },
+                                onFunctionXrefs = {
+                                    viewModel.onEvent(DisasmEvent.FetchFunctionXrefs(instr.addr))
+                                    showMenu = false
+                                },
+                                onFunctionVariables = {
+                                    viewModel.onEvent(DisasmEvent.FetchFunctionVariables(instr.addr))
                                     showMenu = false
                                 }
                             )
@@ -380,6 +401,53 @@ fun DisassemblyViewer(
             CustomCommandDialog(
                 onDismiss = { showCustomCommandDialog = false },
                 onConfirm = { /* handled internally */ }
+            )
+        }
+
+        // Function Info Dialog
+        val functionInfoState by viewModel.functionInfoState.collectAsState()
+        if (functionInfoState.visible) {
+            FunctionInfoDialog(
+                functionInfo = functionInfoState.data,
+                isLoading = functionInfoState.isLoading,
+                targetAddress = functionInfoState.targetAddress,
+                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionInfo) },
+                onRename = { newName ->
+                    viewModel.onEvent(
+                        DisasmEvent.RenameFunctionFromInfo(functionInfoState.targetAddress, newName)
+                    )
+                },
+                onJump = { addr -> onInstructionClick(addr) }
+            )
+        }
+
+        // Function Xrefs Dialog
+        val functionXrefsState by viewModel.functionXrefsState.collectAsState()
+        if (functionXrefsState.visible) {
+            FunctionXrefsDialog(
+                xrefs = functionXrefsState.data,
+                isLoading = functionXrefsState.isLoading,
+                targetAddress = functionXrefsState.targetAddress,
+                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionXrefs) },
+                onJump = { addr -> onInstructionClick(addr) }
+            )
+        }
+
+        // Function Variables Dialog
+        val functionVariablesState by viewModel.functionVariablesState.collectAsState()
+        if (functionVariablesState.visible) {
+            FunctionVariablesDialog(
+                variables = functionVariablesState.data,
+                isLoading = functionVariablesState.isLoading,
+                targetAddress = functionVariablesState.targetAddress,
+                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionVariables) },
+                onRename = { oldName, newName ->
+                    viewModel.onEvent(
+                        DisasmEvent.RenameFunctionVariable(
+                            functionVariablesState.targetAddress, oldName, newName
+                        )
+                    )
+                }
             )
         }
     }

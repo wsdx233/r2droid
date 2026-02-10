@@ -64,6 +64,12 @@ class DisasmDataManager(
     // Current actual loaded instructions count
     val loadedInstructionCount: Int
         get() = allInstructions.size
+
+    /**
+     * Get a consistent snapshot of all loaded instructions.
+     * Use this to avoid reading the volatile field multiple times in a single layout pass.
+     */
+    fun getSnapshot(): List<DisasmInstruction> = allInstructions
     
     /**
      * Get instruction at a specific index in the virtual list.

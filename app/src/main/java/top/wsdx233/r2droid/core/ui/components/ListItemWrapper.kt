@@ -25,7 +25,11 @@ data class ListItemActions(
     val onCopy: (String) -> Unit,
     val onJumpToHex: (Long) -> Unit,
     val onJumpToDisasm: (Long) -> Unit,
-    val onShowXrefs: (Long) -> Unit
+    val onShowXrefs: (Long) -> Unit,
+    val onAnalyzeFunction: ((Long) -> Unit)? = null,
+    val onFunctionInfo: ((Long) -> Unit)? = null,
+    val onFunctionXrefs: ((Long) -> Unit)? = null,
+    val onFunctionVariables: ((Long) -> Unit)? = null
 )
 
 @Composable
@@ -82,11 +86,23 @@ fun UnifiedListItemWrapper(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.menu_xrefs)) },
-                            onClick = { 
+                            onClick = {
                                 expanded = false
                                 actions.onShowXrefs(address)
                             }
                         )
+                        if (actions.onAnalyzeFunction != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_function_submenu)) },
+                                onClick = { menuScreen = "Function" },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
                 "Copy" -> {
@@ -132,7 +148,7 @@ fun UnifiedListItemWrapper(
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_hex_viewer)) },
-                        onClick = { 
+                        onClick = {
                             if (address != null) actions.onJumpToHex(address)
                             expanded = false
                             menuScreen = "Main"
@@ -140,8 +156,48 @@ fun UnifiedListItemWrapper(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_disassembly)) },
-                        onClick = { 
+                        onClick = {
                             if (address != null) actions.onJumpToDisasm(address)
+                            expanded = false
+                            menuScreen = "Main"
+                        }
+                    )
+                }
+                "Function" -> {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_back)) },
+                        onClick = { menuScreen = "Main" },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_analyze)) },
+                        onClick = {
+                            if (address != null) actions.onAnalyzeFunction?.invoke(address)
+                            expanded = false
+                            menuScreen = "Main"
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_info)) },
+                        onClick = {
+                            if (address != null) actions.onFunctionInfo?.invoke(address)
+                            expanded = false
+                            menuScreen = "Main"
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_xrefs)) },
+                        onClick = {
+                            if (address != null) actions.onFunctionXrefs?.invoke(address)
+                            expanded = false
+                            menuScreen = "Main"
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_variables)) },
+                        onClick = {
+                            if (address != null) actions.onFunctionVariables?.invoke(address)
                             expanded = false
                             menuScreen = "Main"
                         }

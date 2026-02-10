@@ -137,6 +137,16 @@
     <string name="search_strings_hint">Search Strings...</string>
     <string name="search_functions_hint">Search Functions...</string>
 
+    <!-- Global Search -->
+    <string name="proj_tab_search">Search</string>
+    <string name="search_type_label">Search Type</string>
+    <string name="search_btn">Search</string>
+    <string name="search_custom_flags">Custom Flags</string>
+    <string name="search_custom_flags_hint">e.g. !b</string>
+    <string name="search_custom_hint">Enter full r2 search command, e.g. /x 9090</string>
+    <string name="search_idle_hint">Enter a query and press Search</string>
+    <string name="search_no_results">No results found</string>
+
     <string name="xrefs_title">Cross References</string>
     <string name="xrefs_no_found">No cross references found.</string>
     <string name="xrefs_refs_from">Refs From →</string>
@@ -244,4 +254,61 @@
 
     <string name="dialog_save_update_option">Update existing project</string>
     <string name="dialog_save_new_option">Save as new project</string>
+
+    <!-- Function Submenu -->
+    <string name="menu_function_submenu">Function...</string>
+    <string name="menu_function_analyze">Analyze Function (af)</string>
+    <string name="menu_function_info">Function Info</string>
+    <string name="menu_function_xrefs">Function References</string>
+    <string name="menu_function_variables">Function Variables</string>
+
+    <!-- Function Info Dialog -->
+    <string name="func_info_title">Function Info</string>
+    <string name="func_info_name">Name</string>
+    <string name="func_info_address">Address</string>
+    <string name="func_info_size">Size</string>
+    <string name="func_info_real_size">Real Size</string>
+    <string name="func_info_signature">Signature</string>
+    <string name="func_info_call_type">Call Type</string>
+    <string name="func_info_complexity">Cyclomatic Complexity</string>
+    <string name="func_info_basic_blocks">Basic Blocks</string>
+    <string name="func_info_instructions">Instructions</string>
+    <string name="func_info_edges">Edges</string>
+    <string name="func_info_stack_frame">Stack Frame</string>
+    <string name="func_info_locals">Locals</string>
+    <string name="func_info_args">Args</string>
+    <string name="func_info_range">Range</string>
+    <string name="func_info_no_function">No function found at this address.</string>
+    <string name="func_info_rename_title">Rename Function</string>
+    <string name="func_info_rename_hint">New function name</string>
+    <string name="func_info_indegree">In-degree</string>
+    <string name="func_info_outdegree">Out-degree</string>
+    <string name="func_info_noreturn">No Return</string>
+    <string name="func_info_pure">Pure</string>
+
+    <!-- Function Xrefs Dialog -->
+    <string name="func_xrefs_title">Function References</string>
+    <string name="func_xrefs_no_found">No function references found.</string>
+    <string name="func_xrefs_calls_from">Calls From</string>
+    <string name="func_xrefs_calls_to">Calls To</string>
+
+    <!-- Function Variables Dialog -->
+    <string name="func_vars_title">Function Variables</string>
+    <string name="func_vars_no_found">No variables found.</string>
+    <string name="func_vars_section_reg">Register Variables</string>
+    <string name="func_vars_section_sp">Stack Variables (SP)</string>
+    <string name="func_vars_section_bp">Stack Variables (BP)</string>
+    <string name="func_vars_rename_title">Rename Variable</string>
+    <string name="func_vars_rename_hint">New variable name</string>
+
+    <!-- Common for function dialogs -->
+    <string name="func_close">Close</string>
+    <string name="func_rename">Rename</string>
+    <string name="func_cancel">Cancel</string>
+    <string name="func_confirm">Confirm</string>
+
+    <!-- History Dialog -->
+    <string name="history_title">Navigation History</string>
+    <string name="history_subtitle">%1$d entries</string>
+    <string name="history_empty">No navigation history.</string>
 </resources>

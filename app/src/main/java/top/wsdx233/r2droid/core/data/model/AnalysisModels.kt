@@ -361,3 +361,127 @@ data class XrefsData(
     val refsFrom: List<XrefWithDisasm> = emptyList(),  // axfj - references FROM current address TO other addresses
     val refsTo: List<XrefWithDisasm> = emptyList()     // axtj - references FROM other addresses TO current address
 )
+
+/**
+ * A single entry in the navigation history, enriched with disassembly details.
+ */
+data class HistoryEntry(
+    val address: Long,
+    val functionName: String = "",
+    val bytes: String = "",
+    val disasm: String = ""
+)
+
+/**
+ * Detailed function info from afij command.
+ * Richer than FunctionInfo (which is used for the function list from aflj).
+ */
+data class FunctionDetailInfo(
+    val name: String,
+    val addr: Long,
+    val size: Long,
+    val realSize: Long,
+    val noReturn: Boolean,
+    val stackFrame: Int,
+    val callType: String,
+    val cost: Int,
+    val cc: Int,
+    val bits: Int,
+    val type: String,
+    val nbbs: Int,
+    val ninstrs: Int,
+    val edges: Int,
+    val signature: String,
+    val minAddr: Long,
+    val maxAddr: Long,
+    val nlocals: Int,
+    val nargs: Int,
+    val isPure: Boolean,
+    val isLineal: Boolean,
+    val indegree: Int,
+    val outdegree: Int,
+    val diffType: String
+) {
+    companion object {
+        fun fromJson(json: JSONObject): FunctionDetailInfo {
+            return FunctionDetailInfo(
+                name = json.optString("name", ""),
+                addr = json.optLong("addr", json.optLong("offset", 0)),
+                size = json.optLong("size", 0),
+                realSize = json.optLong("realsz", 0),
+                noReturn = json.optBoolean("noreturn", false),
+                stackFrame = json.optInt("stackframe", 0),
+                callType = json.optString("calltype", ""),
+                cost = json.optInt("cost", 0),
+                cc = json.optInt("cc", 0),
+                bits = json.optInt("bits", 0),
+                type = json.optString("type", ""),
+                nbbs = json.optInt("nbbs", 0),
+                ninstrs = json.optInt("ninstrs", 0),
+                edges = json.optInt("edges", 0),
+                signature = json.optString("signature", ""),
+                minAddr = json.optLong("minaddr", 0),
+                maxAddr = json.optLong("maxaddr", 0),
+                nlocals = json.optInt("nlocals", 0),
+                nargs = json.optInt("nargs", 0),
+                isPure = json.optString("is-pure", "false") == "true",
+                isLineal = json.optBoolean("is-lineal", false),
+                indegree = json.optInt("indegree", 0),
+                outdegree = json.optInt("outdegree", 0),
+                diffType = json.optString("difftype", "")
+            )
+        }
+    }
+}
+
+/**
+ * Function cross-reference entry from afxj command.
+ */
+data class FunctionXref(
+    val type: String,
+    val from: Long,
+    val to: Long
+) {
+    companion object {
+        fun fromJson(json: JSONObject): FunctionXref {
+            return FunctionXref(
+                type = json.optString("type", ""),
+                from = json.optLong("from", 0),
+                to = json.optLong("to", 0)
+            )
+        }
+    }
+}
+
+/**
+ * Function variable entry from afvj command.
+ */
+data class FunctionVariable(
+    val name: String,
+    val kind: String,
+    val type: String,
+    val storage: String
+) {
+    companion object {
+        fun fromJson(json: JSONObject, storage: String): FunctionVariable {
+            return FunctionVariable(
+                name = json.optString("name", ""),
+                kind = json.optString("kind", ""),
+                type = json.optString("type", ""),
+                storage = storage
+            )
+        }
+    }
+}
+
+/**
+ * Combined function variables data from afvj, grouped by storage type.
+ */
+data class FunctionVariablesData(
+    val reg: List<FunctionVariable> = emptyList(),
+    val sp: List<FunctionVariable> = emptyList(),
+    val bp: List<FunctionVariable> = emptyList()
+) {
+    val all: List<FunctionVariable> get() = reg + sp + bp
+    val isEmpty: Boolean get() = reg.isEmpty() && sp.isEmpty() && bp.isEmpty()
+}

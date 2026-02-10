@@ -3,6 +3,10 @@ package top.wsdx233.r2droid.feature.disasm.data
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
+import top.wsdx233.r2droid.core.data.model.FunctionVariable
+import top.wsdx233.r2droid.core.data.model.FunctionVariablesData
+import top.wsdx233.r2droid.core.data.model.FunctionXref
 import top.wsdx233.r2droid.core.data.model.Xref
 import top.wsdx233.r2droid.core.data.model.XrefWithDisasm
 import top.wsdx233.r2droid.core.data.model.XrefsData
@@ -116,6 +120,62 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
         } catch (e: Exception) {
             Triple("", "", "")
         }
+    }
+
+    // === Function Operations ===
+
+    suspend fun analyzeFunction(addr: Long): Result<String> {
+        return r2DataSource.execute("af @ $addr")
+    }
+
+    suspend fun getFunctionDetail(addr: Long): Result<FunctionDetailInfo?> {
+        return r2DataSource.executeJson("afij @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "[]") return@mapCatching null
+            val jsonArray = JSONArray(output)
+            if (jsonArray.length() > 0) {
+                FunctionDetailInfo.fromJson(jsonArray.getJSONObject(0))
+            } else null
+        }
+    }
+
+    suspend fun getFunctionXrefs(addr: Long): Result<List<FunctionXref>> {
+        return r2DataSource.executeJson("afxj @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "[]") return@mapCatching emptyList()
+            val jsonArray = JSONArray(output)
+            val list = mutableListOf<FunctionXref>()
+            for (i in 0 until jsonArray.length()) {
+                list.add(FunctionXref.fromJson(jsonArray.getJSONObject(i)))
+            }
+            list
+        }
+    }
+
+    suspend fun getFunctionVariables(addr: Long): Result<FunctionVariablesData> {
+        return r2DataSource.executeJson("afvj @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "{}") return@mapCatching FunctionVariablesData()
+            val json = JSONObject(output)
+            fun parseVarArray(key: String, storage: String): List<FunctionVariable> {
+                val arr = json.optJSONArray(key) ?: return emptyList()
+                val list = mutableListOf<FunctionVariable>()
+                for (i in 0 until arr.length()) {
+                    list.add(FunctionVariable.fromJson(arr.getJSONObject(i), storage))
+                }
+                return list
+            }
+            FunctionVariablesData(
+                reg = parseVarArray("reg", "reg"),
+                sp = parseVarArray("sp", "sp"),
+                bp = parseVarArray("bp", "bp")
+            )
+        }
+    }
+
+    suspend fun renameFunction(addr: Long, newName: String): Result<String> {
+        return r2DataSource.execute("afn $newName @ $addr")
+    }
+
+    suspend fun renameFunctionVariable(addr: Long, newName: String, oldName: String): Result<String> {
+        return r2DataSource.execute("afvn $newName $oldName @ $addr")
     }
 
     private suspend fun getFunctionNameForAddress(addr: Long): String {

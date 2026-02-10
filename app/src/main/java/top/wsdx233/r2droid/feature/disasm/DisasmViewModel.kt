@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
+import top.wsdx233.r2droid.core.data.model.FunctionVariablesData
+import top.wsdx233.r2droid.core.data.model.FunctionXref
 import top.wsdx233.r2droid.core.data.model.Section
 import top.wsdx233.r2droid.core.data.model.Xref
 import top.wsdx233.r2droid.core.data.model.XrefsData
@@ -28,6 +31,27 @@ data class XrefsState(
     val targetAddress: Long = 0L
 )
 
+data class FunctionInfoState(
+    val visible: Boolean = false,
+    val data: FunctionDetailInfo? = null,
+    val isLoading: Boolean = false,
+    val targetAddress: Long = 0L
+)
+
+data class FunctionXrefsState(
+    val visible: Boolean = false,
+    val data: List<FunctionXref> = emptyList(),
+    val isLoading: Boolean = false,
+    val targetAddress: Long = 0L
+)
+
+data class FunctionVariablesState(
+    val visible: Boolean = false,
+    val data: FunctionVariablesData = FunctionVariablesData(),
+    val isLoading: Boolean = false,
+    val targetAddress: Long = 0L
+)
+
 /**
  * ViewModel for Disassembly Viewer.
  * Manages DisasmDataManager and disasm-related interactions.
@@ -44,6 +68,16 @@ sealed interface DisasmEvent {
     object RefreshData : DisasmEvent
     data class FetchXrefs(val address: Long) : DisasmEvent
     object DismissXrefs : DisasmEvent
+    // Function operations
+    data class AnalyzeFunction(val address: Long) : DisasmEvent
+    data class FetchFunctionInfo(val address: Long) : DisasmEvent
+    object DismissFunctionInfo : DisasmEvent
+    data class RenameFunctionFromInfo(val address: Long, val newName: String) : DisasmEvent
+    data class FetchFunctionXrefs(val address: Long) : DisasmEvent
+    object DismissFunctionXrefs : DisasmEvent
+    data class FetchFunctionVariables(val address: Long) : DisasmEvent
+    object DismissFunctionVariables : DisasmEvent
+    data class RenameFunctionVariable(val address: Long, val oldName: String, val newName: String) : DisasmEvent
 }
 
 @HiltViewModel
@@ -66,6 +100,18 @@ class DisasmViewModel @Inject constructor(
     private val _xrefsState = MutableStateFlow(XrefsState())
     val xrefsState: StateFlow<XrefsState> = _xrefsState.asStateFlow()
 
+    // Function Info State
+    private val _functionInfoState = MutableStateFlow(FunctionInfoState())
+    val functionInfoState: StateFlow<FunctionInfoState> = _functionInfoState.asStateFlow()
+
+    // Function Xrefs State
+    private val _functionXrefsState = MutableStateFlow(FunctionXrefsState())
+    val functionXrefsState: StateFlow<FunctionXrefsState> = _functionXrefsState.asStateFlow()
+
+    // Function Variables State
+    private val _functionVariablesState = MutableStateFlow(FunctionVariablesState())
+    val functionVariablesState: StateFlow<FunctionVariablesState> = _functionVariablesState.asStateFlow()
+
     // Scroll target: emitted after data is loaded at target address
     // Pair of (targetAddress, index) - UI observes this to scroll after data is ready
     private val _scrollTarget = MutableStateFlow<Pair<Long, Int>?>(null)
@@ -87,6 +133,15 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.RefreshData -> refreshData()
             is DisasmEvent.FetchXrefs -> fetchXrefs(event.address)
             is DisasmEvent.DismissXrefs -> dismissXrefs()
+            is DisasmEvent.AnalyzeFunction -> analyzeFunction(event.address)
+            is DisasmEvent.FetchFunctionInfo -> fetchFunctionInfo(event.address)
+            is DisasmEvent.DismissFunctionInfo -> dismissFunctionInfo()
+            is DisasmEvent.RenameFunctionFromInfo -> renameFunctionFromInfo(event.address, event.newName)
+            is DisasmEvent.FetchFunctionXrefs -> fetchFunctionXrefs(event.address)
+            is DisasmEvent.DismissFunctionXrefs -> dismissFunctionXrefs()
+            is DisasmEvent.FetchFunctionVariables -> fetchFunctionVariables(event.address)
+            is DisasmEvent.DismissFunctionVariables -> dismissFunctionVariables()
+            is DisasmEvent.RenameFunctionVariable -> renameFunctionVariable(event.address, event.oldName, event.newName)
         }
     }
 
@@ -278,5 +333,80 @@ class DisasmViewModel @Inject constructor(
     
     fun dismissXrefs() {
         _xrefsState.value = _xrefsState.value.copy(visible = false)
+    }
+
+    // === Function Operations ===
+
+    private fun analyzeFunction(addr: Long) {
+        viewModelScope.launch {
+            disasmRepository.analyzeFunction(addr)
+            disasmDataManager?.clearCache()
+            _disasmCacheVersion.value++
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
+    }
+
+    private fun fetchFunctionInfo(addr: Long) {
+        _functionInfoState.value = FunctionInfoState(visible = true, isLoading = true, targetAddress = addr)
+        viewModelScope.launch {
+            val result = disasmRepository.getFunctionDetail(addr)
+            _functionInfoState.value = _functionInfoState.value.copy(
+                isLoading = false, data = result.getOrNull()
+            )
+        }
+    }
+
+    private fun dismissFunctionInfo() {
+        _functionInfoState.value = _functionInfoState.value.copy(visible = false)
+    }
+
+    private fun renameFunctionFromInfo(addr: Long, newName: String) {
+        viewModelScope.launch {
+            disasmRepository.renameFunction(addr, newName)
+            // Refresh the function info dialog with updated data
+            fetchFunctionInfo(addr)
+            disasmDataManager?.clearCache()
+            _disasmCacheVersion.value++
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
+    }
+
+    private fun fetchFunctionXrefs(addr: Long) {
+        _functionXrefsState.value = FunctionXrefsState(visible = true, isLoading = true, targetAddress = addr)
+        viewModelScope.launch {
+            val result = disasmRepository.getFunctionXrefs(addr)
+            _functionXrefsState.value = _functionXrefsState.value.copy(
+                isLoading = false, data = result.getOrDefault(emptyList())
+            )
+        }
+    }
+
+    private fun dismissFunctionXrefs() {
+        _functionXrefsState.value = _functionXrefsState.value.copy(visible = false)
+    }
+
+    private fun fetchFunctionVariables(addr: Long) {
+        _functionVariablesState.value = FunctionVariablesState(visible = true, isLoading = true, targetAddress = addr)
+        viewModelScope.launch {
+            val result = disasmRepository.getFunctionVariables(addr)
+            _functionVariablesState.value = _functionVariablesState.value.copy(
+                isLoading = false, data = result.getOrDefault(FunctionVariablesData())
+            )
+        }
+    }
+
+    private fun dismissFunctionVariables() {
+        _functionVariablesState.value = _functionVariablesState.value.copy(visible = false)
+    }
+
+    private fun renameFunctionVariable(addr: Long, oldName: String, newName: String) {
+        viewModelScope.launch {
+            disasmRepository.renameFunctionVariable(addr, newName, oldName)
+            // Refresh the variables dialog
+            fetchFunctionVariables(addr)
+            disasmDataManager?.clearCache()
+            _disasmCacheVersion.value++
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
     }
 }

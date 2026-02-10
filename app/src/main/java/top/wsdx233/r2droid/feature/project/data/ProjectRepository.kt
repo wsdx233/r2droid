@@ -298,6 +298,81 @@ class ProjectRepository @Inject constructor() {
     }
     
     /**
+     * Get detailed history info for a list of addresses.
+     * For each address, fetches: function name, hex bytes, disassembly.
+     */
+    suspend fun getHistoryDetails(addresses: List<Long>): Result<List<HistoryEntry>> {
+        return runCatching {
+            addresses.map { addr ->
+                val disasmInfo = getDisasmForAddress(addr)
+                val funcName = getFunctionNameForAddress(addr)
+                HistoryEntry(
+                    address = addr,
+                    functionName = funcName,
+                    bytes = disasmInfo.third,
+                    disasm = disasmInfo.first
+                )
+            }
+        }
+    }
+
+    // === Function Operations ===
+
+    suspend fun analyzeFunction(addr: Long): Result<String> {
+        return R2PipeManager.execute("af @ $addr")
+    }
+
+    suspend fun getFunctionDetail(addr: Long): Result<FunctionDetailInfo?> {
+        return R2PipeManager.executeJson("afij @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "[]") return@mapCatching null
+            val jsonArray = JSONArray(output)
+            if (jsonArray.length() > 0) {
+                FunctionDetailInfo.fromJson(jsonArray.getJSONObject(0))
+            } else null
+        }
+    }
+
+    suspend fun getFunctionXrefs(addr: Long): Result<List<FunctionXref>> {
+        return R2PipeManager.executeJson("afxj @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "[]") return@mapCatching emptyList()
+            val jsonArray = JSONArray(output)
+            val list = mutableListOf<FunctionXref>()
+            for (i in 0 until jsonArray.length()) {
+                list.add(FunctionXref.fromJson(jsonArray.getJSONObject(i)))
+            }
+            list
+        }
+    }
+
+    suspend fun getFunctionVariables(addr: Long): Result<FunctionVariablesData> {
+        return R2PipeManager.executeJson("afvj @ $addr").mapCatching { output ->
+            if (output.isBlank() || output == "{}") return@mapCatching FunctionVariablesData()
+            val json = JSONObject(output)
+            fun parseVarArray(key: String, storage: String): List<FunctionVariable> {
+                val arr = json.optJSONArray(key) ?: return emptyList()
+                val list = mutableListOf<FunctionVariable>()
+                for (i in 0 until arr.length()) {
+                    list.add(FunctionVariable.fromJson(arr.getJSONObject(i), storage))
+                }
+                return list
+            }
+            FunctionVariablesData(
+                reg = parseVarArray("reg", "reg"),
+                sp = parseVarArray("sp", "sp"),
+                bp = parseVarArray("bp", "bp")
+            )
+        }
+    }
+
+    suspend fun renameFunction(addr: Long, newName: String): Result<String> {
+        return R2PipeManager.execute("afn $newName @ $addr")
+    }
+
+    suspend fun renameFunctionVariable(addr: Long, newName: String, oldName: String): Result<String> {
+        return R2PipeManager.execute("afvn $newName $oldName @ $addr")
+    }
+
+    /**
      * Get function name for an address using afij.
      * Returns the function name if the address is within a function, empty string otherwise.
      */

@@ -1,12 +1,16 @@
 package top.wsdx233.r2droid.feature.project
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuOpen
@@ -44,6 +48,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.core.ui.dialogs.HistoryDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
+import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.JumpDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
@@ -58,7 +66,7 @@ enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
     Project(R.string.proj_category_project, Icons.Filled.Build)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ProjectScaffold(
     viewModel: ProjectViewModel,
@@ -77,6 +85,14 @@ fun ProjectScaffold(
         }
     }
 
+    // Refresh function list when disasm data is modified (e.g. function rename)
+    val dataModified by disasmViewModel.dataModifiedEvent.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(dataModified) {
+        if (dataModified > 0) {
+            viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true))
+        }
+    }
+
     // State for navigation
     var selectedCategory by remember { mutableStateOf(MainCategory.List) }
     var selectedListTabIndex by remember { mutableIntStateOf(0) }
@@ -85,7 +101,7 @@ fun ProjectScaffold(
     var showJumpDialog by remember { mutableStateOf(false) }
 
     val listTabs = listOf(
-        R.string.proj_tab_overview, R.string.proj_tab_sections, R.string.proj_tab_symbols,
+        R.string.proj_tab_overview, R.string.proj_tab_search, R.string.proj_tab_sections, R.string.proj_tab_symbols,
         R.string.proj_tab_imports, R.string.proj_tab_relocs, R.string.proj_tab_strings, R.string.proj_tab_functions
     )
     val detailTabs = listOf(R.string.proj_tab_hex, R.string.proj_tab_disassembly, R.string.proj_tab_decompile)
@@ -98,14 +114,25 @@ fun ProjectScaffold(
                 actions = {
                     if (selectedCategory == MainCategory.Detail) {
                         val canGoBack by viewModel.canGoBack.collectAsState()
-                        androidx.compose.material3.IconButton(
-                            onClick = { viewModel.onEvent(ProjectEvent.NavigateBack) },
-                            enabled = canGoBack
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .combinedClickable(
+                                    enabled = canGoBack,
+                                    onClick = { viewModel.onEvent(ProjectEvent.NavigateBack) },
+                                    onLongClick = { viewModel.showHistoryDialog() },
+                                    indication = androidx.compose.material3.ripple(
+                                        bounded = false,
+                                        radius = 24.dp
+                                    ),
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.proj_nav_go_back),
-                                tint = if (canGoBack) MaterialTheme.colorScheme.onSurface 
+                                tint = if (canGoBack) MaterialTheme.colorScheme.onSurface
                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             )
                         }
@@ -144,6 +171,76 @@ fun ProjectScaffold(
                         selectedDetailTabIndex = 1
                         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
                         disasmViewModel.onEvent(DisasmEvent.DismissXrefs)
+                    }
+                )
+            }
+
+            val historyState by viewModel.historyState.collectAsState()
+            if (historyState.visible) {
+                HistoryDialog(
+                    entries = historyState.entries,
+                    isLoading = historyState.isLoading,
+                    onDismiss = { viewModel.dismissHistoryDialog() },
+                    onJump = { addr ->
+                        viewModel.dismissHistoryDialog()
+                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                    }
+                )
+            }
+
+            // Function Info Dialog
+            val functionInfoState by disasmViewModel.functionInfoState.collectAsState()
+            if (functionInfoState.visible) {
+                FunctionInfoDialog(
+                    functionInfo = functionInfoState.data,
+                    isLoading = functionInfoState.isLoading,
+                    targetAddress = functionInfoState.targetAddress,
+                    onDismiss = { disasmViewModel.onEvent(DisasmEvent.DismissFunctionInfo) },
+                    onRename = { newName ->
+                        disasmViewModel.onEvent(
+                            DisasmEvent.RenameFunctionFromInfo(functionInfoState.targetAddress, newName)
+                        )
+                    },
+                    onJump = { addr ->
+                        selectedCategory = MainCategory.Detail
+                        selectedDetailTabIndex = 1
+                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                        disasmViewModel.onEvent(DisasmEvent.DismissFunctionInfo)
+                    }
+                )
+            }
+
+            // Function Xrefs Dialog
+            val functionXrefsState by disasmViewModel.functionXrefsState.collectAsState()
+            if (functionXrefsState.visible) {
+                FunctionXrefsDialog(
+                    xrefs = functionXrefsState.data,
+                    isLoading = functionXrefsState.isLoading,
+                    targetAddress = functionXrefsState.targetAddress,
+                    onDismiss = { disasmViewModel.onEvent(DisasmEvent.DismissFunctionXrefs) },
+                    onJump = { addr ->
+                        selectedCategory = MainCategory.Detail
+                        selectedDetailTabIndex = 1
+                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                        disasmViewModel.onEvent(DisasmEvent.DismissFunctionXrefs)
+                    }
+                )
+            }
+
+            // Function Variables Dialog
+            val functionVariablesState by disasmViewModel.functionVariablesState.collectAsState()
+            if (functionVariablesState.visible) {
+                FunctionVariablesDialog(
+                    variables = functionVariablesState.data,
+                    isLoading = functionVariablesState.isLoading,
+                    targetAddress = functionVariablesState.targetAddress,
+                    onDismiss = { disasmViewModel.onEvent(DisasmEvent.DismissFunctionVariables) },
+                    onRename = { oldName, newName ->
+                        disasmViewModel.onEvent(
+                            DisasmEvent.RenameFunctionVariable(
+                                functionVariablesState.targetAddress, oldName, newName
+                            )
+                        )
                     }
                 )
             }

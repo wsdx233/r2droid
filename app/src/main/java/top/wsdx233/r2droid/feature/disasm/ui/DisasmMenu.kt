@@ -26,7 +26,11 @@ fun DisasmContextMenu(
     onCopy: (String) -> Unit,
     onModify: (String) -> Unit, // type: hex, string, asm
     onXrefs: () -> Unit,
-    onCustomCommand: () -> Unit
+    onCustomCommand: () -> Unit,
+    onAnalyzeFunction: () -> Unit = {},
+    onFunctionInfo: () -> Unit = {},
+    onFunctionXrefs: () -> Unit = {},
+    onFunctionVariables: () -> Unit = {}
 ) {
     if (expanded) {
         // State to track which menu is currently visible: "main", "copy", "modify"
@@ -64,8 +68,20 @@ fun DisasmContextMenu(
                         }
                     )
                     
+                    // Function Submenu Trigger
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_submenu)) },
+                        onClick = { currentMenu = "function" },
+                        trailingIcon = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Submenu"
+                            )
+                        }
+                    )
+
                     HorizontalDivider()
-                    
+
                     // Xrefs
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_xrefs)) },
@@ -122,15 +138,15 @@ fun DisasmContextMenu(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_back)) },
                         onClick = { currentMenu = "main" },
-                        leadingIcon = { 
+                        leadingIcon = {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back"
-                            ) 
+                            )
                         }
                     )
                     HorizontalDivider()
-                    
+
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.hex_modify_hex)) },
                         onClick = { onModify("hex") }
@@ -142,6 +158,38 @@ fun DisasmContextMenu(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.hex_modify_opcode)) },
                         onClick = { onModify("asm") }
+                    )
+                }
+
+                "function" -> {
+                    // === Function Submenu ===
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_back)) },
+                        onClick = { currentMenu = "main" },
+                        leadingIcon = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    )
+                    HorizontalDivider()
+
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_analyze)) },
+                        onClick = { onAnalyzeFunction() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_info)) },
+                        onClick = { onFunctionInfo() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_xrefs)) },
+                        onClick = { onFunctionXrefs() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_function_variables)) },
+                        onClick = { onFunctionVariables() }
                     )
                 }
             }
