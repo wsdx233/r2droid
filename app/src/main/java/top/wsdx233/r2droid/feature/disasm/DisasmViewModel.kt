@@ -271,10 +271,10 @@ class DisasmViewModel @Inject constructor(
         viewModelScope.launch {
             // "wa [asm] @ [addr]"
             disasmRepository.writeAsm(addr, asm)
-            
-            disasmDataManager?.clearCache()
+
+            disasmDataManager?.resetAndLoadAround(addr)
             _disasmCacheVersion.value++
-            
+
             // Notify others
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
@@ -284,10 +284,10 @@ class DisasmViewModel @Inject constructor(
         viewModelScope.launch {
             // "wx [hex] @ [addr]"
             top.wsdx233.r2droid.util.R2PipeManager.execute("wx $hex @ $addr")
-            
-            disasmDataManager?.clearCache()
+
+            disasmDataManager?.resetAndLoadAround(addr)
             _disasmCacheVersion.value++
-            
+
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
     }
@@ -297,10 +297,10 @@ class DisasmViewModel @Inject constructor(
             // "w [text] @ [addr]"
             val escaped = text.replace("\"", "\\\"")
             top.wsdx233.r2droid.util.R2PipeManager.execute("w \"$escaped\" @ $addr")
-            
-            disasmDataManager?.clearCache()
+
+            disasmDataManager?.resetAndLoadAround(addr)
             _disasmCacheVersion.value++
-            
+
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
     }
@@ -309,8 +309,15 @@ class DisasmViewModel @Inject constructor(
      * Called when other modules modify data
      */
     fun refreshData() {
-        disasmDataManager?.clearCache()
-        _disasmCacheVersion.value++
+        val manager = disasmDataManager ?: return
+        val currentAddr = manager.getSnapshot().let { snapshot ->
+            if (snapshot.isNotEmpty()) snapshot[snapshot.size / 2].addr
+            else manager.viewStartAddress
+        }
+        viewModelScope.launch {
+            manager.resetAndLoadAround(currentAddr)
+            _disasmCacheVersion.value++
+        }
     }
     
     // === Xrefs ===
@@ -340,7 +347,7 @@ class DisasmViewModel @Inject constructor(
     private fun analyzeFunction(addr: Long) {
         viewModelScope.launch {
             disasmRepository.analyzeFunction(addr)
-            disasmDataManager?.clearCache()
+            disasmDataManager?.resetAndLoadAround(addr)
             _disasmCacheVersion.value++
             _dataModifiedEvent.value = System.currentTimeMillis()
         }

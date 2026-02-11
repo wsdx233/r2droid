@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -154,14 +155,35 @@ fun DisassemblyViewer(
     LaunchedEffect(scrollTarget) {
         val target = scrollTarget ?: return@LaunchedEffect
         val (targetAddr, targetIndex) = target
-        val count = disasmDataManager.loadedInstructionCount
+        val count = loadedCount
         if (targetIndex >= 0 && count > 0) {
-            // Center the target in the visible area
-            val layoutInfo = listState.layoutInfo
-            val visibleItems = layoutInfo.visibleItemsInfo.size
-            val centerOffset = if (visibleItems > 0) visibleItems / 2 else 5
-            val scrollIndex = (targetIndex - centerOffset).coerceIn(0, count - 1)
-            listState.animateScrollToItem(scrollIndex)
+            val clampedIndex = targetIndex.coerceIn(0, count - 1)
+            // Check if target is already visible on screen
+            val visibleItem = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == clampedIndex }
+            if (visibleItem != null) {
+                // Already visible: smooth scroll to center from current position
+                val viewportHeight = listState.layoutInfo.viewportEndOffset -
+                        listState.layoutInfo.viewportStartOffset
+                val desiredOffset = (viewportHeight - visibleItem.size) / 2
+                val delta = visibleItem.offset - desiredOffset
+                if (kotlin.math.abs(delta) > 1) {
+                    listState.animateScrollBy(delta.toFloat())
+                }
+            } else {
+                // Not visible: jump first, then center
+                listState.scrollToItem(clampedIndex)
+                val layoutInfo = listState.layoutInfo
+                val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+                val targetItemInfo = layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == clampedIndex }
+                if (targetItemInfo != null && viewportHeight > 0) {
+                    val centerOffset = (viewportHeight - targetItemInfo.size) / 2
+                    if (centerOffset > 0) {
+                        listState.animateScrollBy(-centerOffset.toFloat())
+                    }
+                }
+            }
         }
         viewModel.clearScrollTarget()
     }
