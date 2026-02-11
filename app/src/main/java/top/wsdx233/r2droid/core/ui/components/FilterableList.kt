@@ -25,10 +25,19 @@ fun <T> FilterableList(
     modifier: Modifier = Modifier,
     placeholder: String? = null,
     onRefresh: (() -> Unit)? = null,
+    externalSearchQuery: String? = null,
+    onExternalSearchQueryChange: ((String) -> Unit)? = null,
+    externalListState: androidx.compose.foundation.lazy.LazyListState? = null,
     itemContent: @Composable (T) -> Unit
 ) {
     val actualPlaceholder = placeholder ?: stringResource(R.string.common_search)
-    var searchQuery by remember { mutableStateOf("") }
+    var internalQuery by remember { mutableStateOf("") }
+    val searchQuery = externalSearchQuery ?: internalQuery
+    val onQueryChange: (String) -> Unit = if (onExternalSearchQueryChange != null) {
+        onExternalSearchQueryChange
+    } else {
+        { internalQuery = it }
+    }
     var debouncedQuery by remember { mutableStateOf("") }
 
     // Debounce logic
@@ -56,7 +65,7 @@ fun <T> FilterableList(
         ) {
             SearchBar(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it },
+                onQueryChange = onQueryChange,
                 placeholder = actualPlaceholder,
                 modifier = Modifier.weight(1f)
             )
@@ -76,7 +85,7 @@ fun <T> FilterableList(
 
         // Wrap LazyColumn in Box for scrollbar overlay
         Box(modifier = Modifier.weight(1f)) {
-            val listState = rememberLazyListState()
+            val listState = externalListState ?: rememberLazyListState()
             
             LazyColumn(
                 state = listState,

@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +31,7 @@ import top.wsdx233.r2droid.core.data.model.Relocation
 import top.wsdx233.r2droid.core.data.model.Section
 import top.wsdx233.r2droid.core.data.model.StringInfo
 import top.wsdx233.r2droid.core.data.model.Symbol
+import androidx.compose.foundation.lazy.LazyListState
 import top.wsdx233.r2droid.core.ui.components.FilterableList
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.core.ui.components.UnifiedListItemWrapper
@@ -71,6 +73,8 @@ private fun AccentBar(color: Color) {
             .width(8.dp)
             .fillMaxHeight()
             .background(color)
+            .shadow(elevation = 1.dp)
+
     )
 }
 
@@ -107,12 +111,22 @@ private fun TintedItemSurface(
 // ── Section ──
 
 @Composable
-fun SectionList(sections: List<Section>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun SectionList(
+    sections: List<Section>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = sections,
         filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_sections_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { section ->
         SectionItem(section, actions)
     }
@@ -158,12 +172,22 @@ fun SectionItem(section: Section, actions: ListItemActions) {
 }
 
 @Composable
-fun SymbolList(symbols: List<Symbol>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun SymbolList(
+    symbols: List<Symbol>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = symbols,
         filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_symbols_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { symbol ->
         SymbolItem(symbol, actions)
     }
@@ -206,12 +230,22 @@ fun SymbolItem(symbol: Symbol, actions: ListItemActions) {
 }
 
 @Composable
-fun ImportList(imports: List<ImportInfo>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun ImportList(
+    imports: List<ImportInfo>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = imports,
         filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_imports_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { item ->
         ImportItem(item, actions)
     }
@@ -256,12 +290,22 @@ fun ImportItem(importInfo: ImportInfo, actions: ListItemActions) {
 }
 
 @Composable
-fun RelocationList(relocations: List<Relocation>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun RelocationList(
+    relocations: List<Relocation>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = relocations,
         filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_relocations_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { relocation ->
         RelocationItem(relocation, actions)
     }
@@ -304,12 +348,22 @@ fun RelocationItem(relocation: Relocation, actions: ListItemActions) {
 }
 
 @Composable
-fun StringList(strings: List<StringInfo>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun StringList(
+    strings: List<StringInfo>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = strings,
         filterPredicate = { item, query -> item.string.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_strings_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { str ->
         StringItem(str, actions)
     }
@@ -355,12 +409,22 @@ fun StringItem(stringInfo: StringInfo, actions: ListItemActions) {
 }
 
 @Composable
-fun FunctionList(functions: List<FunctionInfo>, actions: ListItemActions, onRefresh: (() -> Unit)? = null) {
+fun FunctionList(
+    functions: List<FunctionInfo>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
     FilterableList(
         items = functions,
         filterPredicate = { item, query -> item.name.contains(query, ignoreCase = true) },
         placeholder = stringResource(R.string.search_functions_hint),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { func ->
         FunctionItem(func, actions)
     }

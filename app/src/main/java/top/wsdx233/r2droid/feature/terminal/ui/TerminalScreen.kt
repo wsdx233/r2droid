@@ -217,15 +217,18 @@ fun TerminalScreen() {
  * Provides an input field and displays command output.
  */
 @Composable
-fun CommandScreen() {
-    var command by remember { mutableStateOf("") }
+fun CommandScreen(
+    command: String,
+    onCommandChange: (String) -> Unit,
+    commandHistory: List<Pair<String, String>>,
+    onCommandHistoryChange: (List<Pair<String, String>>) -> Unit
+) {
     var output by remember { mutableStateOf("") }
     var isExecuting by remember { mutableStateOf(false) }
-    var commandHistory by remember { mutableStateOf(listOf<Pair<String, String>>()) }
-    
+
     val scope = rememberCoroutineScope()
     val scrollState = androidx.compose.foundation.rememberScrollState()
-    
+
     // Auto-scroll to bottom when history changes
     LaunchedEffect(commandHistory.size) {
         scrollState.animateScrollTo(scrollState.maxValue)
@@ -299,7 +302,7 @@ fun CommandScreen() {
             // Input field
             OutlinedTextField(
                 value = command,
-                onValueChange = { command = it },
+                onValueChange = onCommandChange,
                 modifier = Modifier.weight(1f),
                 placeholder = { 
                     Text(
@@ -324,15 +327,23 @@ fun CommandScreen() {
             FilledIconButton(
                 onClick = {
                     if (command.isNotBlank() && !isExecuting) {
-                        val cmdToExecute = command
-                        command = ""
+                        val cmdToExecute = command.trim()
+                        onCommandChange("")
+
+                        // Handle cls/clear locally
+                        if (cmdToExecute.equals("cls", ignoreCase = true) ||
+                            cmdToExecute.equals("clear", ignoreCase = true)
+                        ) {
+                            onCommandHistoryChange(emptyList())
+                            output = ""
+                            return@FilledIconButton
+                        }
+
                         isExecuting = true
-                        
                         scope.launch {
                             val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmdToExecute)
                             val resultText = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
-                            
-                            commandHistory = commandHistory + (cmdToExecute to resultText)
+                            onCommandHistoryChange(commandHistory + (cmdToExecute to resultText))
                             output = ""
                             isExecuting = false
                         }

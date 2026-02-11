@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.feature.project
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -9,9 +10,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.feature.bininfo.ui.FunctionList
@@ -30,10 +32,17 @@ fun ProjectListView(
     viewModel: ProjectViewModel = hiltViewModel(),
     disasmViewModel: DisasmViewModel = hiltViewModel(),
     tabIndex: Int,
+    searchQueries: SnapshotStateMap<Int, String>,
+    listStates: SnapshotStateMap<Int, LazyListState>,
     onNavigateToDetail: (Long, Int) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val state = uiState as? ProjectUiState.Success ?: return
+
+    // Helper to get or create LazyListState for a tab
+    fun getListState(tab: Int): LazyListState {
+        return listStates.getOrPut(tab) { LazyListState() }
+    }
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     
@@ -99,16 +108,40 @@ fun ProjectListView(
             ?: Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
         1 -> SearchScreen(actions = listItemActions)
         2 -> if (state.sections == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else SectionList(state.sections, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSections(forceRefresh = true)) })
+            else SectionList(state.sections, listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadSections(forceRefresh = true)) },
+                searchQuery = searchQueries[2] ?: "",
+                onSearchQueryChange = { searchQueries[2] = it },
+                listState = getListState(2))
         3 -> if (state.symbols == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else SymbolList(state.symbols, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadSymbols(forceRefresh = true)) })
+            else SymbolList(state.symbols, listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadSymbols(forceRefresh = true)) },
+                searchQuery = searchQueries[3] ?: "",
+                onSearchQueryChange = { searchQueries[3] = it },
+                listState = getListState(3))
         4 -> if (state.imports == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else ImportList(state.imports, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadImports(forceRefresh = true)) })
+            else ImportList(state.imports, listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadImports(forceRefresh = true)) },
+                searchQuery = searchQueries[4] ?: "",
+                onSearchQueryChange = { searchQueries[4] = it },
+                listState = getListState(4))
         5 -> if (state.relocations == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else RelocationList(state.relocations, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadRelocations(forceRefresh = true)) })
+            else RelocationList(state.relocations, listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadRelocations(forceRefresh = true)) },
+                searchQuery = searchQueries[5] ?: "",
+                onSearchQueryChange = { searchQueries[5] = it },
+                listState = getListState(5))
         6 -> if (state.strings == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else StringList(state.strings, listItemActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadStrings(forceRefresh = true)) })
+            else StringList(state.strings, listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadStrings(forceRefresh = true)) },
+                searchQuery = searchQueries[6] ?: "",
+                onSearchQueryChange = { searchQueries[6] = it },
+                listState = getListState(6))
         7 -> if (state.functions == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else FunctionList(state.functions, functionListActions, onRefresh = { viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true)) })
+            else FunctionList(state.functions, functionListActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true)) },
+                searchQuery = searchQueries[7] ?: "",
+                onSearchQueryChange = { searchQueries[7] = it },
+                listState = getListState(7))
     }
 }

@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,7 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.ui.dialogs.HistoryDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
@@ -99,6 +100,14 @@ fun ProjectScaffold(
     var selectedDetailTabIndex by remember { mutableIntStateOf(1) }
     var selectedProjectTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
+
+    // Hoisted ListTab state (survives category switches)
+    val listSearchQueries = remember { mutableStateMapOf<Int, String>() }
+    val listScrollStates = remember { mutableStateMapOf<Int, androidx.compose.foundation.lazy.LazyListState>() }
+
+    // Hoisted CommandScreen state
+    var cmdInput by remember { mutableStateOf("") }
+    var cmdHistory by remember { mutableStateOf(listOf<Pair<String, String>>()) }
 
     val listTabs = listOf(
         R.string.proj_tab_overview, R.string.proj_tab_search, R.string.proj_tab_sections, R.string.proj_tab_symbols,
@@ -372,6 +381,8 @@ fun ProjectScaffold(
                         MainCategory.List -> {
                             ProjectListView(
                                 tabIndex = selectedListTabIndex,
+                                searchQueries = listSearchQueries,
+                                listStates = listScrollStates,
                                 onNavigateToDetail = { addr, tabIdx ->
                                     selectedCategory = MainCategory.Detail
                                     selectedDetailTabIndex = tabIdx
@@ -388,7 +399,12 @@ fun ProjectScaffold(
                             val logs by viewModel.logs.collectAsState()
                             when (selectedProjectTabIndex) {
                                 0 -> ProjectSettingsScreen(viewModel)
-                                1 -> CommandScreen()
+                                1 -> CommandScreen(
+                                    command = cmdInput,
+                                    onCommandChange = { cmdInput = it },
+                                    commandHistory = cmdHistory,
+                                    onCommandHistoryChange = { cmdHistory = it }
+                                )
                                 2 -> LogList(logs, onClearLogs = { viewModel.onEvent(ProjectEvent.ClearLogs) })
                             }
                         }
