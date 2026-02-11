@@ -1,5 +1,8 @@
 package top.wsdx233.r2droid.screen.about
 
+import android.R.attr.versionName
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.ui.res.stringResource
 import top.wsdx233.r2droid.R
 
@@ -220,6 +223,25 @@ fun AboutScreen(
     }
 }
 
+@Composable
+fun getAppVersion(): String {
+    val context = LocalContext.current
+    return try {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+        packageInfo.versionName ?: "Unknown"
+    } catch (e: Exception) {
+        "Unknown"
+    }
+}
+
 @Preview
 @Composable
 fun AppHeader() {
@@ -288,6 +310,13 @@ fun AppHeader() {
         )
 
         Spacer(modifier = Modifier.height(8.dp))
+
+        val context = LocalContext.current
+        // version
+        Text(text = "v${getAppVersion()}", style = MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = FontFamily.Monospace).copy(Color.Gray))
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
             text = stringResource(R.string.about_motto),
