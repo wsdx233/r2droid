@@ -378,7 +378,7 @@ class ProjectRepository @Inject constructor() {
      * Get function flow graph (agj) for the function at the given address.
      */
     suspend fun getFunctionGraph(addr: Long): Result<GraphData> {
-        val cmd = "agj @ $addr"
+        val cmd = "agf@$addr > 0 ; agj @ $addr" // 这是个玄学问题，不知道为什么agf之后流程图显示地更整齐，可能是r2内部有自动排列
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank() || output == "[]") throw RuntimeException("Empty graph output")
             val jsonArray = JSONArray(output)

@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +53,9 @@ fun GraphScreen(
     onShowXrefs: (Long) -> Unit = {},
     onShowInstructionDetail: (Long) -> Unit = {}
 ) {
+    // Persist scale across graph reloads (survives graphData going null during loading)
+    var persistedScale by remember { mutableFloatStateOf(1f) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Graph type selector chips
         LazyRow(
@@ -94,7 +98,9 @@ fun GraphScreen(
                         scrollToSelectionTrigger = scrollToSelectionTrigger,
                         onAddressClick = onAddressClick,
                         onShowXrefs = onShowXrefs,
-                        onShowInstructionDetail = onShowInstructionDetail
+                        onShowInstructionDetail = onShowInstructionDetail,
+                        initialScale = persistedScale,
+                        onScaleChanged = { persistedScale = it }
                     )
                 }
             }

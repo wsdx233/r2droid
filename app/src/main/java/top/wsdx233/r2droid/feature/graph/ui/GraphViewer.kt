@@ -42,6 +42,7 @@ import top.wsdx233.r2droid.core.data.model.GraphData
 import top.wsdx233.r2droid.core.data.model.GraphNode
 import kotlin.math.max
 import kotlin.math.min
+import androidx.core.graphics.toColorInt
 
 // Layout constants — sized for mobile readability
 private const val NODE_PADDING = 20f
@@ -298,7 +299,9 @@ fun GraphViewer(
     scrollToSelectionTrigger: StateFlow<Int>,
     onAddressClick: (Long) -> Unit,
     onShowXrefs: (Long) -> Unit = {},
-    onShowInstructionDetail: (Long) -> Unit = {}
+    onShowInstructionDetail: (Long) -> Unit = {},
+    initialScale: Float = 1f,
+    onScaleChanged: (Float) -> Unit = {}
 ) {
     val density = LocalDensity.current
     val layoutNodes = remember(graphData) { layoutGraph(graphData) }
@@ -327,8 +330,8 @@ fun GraphViewer(
     // Track viewport size for proper pan clamping
     var viewportSize by remember { mutableStateOf(Size.Zero) }
 
-    // Pan & zoom state
-    var scale by remember { mutableFloatStateOf(1f) }
+    // Pan & zoom state — initialScale comes from parent to survive graph reloads
+    var scale by remember { mutableFloatStateOf(initialScale) }
     var offset by remember(graphBounds) {
         val centerX = -(graphBounds.left + graphBounds.right) / 2f
         val centerY = -graphBounds.top // align top of graph near top of viewport
@@ -350,6 +353,7 @@ fun GraphViewer(
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (scale * zoomChange).coerceIn(0.15f, 5f)
         scale = newScale
+        onScaleChanged(newScale)
         offset = clampOffset(offset + panChange, newScale)
     }
 
@@ -374,11 +378,12 @@ fun GraphViewer(
     // Hoist context for clipboard operations
     val context = LocalContext.current
 
-    // Native paint for text (cached, scaled for mobile)
+    // Native paint for text — raw pixel units to match layout constants.
+    // Pinch-to-zoom handles readability on different screen sizes.
     val textPaint = remember {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#D4D4D4")
-            textSize = 14f * density.density
+            color = "#D4D4D4".toColorInt()
+            textSize = 16f
             typeface = android.graphics.Typeface.MONOSPACE
             isAntiAlias = true
         }
@@ -386,23 +391,23 @@ fun GraphViewer(
     val titlePaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = 16f * density.density
+            textSize = 18f
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
             isAntiAlias = true
         }
     }
     val addrPaint = remember {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#888888")
-            textSize = 12f * density.density
+            color = "#888888".toColorInt()
+            textSize = 14f
             typeface = android.graphics.Typeface.MONOSPACE
             isAntiAlias = true
         }
     }
     val truncPaint = remember {
         android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#FFCA28")
-            textSize = 12f * density.density
+            color = "#FFCA28".toColorInt()
+            textSize = 14f
             typeface = android.graphics.Typeface.MONOSPACE
             isAntiAlias = true
         }
@@ -655,22 +660,14 @@ private fun DrawScope.drawNode(
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius)
     )
 
-    // Node border — highlighted if selected
-    drawRoundRect(
-        color = if (isHighlighted) nodeHighlightBorderColor else nodeBorderColor,
-        topLeft = Offset(ln.x, ln.y),
-        size = Size(ln.width, ln.height),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius),
-        style = Stroke(width = if (isHighlighted) 3f else 1.5f)
-    )
-
     // Title bar background
     drawRoundRect(
         color = nodeTitleBgColor,
         topLeft = Offset(ln.x, ln.y),
         size = Size(ln.width, NODE_TITLE_HEIGHT),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius)
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius)
     )
+
     // Clip bottom corners of title (draw rect over bottom half)
     if (ln.node.instructions.isNotEmpty() || ln.node.body.isNotEmpty()) {
         drawRect(
@@ -679,6 +676,16 @@ private fun DrawScope.drawNode(
             size = Size(ln.width, NODE_TITLE_HEIGHT / 2)
         )
     }
+
+
+    // Node border — highlighted if selected
+    drawRoundRect(
+        color = if (isHighlighted) nodeHighlightBorderColor else nodeBorderColor,
+        topLeft = Offset(ln.x, ln.y),
+        size = Size(ln.width, ln.height),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius),
+        style = Stroke(width = if (isHighlighted) 3f else 1.5f)
+    )
 
     // Title text — vertically centered in title bar
     drawContext.canvas.nativeCanvas.drawText(
