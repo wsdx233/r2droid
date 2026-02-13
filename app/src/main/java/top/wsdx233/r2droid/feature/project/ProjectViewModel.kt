@@ -269,7 +269,7 @@ class ProjectViewModel @Inject constructor(
             if (openResult.isSuccess) {
                 // Load the script using `. script_path` command
                 // This executes all commands in the script file to restore analysis state
-                val loadScriptResult = R2PipeManager.execute(". $scriptPath")
+                val loadScriptResult = R2PipeManager.execute(". $scriptPath ; iIj")
                 
                 if (loadScriptResult.isFailure) {
                     // Log warning but continue - script may have partial success
