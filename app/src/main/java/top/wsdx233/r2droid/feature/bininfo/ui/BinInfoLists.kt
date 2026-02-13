@@ -99,11 +99,8 @@ private fun TintedItemSurface(
         tonalElevation = 0.dp,
         shape = shape
     ) {
-        Row(modifier = Modifier.height(IntrinsicSize.Min).fillMaxWidth()) {
-            AccentBar(accentColor)
-            Box(modifier = Modifier.weight(1f)) {
-                content()
-            }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            content()
         }
     }
 }
@@ -461,9 +458,15 @@ fun FunctionItem(func: FunctionInfo, actions: ListItemActions) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         InfoTag("sz:${func.size}")
                         InfoTag("bbs:${func.nbbs}")
-                        if (func.signature.isNotEmpty()) {
-                            InfoTag(func.signature, MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    }
+                    if (func.signature.isNotEmpty()) {
+                        Text(
+                            text = func.signature,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 AddressBadge(func.addr, accent)
