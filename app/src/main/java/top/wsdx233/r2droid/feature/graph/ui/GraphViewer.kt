@@ -3,8 +3,7 @@ package top.wsdx233.r2droid.feature.graph.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DropdownMenu
@@ -350,12 +349,6 @@ fun GraphViewer(
         return Offset(off.x.coerceIn(minOx, maxOx), off.y.coerceIn(minOy, maxOy))
     }
 
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newScale = (scale * zoomChange).coerceIn(0.15f, 5f)
-        scale = newScale
-        onScaleChanged(newScale)
-        offset = clampOffset(offset + panChange, newScale)
-    }
 
     // Scroll-to-selection: pan to the highlighted node
     val scrollTrigger by scrollToSelectionTrigger.collectAsState()
@@ -418,7 +411,20 @@ fun GraphViewer(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF1E1E1E))
-                .transformable(state = transformState)
+                .pointerInput(Unit) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        val oldScale = scale
+                        val newScale = (oldScale * zoom).coerceIn(0.15f, 5f)
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        // Keep the graph point under the centroid stationary
+                        val centroidRel = Offset(centroid.x - cx, centroid.y - cy)
+                        val newOffset = centroidRel - (centroidRel - offset) * (newScale / oldScale) + pan
+                        scale = newScale
+                        onScaleChanged(newScale)
+                        offset = clampOffset(newOffset, newScale)
+                    }
+                }
                 .pointerInput(layoutNodes, scale, offset) {
                     detectTapGestures { tapOffset ->
                         val cx = size.width / 2f
