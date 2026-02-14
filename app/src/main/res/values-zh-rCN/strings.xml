@@ -372,4 +372,48 @@
     <string name="update_no_update">您正在使用最新版本</string>
     <string name="update_check_failed">检查更新失败</string>
 
+    <!-- AI Chat -->
+    <string name="proj_category_ai">AI</string>
+    <string name="ai_tab_chat">聊天</string>
+    <string name="ai_tab_settings">提供商</string>
+    <string name="ai_role_you">你</string>
+    <string name="ai_role_assistant">助手</string>
+    <string name="ai_role_execution">执行结果</string>
+    <string name="ai_role_system">系统</string>
+    <string name="ai_input_hint">让 AI 分析...</string>
+    <string name="ai_send">发送</string>
+    <string name="ai_stop">停止</string>
+    <string name="ai_thinking">思考中...</string>
+    <string name="ai_new_chat">新对话</string>
+    <string name="ai_system_prompt">系统提示词</string>
+    <string name="ai_prompt_label">系统提示词</string>
+    <string name="ai_prompt_reset">恢复默认</string>
+    <string name="ai_copy">复制</string>
+    <string name="ai_copied">已复制</string>
+    <string name="ai_edit">编辑</string>
+    <string name="ai_edit_resend">编辑并重新发送</string>
+    <string name="ai_edit_message">编辑消息</string>
+    <string name="ai_resend">重新发送</string>
+    <string name="ai_regenerate">重新生成</string>
+    <string name="ai_delete">删除</string>
+    <string name="ai_save">保存</string>
+    <string name="ai_cancel">取消</string>
+    <string name="ai_no_provider">未配置 AI 提供商</string>
+    <string name="ai_no_provider_hint">请在提供商标签页中添加</string>
+    <string name="ai_provider_add">添加提供商</string>
+    <string name="ai_provider_edit">编辑提供商</string>
+    <string name="ai_provider_name">提供商名称</string>
+    <string name="ai_provider_base_url">Base URL</string>
+    <string name="ai_provider_api_key">API Key</string>
+    <string name="ai_provider_models">模型</string>
+    <string name="ai_provider_models_hint">模型（逗号分隔）</string>
+    <string name="ai_provider_delete_title">删除提供商？</string>
+    <string name="ai_provider_delete_message">确定要删除"%1$s"吗？</string>
+    <string name="ai_select_copy">选择并复制</string>
+    <string name="ai_copy_all">全部复制</string>
+    <string name="ai_history">历史记录</string>
+    <string name="ai_history_empty">暂无聊天记录</string>
+    <string name="ai_history_delete_title">删除对话？</string>
+    <string name="ai_history_delete_message">确定要删除这条对话记录吗？</string>
+
 </resources>

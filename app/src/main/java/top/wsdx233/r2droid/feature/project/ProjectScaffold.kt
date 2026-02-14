@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,12 +60,16 @@ import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
+import top.wsdx233.r2droid.feature.ai.AiViewModel
+import top.wsdx233.r2droid.feature.ai.ui.AiChatScreen
+import top.wsdx233.r2droid.feature.ai.ui.AiProviderSettingsScreen
 import top.wsdx233.r2droid.feature.terminal.ui.CommandScreen
 
 enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
     List(R.string.proj_category_list, Icons.Filled.List),
     Detail(R.string.proj_category_detail, Icons.Filled.Info),
-    Project(R.string.proj_category_project, Icons.Filled.Build)
+    Project(R.string.proj_category_project, Icons.Filled.Build),
+    AI(R.string.proj_category_ai, Icons.Filled.SmartToy)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -73,6 +78,7 @@ fun ProjectScaffold(
     viewModel: ProjectViewModel,
     hexViewModel: HexViewModel = hiltViewModel(),
     disasmViewModel: DisasmViewModel = hiltViewModel(),
+    aiViewModel: AiViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -99,6 +105,7 @@ fun ProjectScaffold(
     var selectedListTabIndex by remember { mutableIntStateOf(0) }
     var selectedDetailTabIndex by remember { mutableIntStateOf(1) }
     var selectedProjectTabIndex by remember { mutableIntStateOf(0) }
+    var selectedAiTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
 
     // Hoisted ListTab state (survives category switches)
@@ -115,6 +122,7 @@ fun ProjectScaffold(
     )
     val detailTabs = listOf(R.string.proj_tab_hex, R.string.proj_tab_disassembly, R.string.proj_tab_decompile, R.string.proj_tab_graph)
     val projectTabs = listOf(R.string.proj_tab_settings, R.string.proj_tab_cmd, R.string.proj_tab_logs)
+    val aiTabs = listOf(R.string.ai_tab_chat, R.string.ai_tab_settings)
 
     Scaffold(
         topBar = {
@@ -330,6 +338,27 @@ fun ProjectScaffold(
                                 }
                             }
                         }
+                        MainCategory.AI -> {
+                            TabRow(
+                                selectedTabIndex = selectedAiTabIndex,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                indicator = { tabPositions ->
+                                    TabRowDefaults.SecondaryIndicator(
+                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedAiTabIndex]),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            ) {
+                                aiTabs.forEachIndexed { index, title ->
+                                    Tab(
+                                        selected = selectedAiTabIndex == index,
+                                        onClick = { selectedAiTabIndex = index },
+                                        text = { Text(text = stringResource(title)) }
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // Level 1: Category
@@ -410,6 +439,12 @@ fun ProjectScaffold(
                                     onCommandHistoryChange = { cmdHistory = it }
                                 )
                                 2 -> LogList(logs, onClearLogs = { viewModel.onEvent(ProjectEvent.ClearLogs) })
+                            }
+                        }
+                        MainCategory.AI -> {
+                            when (selectedAiTabIndex) {
+                                0 -> AiChatScreen(aiViewModel)
+                                1 -> AiProviderSettingsScreen(aiViewModel)
                             }
                         }
                     }

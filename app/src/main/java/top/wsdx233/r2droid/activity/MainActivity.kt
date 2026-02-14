@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         
         // Initialize SettingsManager
         top.wsdx233.r2droid.data.SettingsManager.initialize(applicationContext)
+        top.wsdx233.r2droid.feature.ai.data.AiSettingsManager.initialize(applicationContext)
         
         // 启动应用时检查并安装
         lifecycleScope.launch {
