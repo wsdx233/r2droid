@@ -359,4 +359,17 @@
     <string name="instr_detail_no_data">无指令详情。</string>
     <string name="menu_instruction_detail">指令详情</string>
 
+    <!-- Update -->
+    <string name="settings_about">关于</string>
+    <string name="update_check_title">检查更新</string>
+    <string name="update_check_desc">检查新版本</string>
+    <string name="update_checking">正在检查更新...</string>
+    <string name="update_available_title">发现新版本</string>
+    <string name="update_version_info">当前版本: %1$s\n最新版本: %2$s</string>
+    <string name="update_release_notes">更新说明:</string>
+    <string name="update_download">下载</string>
+    <string name="update_later">稍后</string>
+    <string name="update_no_update">您正在使用最新版本</string>
+    <string name="update_check_failed">检查更新失败</string>
+
 </resources>

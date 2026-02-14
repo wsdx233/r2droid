@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -230,6 +231,50 @@ fun SettingsScreen(
                     subtitle = darkModeLabel,
                     icon = Icons.Default.DarkMode,
                     onClick = { showDarkModeDialog = true }
+                )
+            }
+
+            item {
+                HorizontalDivider()
+                SettingsSectionHeader(stringResource(R.string.settings_about))
+            }
+
+            item {
+                val isChecking by top.wsdx233.r2droid.util.UpdateManager.isChecking.collectAsState()
+                val checkingText = if (isChecking) stringResource(R.string.update_checking) else stringResource(R.string.update_check_desc)
+
+                SettingsItem(
+                    title = stringResource(R.string.update_check_title),
+                    subtitle = checkingText,
+                    icon = Icons.Default.SystemUpdate,
+                    onClick = {
+                        if (!isChecking) {
+                            kotlinx.coroutines.GlobalScope.launch {
+                                try {
+                                    val update = top.wsdx233.r2droid.util.UpdateManager.checkForUpdate()
+                                    if (update == null) {
+                                        // Show "no update available" message
+                                        kotlinx.coroutines.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                context.getString(R.string.update_no_update),
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    // Show error message
+                                    kotlinx.coroutines.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.update_check_failed),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 )
             }
 

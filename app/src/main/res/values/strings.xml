@@ -356,4 +356,17 @@
     <string name="instr_detail_sign">Sign</string>
     <string name="instr_detail_no_data">No instruction detail available.</string>
     <string name="menu_instruction_detail">Instruction Detail</string>
+
+    <!-- Update -->
+    <string name="settings_about">About</string>
+    <string name="update_check_title">Check for Updates</string>
+    <string name="update_check_desc">Check for new version</string>
+    <string name="update_checking">Checking for updates...</string>
+    <string name="update_available_title">Update Available</string>
+    <string name="update_version_info">Current version: %1$s\nLatest version: %2$s</string>
+    <string name="update_release_notes">Release Notes:</string>
+    <string name="update_download">Download</string>
+    <string name="update_later">Later</string>
+    <string name="update_no_update">You are using the latest version</string>
+    <string name="update_check_failed">Failed to check for updates</string>
 </resources>

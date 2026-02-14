@@ -60,6 +60,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             R2Installer.checkAndInstall(applicationContext)
         }
+
+        // 启动时自动检查更新（静默失败）
+        lifecycleScope.launch {
+            top.wsdx233.r2droid.util.UpdateManager.checkForUpdateSilently()
+        }
         
         enableEdgeToEdge()
         setContent {
@@ -104,9 +109,12 @@ enum class AppScreen {
 fun MainAppContent() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    
+
     // Check permission state
     var hasPermission by remember { mutableStateOf(PermissionManager.hasStoragePermission(context)) }
+
+    // Check for updates
+    val updateInfo by top.wsdx233.r2droid.util.UpdateManager.updateInfo.collectAsState()
 
     // Re-check permission when app resumes (in case user went to settings)
     DisposableEffect(lifecycleOwner) {
@@ -119,6 +127,14 @@ fun MainAppContent() {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    // Show update dialog if update is available
+    updateInfo?.let { update ->
+        top.wsdx233.r2droid.core.ui.dialogs.UpdateDialog(
+            updateInfo = update,
+            onDismiss = { top.wsdx233.r2droid.util.UpdateManager.clearUpdateInfo() }
+        )
     }
 
     if (!hasPermission) {
