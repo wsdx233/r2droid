@@ -48,6 +48,10 @@
 
 > **Note**: The app includes a pre-compiled `radare2` binary and assets which are extracted upon first launch.
 
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and version history.
+
 ## 📄 License
 
 This project is open-source. See the [LICENSE](LICENSE) file for details.
