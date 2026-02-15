@@ -160,14 +160,25 @@ class ProjectRepository @Inject constructor() {
         }
     }
 
-    suspend fun getDecompilation(offset: Long): Result<DecompilationData> {
-        // pdgj: Print Decompiled Code (User specified command/format)
-        // Note: standard r2 might behave differently, assuming "pdgj" returns the structure provided by user.
-        val cmd = "pdgj @ $offset"
-         return R2PipeManager.executeJson(cmd).mapCatching { output ->
-            if (output.isBlank()) throw RuntimeException("Empty decompilation output")
-            val json = JSONObject(output)
-            DecompilationData.fromJson(json)
+    suspend fun getDecompilation(offset: Long, decompilerType: String = "r2ghidra"): Result<DecompilationData> {
+        return when (decompilerType) {
+            "native" -> {
+                // pdc: radare2 native pseudo-code (plain text)
+                val cmd = "pdc @ $offset"
+                R2PipeManager.execute(cmd).mapCatching { output ->
+                    if (output.isBlank()) throw RuntimeException("Empty decompilation output")
+                    DecompilationData(code = output.trim(), annotations = emptyList())
+                }
+            }
+            else -> {
+                // pdgj: r2ghidra decompiler (JSON with annotations)
+                val cmd = "pdgj @ $offset"
+                R2PipeManager.executeJson(cmd).mapCatching { output ->
+                    if (output.isBlank()) throw RuntimeException("Empty decompilation output")
+                    val json = JSONObject(output)
+                    DecompilationData.fromJson(json)
+                }
+            }
         }
     }
     suspend fun getFunctionStart(addr: Long): Result<Long> {

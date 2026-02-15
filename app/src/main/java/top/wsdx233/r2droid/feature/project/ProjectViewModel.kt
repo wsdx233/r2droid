@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 
 import top.wsdx233.r2droid.core.data.source.R2PipeDataSource
 import top.wsdx233.r2droid.core.data.model.*
+import top.wsdx233.r2droid.data.SettingsManager
 import top.wsdx233.r2droid.feature.project.data.ProjectRepository
 import top.wsdx233.r2droid.feature.project.data.SavedProjectRepository
 import top.wsdx233.r2droid.util.R2PipeManager
@@ -41,6 +42,7 @@ sealed interface ProjectEvent {
     data class LoadStrings(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadFunctions(val forceRefresh: Boolean = false) : ProjectEvent
     object LoadDecompilation : ProjectEvent
+    data class SwitchDecompiler(val decompilerType: String) : ProjectEvent
     data class LoadGraph(val graphType: GraphType) : ProjectEvent
     object Initialize : ProjectEvent
     object StartRestoreSession : ProjectEvent
@@ -117,6 +119,10 @@ class ProjectViewModel @Inject constructor(
     // Scroll to selection trigger - increment to trigger scroll to current cursor position
     private val _scrollToSelectionTrigger = MutableStateFlow(0)
     val scrollToSelectionTrigger: StateFlow<Int> = _scrollToSelectionTrigger.asStateFlow()
+
+    // Project-scoped decompiler type (initialized from global default)
+    private val _currentDecompiler = MutableStateFlow(SettingsManager.decompilerDefault)
+    val currentDecompiler: StateFlow<String> = _currentDecompiler.asStateFlow()
     
     fun onEvent(event: ProjectEvent) {
         when (event) {
@@ -134,6 +140,7 @@ class ProjectViewModel @Inject constructor(
             is ProjectEvent.LoadStrings -> loadStrings(event.forceRefresh)
             is ProjectEvent.LoadFunctions -> loadFunctions(event.forceRefresh)
             is ProjectEvent.LoadDecompilation -> loadDecompilation()
+            is ProjectEvent.SwitchDecompiler -> switchDecompiler(event.decompilerType)
             is ProjectEvent.LoadGraph -> loadGraph(event.graphType)
             is ProjectEvent.ClearLogs -> clearLogs()
             is ProjectEvent.ExecuteCommand -> executeCommand(event.cmd, event.callback)
@@ -557,14 +564,22 @@ class ProjectViewModel @Inject constructor(
         }
     }
 
+    fun switchDecompiler(decompilerType: String) {
+        _currentDecompiler.value = decompilerType
+        // Clear current decompilation to force reload
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        _uiState.value = current.copy(decompilation = null)
+        loadDecompilation()
+    }
+
     fun loadDecompilation() {
         val current = _uiState.value as? ProjectUiState.Success ?: return
-        
+
         viewModelScope.launch {
             // "Get function where pointer is located"
             val funcStart = repository.getFunctionStart(currentOffset).getOrDefault(currentOffset)
-            val result = repository.getDecompilation(funcStart)
-            
+            val result = repository.getDecompilation(funcStart, _currentDecompiler.value)
+
             val currentState = _uiState.value
             if (currentState is ProjectUiState.Success) {
                 _uiState.value = currentState.copy(decompilation = result.getOrNull())

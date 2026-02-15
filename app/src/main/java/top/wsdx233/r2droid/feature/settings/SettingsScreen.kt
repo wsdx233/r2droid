@@ -51,7 +51,16 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
 
     private val _darkMode = MutableStateFlow(SettingsManager.darkMode)
     val darkMode = _darkMode.asStateFlow()
-    
+
+    private val _decompilerShowLineNumbers = MutableStateFlow(SettingsManager.decompilerShowLineNumbers)
+    val decompilerShowLineNumbers = _decompilerShowLineNumbers.asStateFlow()
+
+    private val _decompilerWordWrap = MutableStateFlow(SettingsManager.decompilerWordWrap)
+    val decompilerWordWrap = _decompilerWordWrap.asStateFlow()
+
+    private val _decompilerDefault = MutableStateFlow(SettingsManager.decompilerDefault)
+    val decompilerDefault = _decompilerDefault.asStateFlow()
+
     // Initialize r2rc content
     fun loadR2rcContent(context: Context) {
         _r2rcContent.value = SettingsManager.getR2rcContent(context)
@@ -91,17 +100,38 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         _darkMode.value = mode
     }
 
+    fun setDecompilerShowLineNumbers(value: Boolean) {
+        SettingsManager.decompilerShowLineNumbers = value
+        _decompilerShowLineNumbers.value = value
+    }
+
+    fun setDecompilerWordWrap(value: Boolean) {
+        SettingsManager.decompilerWordWrap = value
+        _decompilerWordWrap.value = value
+    }
+
+    fun setDecompilerDefault(value: String) {
+        SettingsManager.decompilerDefault = value
+        _decompilerDefault.value = value
+    }
+
     fun resetAll(context: Context) {
         SettingsManager.fontPath = null
         SettingsManager.language = "system"
         SettingsManager.projectHome = null
         SettingsManager.darkMode = "system"
         SettingsManager.setR2rcContent(context, "")
+        SettingsManager.decompilerShowLineNumbers = true
+        SettingsManager.decompilerWordWrap = false
+        SettingsManager.decompilerDefault = "r2ghidra"
         _fontPath.value = null
         _language.value = "system"
         _projectHome.value = null
         _darkMode.value = "system"
         _r2rcContent.value = ""
+        _decompilerShowLineNumbers.value = true
+        _decompilerWordWrap.value = false
+        _decompilerDefault.value = "r2ghidra"
     }
 }
 
@@ -116,6 +146,9 @@ fun SettingsScreen(
     val language by viewModel.language.collectAsState()
     val projectHome by viewModel.projectHome.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
+    val decompilerShowLineNumbers by viewModel.decompilerShowLineNumbers.collectAsState()
+    val decompilerWordWrap by viewModel.decompilerWordWrap.collectAsState()
+    val decompilerDefault by viewModel.decompilerDefault.collectAsState()
 
     val context = LocalContext.current
     
@@ -129,6 +162,7 @@ fun SettingsScreen(
     var showRestartDialog by remember { mutableStateOf(false) }
     var showMigrateDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showDecompilerDialog by remember { mutableStateOf(false) }
     var pendingNewProjectHome by remember { mutableStateOf<String?>(null) }
     var oldProjectHome by remember { mutableStateOf<String?>(null) }
     
@@ -233,6 +267,42 @@ fun SettingsScreen(
                     subtitle = darkModeLabel,
                     icon = Icons.Default.DarkMode,
                     onClick = { showDarkModeDialog = true }
+                )
+            }
+
+            item {
+                HorizontalDivider()
+                SettingsSectionHeader(stringResource(R.string.settings_decompiler))
+            }
+
+            item {
+                SettingsToggleItem(
+                    title = stringResource(R.string.settings_decompiler_show_line_numbers),
+                    subtitle = stringResource(R.string.settings_decompiler_show_line_numbers_desc),
+                    checked = decompilerShowLineNumbers,
+                    onCheckedChange = { viewModel.setDecompilerShowLineNumbers(it) }
+                )
+            }
+
+            item {
+                SettingsToggleItem(
+                    title = stringResource(R.string.settings_decompiler_word_wrap),
+                    subtitle = stringResource(R.string.settings_decompiler_word_wrap_desc),
+                    checked = decompilerWordWrap,
+                    onCheckedChange = { viewModel.setDecompilerWordWrap(it) }
+                )
+            }
+
+            item {
+                val decompilerLabel = when(decompilerDefault) {
+                    "native" -> stringResource(R.string.decompiler_native)
+                    else -> stringResource(R.string.decompiler_r2ghidra)
+                }
+                SettingsItem(
+                    title = stringResource(R.string.settings_decompiler_default),
+                    subtitle = decompilerLabel,
+                    icon = Icons.Default.Settings,
+                    onClick = { showDecompilerDialog = true }
                 )
             }
 
@@ -410,6 +480,24 @@ fun SettingsScreen(
         )
     }
 
+    if (showDecompilerDialog) {
+        AlertDialog(
+            onDismissRequest = { showDecompilerDialog = false },
+            title = { Text(stringResource(R.string.settings_decompiler_default)) },
+            text = {
+                Column {
+                    LanguageOption(stringResource(R.string.decompiler_r2ghidra), "r2ghidra", decompilerDefault) { viewModel.setDecompilerDefault(it); showDecompilerDialog = false }
+                    LanguageOption(stringResource(R.string.decompiler_native), "native", decompilerDefault) { viewModel.setDecompilerDefault(it); showDecompilerDialog = false }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDecompilerDialog = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            }
+        )
+    }
+
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
@@ -456,6 +544,23 @@ fun SettingsItem(
         leadingContent = { Icon(icon, contentDescription = null) },
         trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
         modifier = Modifier.clickable(onClick = onClick)
+    )
+}
+
+@Composable
+fun SettingsToggleItem(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        trailingContent = {
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        },
+        modifier = Modifier.clickable { onCheckedChange(!checked) }
     )
 }
 

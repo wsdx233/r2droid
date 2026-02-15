@@ -186,6 +186,55 @@ fun ProjectScaffold(
                                 Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.proj_nav_scroll_to_selection))
                             }
                         }
+                        // Decompiler switcher button (only on Decompile tab)
+                        if (selectedDetailTabIndex == 2) {
+                            var showDecompilerMenu by remember { mutableStateOf(false) }
+                            val currentDecompiler by viewModel.currentDecompiler.collectAsState()
+                            Box {
+                                androidx.compose.material3.IconButton(onClick = { showDecompilerMenu = true }) {
+                                    Icon(Icons.Filled.Build, contentDescription = stringResource(R.string.decompiler_switch))
+                                }
+                                androidx.compose.material3.DropdownMenu(
+                                    expanded = showDecompilerMenu,
+                                    onDismissRequest = { showDecompilerMenu = false }
+                                ) {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                androidx.compose.material3.RadioButton(
+                                                    selected = currentDecompiler == "r2ghidra",
+                                                    onClick = null
+                                                )
+                                                Text(stringResource(R.string.decompiler_r2ghidra), modifier = Modifier.padding(start = 8.dp))
+                                            }
+                                        },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            if (currentDecompiler != "r2ghidra") {
+                                                viewModel.onEvent(ProjectEvent.SwitchDecompiler("r2ghidra"))
+                                            }
+                                        }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                androidx.compose.material3.RadioButton(
+                                                    selected = currentDecompiler == "native",
+                                                    onClick = null
+                                                )
+                                                Text(stringResource(R.string.decompiler_native), modifier = Modifier.padding(start = 8.dp))
+                                            }
+                                        },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            if (currentDecompiler != "native") {
+                                                viewModel.onEvent(ProjectEvent.SwitchDecompiler("native"))
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
                         androidx.compose.material3.IconButton(onClick = { showJumpDialog = true }) {
                             Icon(Icons.AutoMirrored.Filled.MenuOpen, contentDescription = stringResource(R.string.menu_jump))
                         }

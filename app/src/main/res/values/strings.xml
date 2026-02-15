@@ -106,6 +106,18 @@
     <string name="settings_reset_all_desc">Restore all settings to defaults</string>
     <string name="settings_reset_all_confirm">All settings will be restored to their default values. Continue?</string>
 
+    <!-- Decompiler Settings -->
+    <string name="settings_decompiler">Decompiler</string>
+    <string name="settings_decompiler_show_line_numbers">Show Line Numbers</string>
+    <string name="settings_decompiler_show_line_numbers_desc">Display line numbers in decompiler view</string>
+    <string name="settings_decompiler_word_wrap">Word Wrap</string>
+    <string name="settings_decompiler_word_wrap_desc">Wrap long lines in decompiler view</string>
+    <string name="settings_decompiler_default">Default Decompiler</string>
+    <string name="settings_decompiler_default_desc">Decompiler engine to use</string>
+    <string name="decompiler_r2ghidra">r2ghidra</string>
+    <string name="decompiler_native">native</string>
+    <string name="decompiler_switch">Switch Decompiler</string>
+
     <!-- Install Screen -->
     <string name="install_title">Installing resources</string>
 

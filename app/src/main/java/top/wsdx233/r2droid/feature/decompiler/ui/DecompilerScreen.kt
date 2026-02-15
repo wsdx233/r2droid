@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.feature.decompiler.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.core.data.model.DecompilationData
+import top.wsdx233.r2droid.data.SettingsManager
 import top.wsdx233.r2droid.feature.project.ProjectViewModel
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
@@ -44,6 +46,8 @@ fun DecompilationViewer(
     cursorAddress: Long,
     onAddressClick: (Long) -> Unit
 ) {
+    val showLineNumbers = remember { SettingsManager.decompilerShowLineNumbers }
+    val wordWrap = remember { SettingsManager.decompilerWordWrap }
     if (data.code.isBlank()) {
           Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No Decompilation Data", style = MaterialTheme.typography.bodyLarge)
@@ -179,55 +183,61 @@ fun DecompilationViewer(
         (digits * 10 + 16).dp // Approximate width per digit + padding
     }
 
+    val horizontalScrollState = rememberScrollState()
+
     SelectionContainer {
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF1E1E1E))
         ) {
-            // Line numbers column
-            Box(
-                modifier = Modifier
-                    .width(lineNumberWidth)
-                    .verticalScroll(scrollState)
-                    .background(Color(0xFF252526))
-                    .padding(top = 8.dp, bottom = 8.dp)
-            ) {
-                Column {
-                    lines.forEachIndexed { index, _ ->
-                        val isCurrentLine = index == cursorLineIndex
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(18.dp)
-                                .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
-                            contentAlignment = Alignment.CenterEnd
-                        ) {
-                            Text(
-                                text = (index + 1).toString(),
-                                fontFamily = LocalAppFont.current,
-                                fontSize = 13.sp,
-                                color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
+            // Line numbers column (conditional)
+            if (showLineNumbers) {
+                Box(
+                    modifier = Modifier
+                        .width(lineNumberWidth)
+                        .verticalScroll(scrollState)
+                        .background(Color(0xFF252526))
+                        .padding(top = 8.dp, bottom = 8.dp)
+                ) {
+                    Column {
+                        lines.forEachIndexed { index, _ ->
+                            val isCurrentLine = index == cursorLineIndex
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(18.dp)
+                                    .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Text(
+                                    text = (index + 1).toString(),
+                                    fontFamily = LocalAppFont.current,
+                                    fontSize = 13.sp,
+                                    color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
-            
+
             // Code content
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(scrollState)
+                    .then(if (!wordWrap) Modifier.horizontalScroll(horizontalScrollState) else Modifier)
                     .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
             ) {
                 Text(
                     text = annotatedString,
                     fontFamily = LocalAppFont.current,
                     fontSize = 13.sp,
-                    color = Color(0xFFD4D4D4), // Standard light gray text
+                    color = Color(0xFFD4D4D4),
                     lineHeight = 18.sp,
+                    softWrap = wordWrap,
                     onTextLayout = { textLayoutResult = it },
                     modifier = Modifier.pointerInput(Unit) {
                         detectTapGestures { pos ->

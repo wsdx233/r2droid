@@ -78,6 +78,18 @@
     <string name="settings_reset_all_desc">将所有设置恢复为默认值</string>
     <string name="settings_reset_all_confirm">所有设置将恢复为默认值，是否继续？</string>
 
+    <!-- Decompiler Settings -->
+    <string name="settings_decompiler">反编译器</string>
+    <string name="settings_decompiler_show_line_numbers">显示行号</string>
+    <string name="settings_decompiler_show_line_numbers_desc">在反编译视图中显示行号</string>
+    <string name="settings_decompiler_word_wrap">自动换行</string>
+    <string name="settings_decompiler_word_wrap_desc">在反编译视图中自动换行</string>
+    <string name="settings_decompiler_default">默认反编译器</string>
+    <string name="settings_decompiler_default_desc">使用的反编译引擎</string>
+    <string name="decompiler_r2ghidra">r2ghidra</string>
+    <string name="decompiler_native">native</string>
+    <string name="decompiler_switch">切换反编译器</string>
+
     <!-- Install Screen -->
     <string name="install_title">正在安装资源</string>
 

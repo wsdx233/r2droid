@@ -12,6 +12,9 @@ object SettingsManager {
     private const val KEY_LANGUAGE = "language"
     private const val KEY_PROJECT_HOME = "project_home"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_DECOMPILER_SHOW_LINE_NUMBERS = "decompiler_show_line_numbers"
+    private const val KEY_DECOMPILER_WORD_WRAP = "decompiler_word_wrap"
+    private const val KEY_DECOMPILER_DEFAULT = "decompiler_default"
 
     private lateinit var prefs: SharedPreferences
 
@@ -82,4 +85,18 @@ object SettingsManager {
             prefs.edit().putString(KEY_DARK_MODE, value).apply()
             _darkModeFlow.value = value
         }
+
+    // Decompiler settings
+    var decompilerShowLineNumbers: Boolean
+        get() = prefs.getBoolean(KEY_DECOMPILER_SHOW_LINE_NUMBERS, true)
+        set(value) { prefs.edit().putBoolean(KEY_DECOMPILER_SHOW_LINE_NUMBERS, value).apply() }
+
+    var decompilerWordWrap: Boolean
+        get() = prefs.getBoolean(KEY_DECOMPILER_WORD_WRAP, false)
+        set(value) { prefs.edit().putBoolean(KEY_DECOMPILER_WORD_WRAP, value).apply() }
+
+    // "r2ghidra" or "native"
+    var decompilerDefault: String
+        get() = prefs.getString(KEY_DECOMPILER_DEFAULT, "r2ghidra") ?: "r2ghidra"
+        set(value) { prefs.edit().putString(KEY_DECOMPILER_DEFAULT, value).apply() }
 }
