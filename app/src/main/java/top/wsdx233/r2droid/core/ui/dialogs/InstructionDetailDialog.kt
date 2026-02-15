@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -70,7 +71,9 @@ fun InstructionDetailDialog(
                     }
                 }
                 else -> {
-                    InstructionDetailContent(detail, onJump)
+                    InstructionDetailContent(detail, onJump = onJump?.let { jump ->
+                        { addr: Long -> jump(addr); onDismiss() }
+                    })
                 }
             }
         },
@@ -87,6 +90,7 @@ private fun InstructionDetailContent(
     detail: InstructionDetail,
     onJump: ((Long) -> Unit)?
 ) {
+    SelectionContainer {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -144,6 +148,7 @@ private fun InstructionDetailContent(
             if (detail.sign) stringResource(R.string.common_yes)
             else stringResource(R.string.common_no)
         )
+    }
     }
 }
 
