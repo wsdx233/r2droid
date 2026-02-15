@@ -16,8 +16,8 @@ android {
         applicationId = "top.wsdx233.r2droid"
         minSdk = 24
         targetSdk = 26
-        versionCode = 2602150
-        versionName = "0.1.6"
+        versionCode = 2602151
+        versionName = "0.1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
