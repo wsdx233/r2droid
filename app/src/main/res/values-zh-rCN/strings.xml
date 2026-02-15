@@ -161,6 +161,10 @@
     <string name="hex_modify_string">修改字符串 (w)</string>
     <string name="hex_modify_opcode">修改指令 (wa)</string>
     <string name="hex_modify_default">修改</string>
+    <string name="reopen_write_title">文件不可写</string>
+    <string name="reopen_write_message">当前文件未以写入模式打开，是否重新以写入模式打开？</string>
+    <string name="reopen_write_confirm">重新打开</string>
+    <string name="reopen_write_cancel">取消</string>
     <string name="hex_toggle_keyboard_desc">切换键盘</string>
     <!-- Common -->
     <string name="common_search">搜索...</string>

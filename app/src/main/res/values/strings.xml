@@ -189,6 +189,10 @@
     <string name="hex_modify_string">Modify String (w)</string>
     <string name="hex_modify_opcode">Modify Opcode (wa)</string>
     <string name="hex_modify_default">Modify</string>
+    <string name="reopen_write_title">File Not Writable</string>
+    <string name="reopen_write_message">The file is not opened in write mode. Reopen in write mode?</string>
+    <string name="reopen_write_confirm">Reopen</string>
+    <string name="reopen_write_cancel">Cancel</string>
     <string name="hex_toggle_keyboard_desc">Toggle Keyboard</string>
     <!-- Common -->
     <string name="common_search">Search...</string>

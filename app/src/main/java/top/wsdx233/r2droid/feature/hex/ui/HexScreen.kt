@@ -95,8 +95,13 @@ fun HexViewer(
     // Modification Dialogs
     var showModifyDialog by remember { mutableStateOf(false) }
     var modifyType by remember { mutableStateOf("hex") } // hex, string, asm
+    var modifyInitialValue by remember { mutableStateOf<String?>("") }
     var showCustomCommandDialog by remember { mutableStateOf(false) }
-    
+
+    // Reopen in write mode dialog
+    var showReopenDialog by remember { mutableStateOf(false) }
+    var pendingWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     val clipboardManager = LocalClipboardManager.current
     
     if (hexDataManager == null) {
@@ -189,6 +194,20 @@ fun HexViewer(
         // Overlay container for Menu and Dialogs
 
         
+        // Async fetch for modify dialog initial value
+        LaunchedEffect(showModifyDialog, modifyType, menuTargetAddress) {
+            if (showModifyDialog && menuTargetAddress != null && modifyInitialValue == null) {
+                val cmd = when (modifyType) {
+                    "string" -> "ps @ ${menuTargetAddress}"
+                    "asm" -> "pi 1 @ ${menuTargetAddress}"
+                    else -> null
+                }
+                modifyInitialValue = if (cmd != null) {
+                    top.wsdx233.r2droid.util.R2PipeManager.execute(cmd).getOrDefault("").trim()
+                } else ""
+            }
+        }
+
         // Modify Dialog
         if (showModifyDialog && menuTargetAddress != null) {
             val title = when(modifyType) {
@@ -197,18 +216,37 @@ fun HexViewer(
                 "asm" -> stringResource(R.string.hex_modify_opcode)
                 else -> stringResource(R.string.hex_modify_default)
             }
-            ModifyDialog(
-                title = title,
-                initialValue = "",
-                onDismiss = { showModifyDialog = false },
-                onConfirm = { value ->
-                     when(modifyType) {
-                        "hex" -> viewModel.onEvent(HexEvent.WriteHex(menuTargetAddress!!, value))
-                        "string" -> viewModel.onEvent(HexEvent.WriteString(menuTargetAddress!!, value))
-                        "asm" -> viewModel.onEvent(HexEvent.WriteAsm(menuTargetAddress!!, value))
-                     }
-                }
-            )
+            if (modifyInitialValue != null) {
+                ModifyDialog(
+                    title = title,
+                    initialValue = modifyInitialValue!!,
+                    onDismiss = { showModifyDialog = false; modifyInitialValue = "" },
+                    onConfirm = { value ->
+                         when(modifyType) {
+                            "hex" -> viewModel.onEvent(HexEvent.WriteHex(menuTargetAddress!!, value))
+                            "string" -> viewModel.onEvent(HexEvent.WriteString(menuTargetAddress!!, value))
+                            "asm" -> viewModel.onEvent(HexEvent.WriteAsm(menuTargetAddress!!, value))
+                         }
+                    }
+                )
+            } else {
+                // Loading state while fetching initial value
+                AlertDialog(
+                    onDismissRequest = { showModifyDialog = false; modifyInitialValue = "" },
+                    title = { Text(title) },
+                    text = {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { showModifyDialog = false; modifyInitialValue = "" }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
         }
         
         // Custom Command Dialog
@@ -216,6 +254,33 @@ fun HexViewer(
             CustomCommandDialog(
                 onDismiss = { showCustomCommandDialog = false },
                 onConfirm = { /* handled internally */ }
+            )
+        }
+
+        // Reopen in write mode dialog
+        if (showReopenDialog) {
+            AlertDialog(
+                onDismissRequest = { showReopenDialog = false; pendingWriteAction = null },
+                title = { Text(stringResource(R.string.reopen_write_title)) },
+                text = { Text(stringResource(R.string.reopen_write_message)) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        showReopenDialog = false
+                        val action = pendingWriteAction
+                        pendingWriteAction = null
+                        coroutineScope.launch {
+                            top.wsdx233.r2droid.util.R2PipeManager.execute("oo+")
+                            action?.invoke()
+                        }
+                    }) {
+                        Text(stringResource(R.string.reopen_write_confirm))
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showReopenDialog = false; pendingWriteAction = null }) {
+                        Text(stringResource(R.string.reopen_write_cancel))
+                    }
+                }
             )
         }
 
@@ -385,9 +450,25 @@ fun HexViewer(
                                                 showMenu = false
                                             },
                                             onModify = { type ->
-                                                modifyType = type
-                                                showModifyDialog = true
                                                 showMenu = false
+                                                coroutineScope.launch {
+                                                    val isWritable = try {
+                                                        val ijResult = top.wsdx233.r2droid.util.R2PipeManager.execute("ij").getOrDefault("{}")
+                                                        org.json.JSONObject(ijResult).getJSONObject("core").getBoolean("iorw")
+                                                    } catch (_: Exception) { false }
+                                                    if (isWritable) {
+                                                        modifyType = type
+                                                        showModifyDialog = true
+                                                        modifyInitialValue = if (type == "hex") "" else null
+                                                    } else {
+                                                        pendingWriteAction = {
+                                                            modifyType = type
+                                                            showModifyDialog = true
+                                                            modifyInitialValue = if (type == "hex") "" else null
+                                                        }
+                                                        showReopenDialog = true
+                                                    }
+                                                }
                                             },
                                             onXrefs = {
                                                 onShowXrefs(menuTargetAddress!!)
@@ -445,9 +526,25 @@ fun HexViewer(
                                                     showMenu = false
                                                 },
                                                 onModify = { type ->
-                                                    modifyType = type
-                                                    showModifyDialog = true
                                                     showMenu = false
+                                                    coroutineScope.launch {
+                                                        val isWritable = try {
+                                                            val ijResult = top.wsdx233.r2droid.util.R2PipeManager.execute("ij").getOrDefault("{}")
+                                                            org.json.JSONObject(ijResult).getJSONObject("core").getBoolean("iorw")
+                                                        } catch (_: Exception) { false }
+                                                        if (isWritable) {
+                                                            modifyType = type
+                                                            showModifyDialog = true
+                                                            modifyInitialValue = if (type == "hex") "" else null
+                                                        } else {
+                                                            pendingWriteAction = {
+                                                                modifyType = type
+                                                                showModifyDialog = true
+                                                                modifyInitialValue = if (type == "hex") "" else null
+                                                            }
+                                                            showReopenDialog = true
+                                                        }
+                                                    }
                                                 },
                                                 onXrefs = {
                                                     onShowXrefs(menuTargetAddress!!)
@@ -503,7 +600,25 @@ fun HexViewer(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = { showKeyboard = !showKeyboard },
+                    onClick = {
+                        if (showKeyboard) {
+                            showKeyboard = false
+                            editingBuffer = ""
+                        } else {
+                            coroutineScope.launch {
+                                val isWritable = try {
+                                    val ijResult = top.wsdx233.r2droid.util.R2PipeManager.execute("ij").getOrDefault("{}")
+                                    org.json.JSONObject(ijResult).getJSONObject("core").getBoolean("iorw")
+                                } catch (_: Exception) { false }
+                                if (isWritable) {
+                                    showKeyboard = true
+                                } else {
+                                    pendingWriteAction = { showKeyboard = true }
+                                    showReopenDialog = true
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(

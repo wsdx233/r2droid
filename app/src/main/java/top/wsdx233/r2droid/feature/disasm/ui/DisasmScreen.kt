@@ -53,6 +53,7 @@ import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 
 import top.wsdx233.r2droid.core.ui.components.AutoHideAddressScrollbar
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
+import top.wsdx233.r2droid.R
 
 /**
  * Virtualized Disassembly Viewer - uses DisasmDataManager for smooth infinite scrolling.
@@ -78,11 +79,16 @@ fun DisassemblyViewer(
     // Menu & Dialog States
     var showMenu by remember { mutableStateOf(false) }
     var menuTargetAddress by remember { mutableStateOf<Long?>(null) }
-    
+
     var showModifyDialog by remember { mutableStateOf(false) }
     var modifyType by remember { mutableStateOf("hex") } // hex, string, asm
+    var modifyInitialValue by remember { mutableStateOf<String?>("") }
     var showCustomCommandDialog by remember { mutableStateOf(false) }
-    
+
+    // Reopen in write mode dialog
+    var showReopenDialog by remember { mutableStateOf(false) }
+    var pendingWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     val clipboardManager = LocalClipboardManager.current
     
     if (disasmDataManager == null) {
@@ -308,9 +314,36 @@ fun DisassemblyViewer(
                                     showMenu = false
                                 },
                                 onModify = { type ->
-                                    modifyType = type
-                                    showModifyDialog = true
                                     showMenu = false
+                                    val capturedOpcode = instr.opcode
+                                    coroutineScope.launch {
+                                        val isWritable = try {
+                                            val ijResult = top.wsdx233.r2droid.util.R2PipeManager.execute("ij").getOrDefault("{}")
+                                            org.json.JSONObject(ijResult).getJSONObject("core").getBoolean("iorw")
+                                        } catch (_: Exception) { false }
+                                        if (isWritable) {
+                                            modifyType = type
+                                            showModifyDialog = true
+                                            modifyInitialValue = when (type) {
+                                                "asm" -> capturedOpcode
+                                                "hex" -> ""
+                                                "string" -> null
+                                                else -> ""
+                                            }
+                                        } else {
+                                            pendingWriteAction = {
+                                                modifyType = type
+                                                showModifyDialog = true
+                                                modifyInitialValue = when (type) {
+                                                    "asm" -> capturedOpcode
+                                                    "hex" -> ""
+                                                    "string" -> null
+                                                    else -> ""
+                                                }
+                                            }
+                                            showReopenDialog = true
+                                        }
+                                    }
                                 },
                                 onXrefs = {
                                     viewModel.onEvent(DisasmEvent.FetchXrefs(instr.addr))
@@ -410,6 +443,14 @@ fun DisassemblyViewer(
         // Xrefs Dialog
 
         
+        // Async fetch for modify dialog initial value
+        LaunchedEffect(showModifyDialog, modifyType, menuTargetAddress) {
+            if (showModifyDialog && modifyType == "string" && menuTargetAddress != null && modifyInitialValue == null) {
+                val result = top.wsdx233.r2droid.util.R2PipeManager.execute("ps @ ${menuTargetAddress}")
+                modifyInitialValue = result.getOrDefault("").trim()
+            }
+        }
+
         // Modify Dialog
         if (showModifyDialog && menuTargetAddress != null) {
             val title = when(modifyType) {
@@ -418,20 +459,66 @@ fun DisassemblyViewer(
                 "asm" -> "Modify Opcode (wa)"
                 else -> "Modify"
             }
-            ModifyDialog(
-                title = title,
-                initialValue = "",
-                onDismiss = { showModifyDialog = false },
-                onConfirm = { value ->
-                     when(modifyType) {
-                        "hex" -> viewModel.onEvent(DisasmEvent.WriteHex(menuTargetAddress!!, value))
-                        "string" -> viewModel.onEvent(DisasmEvent.WriteString(menuTargetAddress!!, value))
-                        "asm" -> viewModel.onEvent(DisasmEvent.WriteAsm(menuTargetAddress!!, value))
-                     }
+            if (modifyInitialValue != null) {
+                ModifyDialog(
+                    title = title,
+                    initialValue = modifyInitialValue!!,
+                    onDismiss = { showModifyDialog = false; modifyInitialValue = "" },
+                    onConfirm = { value ->
+                         when(modifyType) {
+                            "hex" -> viewModel.onEvent(DisasmEvent.WriteHex(menuTargetAddress!!, value))
+                            "string" -> viewModel.onEvent(DisasmEvent.WriteString(menuTargetAddress!!, value))
+                            "asm" -> viewModel.onEvent(DisasmEvent.WriteAsm(menuTargetAddress!!, value))
+                         }
+                    }
+                )
+            } else {
+                // Loading state while fetching initial value
+                AlertDialog(
+                    onDismissRequest = { showModifyDialog = false; modifyInitialValue = "" },
+                    title = { Text(title) },
+                    text = {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { showModifyDialog = false; modifyInitialValue = "" }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+        }
+
+        // Reopen in write mode dialog
+        if (showReopenDialog) {
+            AlertDialog(
+                onDismissRequest = { showReopenDialog = false; pendingWriteAction = null },
+                title = { Text(androidx.compose.ui.res.stringResource(R.string.reopen_write_title)) },
+                text = { Text(androidx.compose.ui.res.stringResource(R.string.reopen_write_message)) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        showReopenDialog = false
+                        val action = pendingWriteAction
+                        pendingWriteAction = null
+                        coroutineScope.launch {
+                            top.wsdx233.r2droid.util.R2PipeManager.execute("oo+")
+                            action?.invoke()
+                        }
+                    }) {
+                        Text(androidx.compose.ui.res.stringResource(R.string.reopen_write_confirm))
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showReopenDialog = false; pendingWriteAction = null }) {
+                        Text(androidx.compose.ui.res.stringResource(R.string.reopen_write_cancel))
+                    }
                 }
             )
         }
-        
+
         // Custom Command Dialog
         if (showCustomCommandDialog) {
             CustomCommandDialog(
