@@ -111,7 +111,8 @@ fun ProjectDetailView(
                     viewModel = viewModel,
                     data = state.decompilation,
                     cursorAddress = state.cursorAddress,
-                    onAddressClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) }
+                    onAddressClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },
+                    onJumpAndDecompile = { addr -> viewModel.onEvent(ProjectEvent.JumpAndDecompile(addr)) }
                 )
             }
         }

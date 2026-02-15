@@ -44,7 +44,8 @@ fun DecompilationViewer(
     viewModel: ProjectViewModel,
     data: DecompilationData,
     cursorAddress: Long,
-    onAddressClick: (Long) -> Unit
+    onAddressClick: (Long) -> Unit,
+    onJumpAndDecompile: (Long) -> Unit = {}
 ) {
     val showLineNumbers = remember { SettingsManager.decompilerShowLineNumbers }
     val wordWrap = remember { SettingsManager.decompilerWordWrap }
@@ -239,14 +240,20 @@ fun DecompilationViewer(
                     lineHeight = 18.sp,
                     softWrap = wordWrap,
                     onTextLayout = { textLayoutResult = it },
-                    modifier = Modifier.pointerInput(Unit) {
+                    modifier = Modifier.pointerInput(cursorAddress) {
                         detectTapGestures { pos ->
                             val layout = textLayoutResult ?: return@detectTapGestures
                             if (pos.y <= layout.size.height) {
                                 val offset = layout.getOffsetForPosition(pos)
                                 val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
                                 if (note != null && note.offset != 0L) {
-                                    onAddressClick(note.offset)
+                                    if (note.offset == cursorAddress) {
+                                        // Already selected — jump to function and refresh decompilation
+                                        onJumpAndDecompile(note.offset)
+                                    } else {
+                                        // First click — just highlight/select
+                                        onAddressClick(note.offset)
+                                    }
                                 }
                             }
                         }

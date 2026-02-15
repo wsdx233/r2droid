@@ -42,6 +42,7 @@ sealed interface ProjectEvent {
     data class LoadStrings(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadFunctions(val forceRefresh: Boolean = false) : ProjectEvent
     object LoadDecompilation : ProjectEvent
+    data class JumpAndDecompile(val address: Long) : ProjectEvent
     data class SwitchDecompiler(val decompilerType: String) : ProjectEvent
     data class LoadGraph(val graphType: GraphType) : ProjectEvent
     object Initialize : ProjectEvent
@@ -140,6 +141,7 @@ class ProjectViewModel @Inject constructor(
             is ProjectEvent.LoadStrings -> loadStrings(event.forceRefresh)
             is ProjectEvent.LoadFunctions -> loadFunctions(event.forceRefresh)
             is ProjectEvent.LoadDecompilation -> loadDecompilation()
+            is ProjectEvent.JumpAndDecompile -> jumpAndDecompile(event.address)
             is ProjectEvent.SwitchDecompiler -> switchDecompiler(event.decompilerType)
             is ProjectEvent.LoadGraph -> loadGraph(event.graphType)
             is ProjectEvent.ClearLogs -> clearLogs()
@@ -536,6 +538,30 @@ class ProjectViewModel @Inject constructor(
                 decompilation = null,
                 cursorAddress = addr
             )
+        }
+    }
+
+    /**
+     * Jump to address and immediately reload decompilation.
+     * Used when user clicks an already-selected function name in the decompiler.
+     */
+    fun jumpAndDecompile(addr: Long) {
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        pushAddressToHistory(currentOffset)
+        currentOffset = addr
+
+        viewModelScope.launch {
+            R2PipeManager.execute("s $addr")
+            val stateAfterSeek = _uiState.value as? ProjectUiState.Success ?: return@launch
+            _uiState.value = stateAfterSeek.copy(decompilation = null, cursorAddress = addr)
+
+            // Reload decompilation for the target function
+            val funcStart = repository.getFunctionStart(addr).getOrDefault(addr)
+            val result = repository.getDecompilation(funcStart, _currentDecompiler.value)
+            val currentState = _uiState.value
+            if (currentState is ProjectUiState.Success) {
+                _uiState.value = currentState.copy(decompilation = result.getOrNull())
+            }
         }
     }
 
