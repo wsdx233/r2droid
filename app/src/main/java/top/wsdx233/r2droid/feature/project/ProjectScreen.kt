@@ -39,6 +39,7 @@ fun ProjectScreen(
     var showExitDialog by remember { mutableStateOf(false) }
     var showSaveBeforeExitDialog by remember { mutableStateOf(false) }
     var exitProjectName by remember { mutableStateOf("") }
+    var pendingExitOnSave by remember { mutableStateOf(false) }
 
     // Initialize intent
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -52,16 +53,18 @@ fun ProjectScreen(
         }
     }
 
-    // Handle back press with save confirmation
+    // Handle back press with save/update confirmation
     androidx.activity.compose.BackHandler(
-        enabled = uiState is ProjectUiState.Success && R2PipeManager.currentProjectId == null
+        enabled = uiState is ProjectUiState.Success &&
+                (R2PipeManager.currentProjectId == null || R2PipeManager.isDirtyAfterSave)
     ) {
         showExitDialog = true
     }
 
-    // Handle save completion when exiting
+    // Handle save/update completion when exiting
     androidx.compose.runtime.LaunchedEffect(saveState) {
-        if (showSaveBeforeExitDialog && saveState is SaveProjectState.Success) {
+        if (pendingExitOnSave && saveState is SaveProjectState.Success) {
+            pendingExitOnSave = false
             showSaveBeforeExitDialog = false
             onNavigateBack()
         }
@@ -69,21 +72,43 @@ fun ProjectScreen(
 
     // Exit confirmation dialog
     if (showExitDialog) {
+        val isExistingProject = R2PipeManager.currentProjectId != null
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
-            title = { Text(stringResource(top.wsdx233.r2droid.R.string.project_exit_title)) },
-            text = { Text(stringResource(top.wsdx233.r2droid.R.string.project_exit_message)) },
+            title = {
+                Text(stringResource(
+                    if (isExistingProject) R.string.project_exit_update_title
+                    else R.string.project_exit_title
+                ))
+            },
+            text = {
+                Text(stringResource(
+                    if (isExistingProject) R.string.project_exit_update_message
+                    else R.string.project_exit_message
+                ))
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showExitDialog = false
-                        showSaveBeforeExitDialog = true
-                        exitProjectName = R2PipeManager.currentFilePath?.let {
-                            java.io.File(it).name
-                        } ?: "Project"
+                        if (isExistingProject) {
+                            // Directly update the existing project and exit on success
+                            pendingExitOnSave = true
+                            viewModel.onEvent(ProjectEvent.UpdateProject(R2PipeManager.currentProjectId!!))
+                        } else {
+                            // Show save-as-new dialog
+                            pendingExitOnSave = true
+                            showSaveBeforeExitDialog = true
+                            exitProjectName = R2PipeManager.currentFilePath?.let {
+                                java.io.File(it).name
+                            } ?: "Project"
+                        }
                     }
                 ) {
-                    Text(stringResource(top.wsdx233.r2droid.R.string.project_exit_save))
+                    Text(stringResource(
+                        if (isExistingProject) R.string.project_exit_update
+                        else R.string.project_exit_save
+                    ))
                 }
             },
             dismissButton = {

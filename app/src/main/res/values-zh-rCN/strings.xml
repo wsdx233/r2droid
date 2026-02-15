@@ -34,6 +34,9 @@
     <string name="project_exit_message">您有一个未保存的分析会话。退出前是否将其保存为项目？</string>
     <string name="project_exit_save">保存</string>
     <string name="project_exit_discard">丢弃</string>
+    <string name="project_exit_update_title">退出且不更新？</string>
+    <string name="project_exit_update_message">自上次保存后有新的操作。退出前是否更新项目？</string>
+    <string name="project_exit_update">更新</string>
     <string name="project_startup_flags">启动参数</string>
     <string name="project_startup_flags_hint">额外的 r2 参数 (例如 -w -n)</string>
     <string name="project_startup_flags_desc">这些参数将在恢复此项目时应用</string>

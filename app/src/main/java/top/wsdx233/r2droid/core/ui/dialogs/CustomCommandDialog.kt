@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -106,12 +107,14 @@ fun CustomCommandDialog(
                         .padding(8.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    Text(
-                        text = output.ifEmpty { "No output" },
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        color = if (output.isEmpty()) commandOutputPlaceholder else commandOutputText
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = output.ifEmpty { "No output" },
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = if (output.isEmpty()) commandOutputPlaceholder else commandOutputText
+                        )
+                    }
                 }
             }
         },

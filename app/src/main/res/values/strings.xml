@@ -46,6 +46,9 @@
     <string name="project_exit_message">You have an unsaved analysis session. Would you like to save it as a project before exiting?</string>
     <string name="project_exit_save">Save</string>
     <string name="project_exit_discard">Discard</string>
+    <string name="project_exit_update_title">Exit without updating?</string>
+    <string name="project_exit_update_message">You have unsaved changes since the last save. Would you like to update the project before exiting?</string>
+    <string name="project_exit_update">Update</string>
     <string name="project_startup_flags">Startup Flags</string>
     <string name="project_startup_flags_hint">Additional r2 flags (e.g. -w -n)</string>
     <string name="project_startup_flags_desc">These flags will be applied when restoring this project</string>

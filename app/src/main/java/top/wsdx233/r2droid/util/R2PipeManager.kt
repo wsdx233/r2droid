@@ -57,6 +57,9 @@ object R2PipeManager {
     // 可以公开设置，用于保存新项目后更新
     var currentProjectId: String? = null
 
+    // 标记自上次保存/更新后是否执行过指令（即项目是否有未保存的变更）
+    var isDirtyAfterSave: Boolean = false
+
     /**
      * 状态封装类
      * 用于描述当前 R2Pipe 的工作状态
@@ -117,6 +120,7 @@ object R2PipeManager {
                         currentFilePath = filePath // 保存当前文件路径
                         currentProjectId = pendingProjectId // 保存当前项目ID
                         pendingProjectId = null // 清除pending
+                        isDirtyAfterSave = false // 新会话，无未保存变更
                         _state.value = State.Success("Open R2Pipe session", "Session started successfully")
                         Result.success(Unit)
                     } else {
@@ -162,6 +166,7 @@ object R2PipeManager {
                     // 执行命令 (R2pipe.cmd 是阻塞调用的)
                     val output = pipe.cmd(cmd)
 
+                    isDirtyAfterSave = true
                     _state.value = State.Success(cmd, output)
                     Result.success(output)
                 } catch (e: Exception) {
@@ -233,6 +238,7 @@ object R2PipeManager {
         _isConnected.set(false)
         currentFilePath = null
         currentProjectId = null
+        isDirtyAfterSave = false
         _state.value = State.Idle
         try {
             r2Pipe?.forceQuit()

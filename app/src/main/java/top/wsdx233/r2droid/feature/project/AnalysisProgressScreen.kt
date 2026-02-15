@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -142,18 +143,20 @@ fun LogItem(entry: LogEntry) {
         else -> ""
     }
 
-    Text(
-        text = run {
-            val content = "$prefix${entry.message}"
-            if (content.length > 2000) {
-                 content.take(2000) + "... (truncated ${content.length - 2000} chars)"
-            } else {
-                 content
-            }
-        },
-        color = color,
-        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-    )
+    SelectionContainer {
+        Text(
+            text = run {
+                val content = "$prefix${entry.message}"
+                if (content.length > 2000) {
+                     content.take(2000) + "... (truncated ${content.length - 2000} chars)"
+                } else {
+                     content
+                }
+            },
+            color = color,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+        )
+    }
 }
 
 

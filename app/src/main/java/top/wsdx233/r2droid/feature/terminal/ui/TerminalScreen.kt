@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
@@ -247,35 +248,37 @@ fun CommandScreen(
                 .padding(8.dp)
                 .verticalScroll(scrollState)
         ) {
-            Column {
-                commandHistory.forEach { (cmd, result) ->
-                    // Command
-                    Text(
-                        text = "$ $cmd",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    // Result
-                    if (result.isNotEmpty()) {
+            SelectionContainer {
+                Column {
+                    commandHistory.forEach { (cmd, result) ->
+                        // Command
                         Text(
-                            text = result,
+                            text = "$ $cmd",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        // Result
+                        if (result.isNotEmpty()) {
+                            Text(
+                                text = result,
+                                color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                    }
+
+                    // Current output (if executing)
+                    if (output.isNotEmpty()) {
+                        Text(
+                            text = output,
                             color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
-                }
-                
-                // Current output (if executing)
-                if (output.isNotEmpty()) {
-                    Text(
-                        text = output,
-                        color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
             }
         }

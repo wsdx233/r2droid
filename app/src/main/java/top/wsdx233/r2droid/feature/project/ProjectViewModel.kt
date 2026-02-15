@@ -687,6 +687,7 @@ class ProjectViewModel @Inject constructor(
                 if (project != null) {
                     R2PipeManager.currentProjectId = project.id
                 }
+                R2PipeManager.isDirtyAfterSave = false
                 _saveProjectState.value = SaveProjectState.Success("Project saved successfully")
             } else {
                 _saveProjectState.value = SaveProjectState.Error(
@@ -708,8 +709,9 @@ class ProjectViewModel @Inject constructor(
             _saveProjectState.value = SaveProjectState.Saving
             
             val result = repo.updateProject(projectId)
-            
+
             if (result.isSuccess) {
+                R2PipeManager.isDirtyAfterSave = false
                 _saveProjectState.value = SaveProjectState.Success("Project updated successfully")
             } else {
                 _saveProjectState.value = SaveProjectState.Error(
