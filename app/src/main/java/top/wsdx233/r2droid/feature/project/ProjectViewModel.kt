@@ -373,6 +373,9 @@ class ProjectViewModel @Inject constructor(
                 binInfo = binInfoResult.getOrNull(),
                 cursorAddress = currentOffset
             )
+
+            // Load sections eagerly - hex/disasm views need them for boundary calculation
+            loadSections()
         }
     }
 

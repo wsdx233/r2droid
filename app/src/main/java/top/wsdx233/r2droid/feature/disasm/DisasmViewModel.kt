@@ -235,17 +235,19 @@ class DisasmViewModel @Inject constructor(
             var endAddress = 0L
 
             if (sections.isNotEmpty()) {
+                // Filter out non-mapped sections (vAddr=0 are typically debug/metadata sections)
+                val mappedSections = sections.filter { it.vAddr != 0L }
                 // For disassembly, prefer executable sections (containing 'x' in perm)
-                val execSections = sections.filter { it.perm.contains("x") }
+                val execSections = mappedSections.filter { it.perm.contains("x") }
 
                 if (execSections.isNotEmpty()) {
                     // Use executable sections range
                     startAddress = execSections.minOf { it.vAddr }
                     endAddress = execSections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
-                } else {
-                    // Fallback to all sections
-                    startAddress = sections.minOf { it.vAddr }
-                    endAddress = sections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+                } else if (mappedSections.isNotEmpty()) {
+                    // Fallback to all mapped sections
+                    startAddress = mappedSections.minOf { it.vAddr }
+                    endAddress = mappedSections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
                 }
             }
 

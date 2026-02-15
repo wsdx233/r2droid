@@ -94,9 +94,12 @@ class HexViewModel @Inject constructor(
             var endAddress = 0L
 
             if (sections.isNotEmpty()) {
-                // Find min vAddr and max (vAddr + vSize) from all sections
-                startAddress = sections.minOf { it.vAddr }
-                endAddress = sections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+                // Filter out non-mapped sections (vAddr=0 are typically debug/metadata sections)
+                val mapped = sections.filter { it.vAddr != 0L }
+                if (mapped.isNotEmpty()) {
+                    startAddress = mapped.minOf { it.vAddr }
+                    endAddress = mapped.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
+                }
             }
 
             // Fallback if sections are empty or invalid
