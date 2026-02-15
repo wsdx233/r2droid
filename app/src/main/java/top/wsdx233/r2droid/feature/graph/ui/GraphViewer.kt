@@ -592,14 +592,14 @@ fun GraphViewer(
     }
 
 
-    // Scroll-to-selection: pan to the highlighted node
+    // Scroll-to-selection: pan to the highlighted node, or graph center if none
     val scrollTrigger by scrollToSelectionTrigger.collectAsState()
     LaunchedEffect(scrollTrigger) {
-        if (scrollTrigger > 0 && highlightNodeId != null) {
-            val ln = layoutNodes.firstOrNull { it.node.id == highlightNodeId } ?: return@LaunchedEffect
-            val nodeCenterX = ln.x + ln.width / 2f
-            val nodeCenterY = ln.y + ln.height / 2f
-            offset = clampOffset(Offset(-nodeCenterX * scale, -nodeCenterY * scale), scale)
+        if (scrollTrigger > 0) {
+            val ln = highlightNodeId?.let { id -> layoutNodes.firstOrNull { it.node.id == id } }
+            val centerX = if (ln != null) ln.x + ln.width / 2f else (graphBounds.left + graphBounds.right) / 2f
+            val centerY = if (ln != null) ln.y + ln.height / 2f else (graphBounds.top + graphBounds.bottom) / 2f
+            offset = clampOffset(Offset(-centerX * scale, -centerY * scale), scale)
         }
     }
 
