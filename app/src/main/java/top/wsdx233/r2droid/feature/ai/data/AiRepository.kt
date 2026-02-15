@@ -59,6 +59,16 @@ class AiRepository @Inject constructor() {
         }
     }
 
+    suspend fun fetchModels(baseUrl: String, apiKey: String): List<String> {
+        val client = OpenAI(
+            OpenAIConfig(
+                token = apiKey,
+                host = OpenAIHost(baseUrl = baseUrl.trimEnd('/') + "/")
+            )
+        )
+        return client.models().map { it.id.id }.sorted()
+    }
+
     fun resetClient() {
         openAI = null
         currentProviderId = null

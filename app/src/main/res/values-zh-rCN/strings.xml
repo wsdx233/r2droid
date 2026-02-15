@@ -407,6 +407,13 @@
     <string name="ai_provider_api_key">API Key</string>
     <string name="ai_provider_models">模型</string>
     <string name="ai_provider_models_hint">模型（逗号分隔）</string>
+    <string name="ai_provider_fetch_models">获取模型列表</string>
+    <string name="ai_provider_select_models">选择模型</string>
+    <string name="ai_provider_fetching_models">正在获取模型列表…</string>
+    <string name="ai_provider_fetch_error">获取模型列表失败：%1$s</string>
+    <string name="ai_provider_fetch_need_url_key">请先填写 Base URL 和 API Key</string>
+    <string name="ai_provider_no_models_found">未找到可用模型</string>
+    <string name="ai_confirm">确定</string>
     <string name="ai_provider_delete_title">删除提供商？</string>
     <string name="ai_provider_delete_message">确定要删除"%1$s"吗？</string>
     <string name="ai_select_copy">选择并复制</string>

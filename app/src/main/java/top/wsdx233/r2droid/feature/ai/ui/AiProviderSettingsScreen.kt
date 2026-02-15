@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,9 +18,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,13 +37,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aallam.openai.client.OpenAI
+import com.aallam.openai.client.OpenAIConfig
+import com.aallam.openai.client.OpenAIHost
+import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.ai.AiEvent
 import top.wsdx233.r2droid.feature.ai.AiViewModel
@@ -241,6 +251,12 @@ private fun ProviderEditDialog(
     var apiKey by remember { mutableStateOf(provider?.apiKey ?: "") }
     var modelsText by remember { mutableStateOf(provider?.models?.joinToString(", ") ?: "") }
 
+    var showModelSelector by remember { mutableStateOf(false) }
+    var fetchedModels by remember { mutableStateOf<List<String>?>(null) }
+    var isFetching by remember { mutableStateOf(false) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
     val isEdit = provider != null
     val title = if (isEdit) stringResource(R.string.ai_provider_edit)
     else stringResource(R.string.ai_provider_add)
@@ -273,14 +289,66 @@ private fun ProviderEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("sk-...") }
                 )
-                OutlinedTextField(
-                    value = modelsText,
-                    onValueChange = { modelsText = it },
-                    label = { Text(stringResource(R.string.ai_provider_models_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("gpt-4o, gpt-4o-mini, ...") },
-                    minLines = 2
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = modelsText,
+                        onValueChange = { modelsText = it },
+                        label = { Text(stringResource(R.string.ai_provider_models_hint)) },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("gpt-4o, gpt-4o-mini, ...") },
+                        minLines = 2
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = {
+                            if (baseUrl.isBlank() || apiKey.isBlank()) {
+                                fetchError = null // will show need_url_key toast via state
+                                return@IconButton
+                            }
+                            fetchError = null
+                            isFetching = true
+                            scope.launch {
+                                try {
+                                    val client = OpenAI(
+                                        OpenAIConfig(
+                                            token = apiKey.trim(),
+                                            host = OpenAIHost(baseUrl = baseUrl.trim().trimEnd('/') + "/")
+                                        )
+                                    )
+                                    val models = client.models().map { it.id.id }.sorted()
+                                    fetchedModels = models
+                                    isFetching = false
+                                    if (models.isNotEmpty()) {
+                                        showModelSelector = true
+                                    } else {
+                                        fetchError = "empty"
+                                    }
+                                } catch (e: Exception) {
+                                    isFetching = false
+                                    fetchError = e.message ?: "Unknown error"
+                                }
+                            }
+                        },
+                        enabled = !isFetching && baseUrl.isNotBlank() && apiKey.isNotBlank()
+                    ) {
+                        if (isFetching) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.ai_provider_fetch_models))
+                        }
+                    }
+                }
+                if (fetchError != null) {
+                    Text(
+                        text = if (fetchError == "empty") stringResource(R.string.ai_provider_no_models_found)
+                        else stringResource(R.string.ai_provider_fetch_error, fetchError!!),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {
@@ -304,6 +372,79 @@ private fun ProviderEditDialog(
                 enabled = name.isNotBlank() && baseUrl.isNotBlank() && modelsText.isNotBlank()
             ) {
                 Text(stringResource(R.string.ai_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ai_cancel))
+            }
+        }
+    )
+
+    // Model selection dialog
+    if (showModelSelector && fetchedModels != null) {
+        ModelSelectionDialog(
+            availableModels = fetchedModels!!,
+            currentModels = modelsText.split(",", "\n").map { it.trim() }.filter { it.isNotBlank() },
+            onDismiss = { showModelSelector = false },
+            onConfirm = { selected ->
+                val existing = modelsText.split(",", "\n").map { it.trim() }.filter { it.isNotBlank() }
+                val merged = (existing + selected).distinct()
+                modelsText = merged.joinToString(", ")
+                showModelSelector = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ModelSelectionDialog(
+    availableModels: List<String>,
+    currentModels: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit
+) {
+    val selectedModels = remember {
+        availableModels.map { it in currentModels }.toMutableStateList()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.ai_provider_select_models)) },
+        text = {
+            if (availableModels.isEmpty()) {
+                Text(stringResource(R.string.ai_provider_no_models_found))
+            } else {
+                LazyColumn {
+                    items(availableModels.size) { index ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Checkbox(
+                                checked = selectedModels[index],
+                                onCheckedChange = { selectedModels[index] = it }
+                            )
+                            Text(
+                                text = availableModels[index],
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selected = availableModels.filterIndexed { i, _ -> selectedModels[i] }
+                    onConfirm(selected)
+                }
+            ) {
+                Text(stringResource(R.string.ai_confirm))
             }
         },
         dismissButton = {

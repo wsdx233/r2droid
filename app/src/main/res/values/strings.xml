@@ -405,6 +405,13 @@
     <string name="ai_provider_api_key">API Key</string>
     <string name="ai_provider_models">Models</string>
     <string name="ai_provider_models_hint">Models (comma separated)</string>
+    <string name="ai_provider_fetch_models">Fetch Models</string>
+    <string name="ai_provider_select_models">Select Models</string>
+    <string name="ai_provider_fetching_models">Fetching models…</string>
+    <string name="ai_provider_fetch_error">Failed to fetch models: %1$s</string>
+    <string name="ai_provider_fetch_need_url_key">Please fill in Base URL and API Key first</string>
+    <string name="ai_provider_no_models_found">No models found</string>
+    <string name="ai_confirm">OK</string>
     <string name="ai_provider_delete_title">Delete Provider?</string>
     <string name="ai_provider_delete_message">Are you sure you want to delete \"%1$s\"?</string>
     <string name="ai_select_copy">Select &amp; Copy</string>
