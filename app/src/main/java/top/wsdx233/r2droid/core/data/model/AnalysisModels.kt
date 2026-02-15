@@ -600,6 +600,90 @@ data class GraphData(
         }
 
         /**
+         * Parse agCj / agcj call graph output:
+         * [{"name":"sym.main","size":42,"imports":["sym.printf","sym.exit"]}, ...]
+         * Each element is a function; edges go from the function to its imports (callees).
+         * Functions that only appear as imports get leaf nodes with no outgoing edges.
+         */
+        fun fromCallGraph(jsonArray: org.json.JSONArray): GraphData {
+            if (jsonArray.length() == 0) return GraphData(emptyList())
+
+            // Collect all entries that have "imports"
+            data class Entry(val name: String, val imports: List<String>)
+            val entries = mutableListOf<Entry>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val name = obj.optString("name", "")
+                if (name.isBlank()) continue
+                val importsArr = obj.optJSONArray("imports")
+                val imports = mutableListOf<String>()
+                if (importsArr != null) {
+                    for (j in 0 until importsArr.length()) {
+                        imports.add(importsArr.getString(j))
+                    }
+                }
+                entries.add(Entry(name, imports))
+            }
+
+            // Build name → id mapping (callers first, then callee-only nodes)
+            val nameToId = mutableMapOf<String, Int>()
+            var nextId = 0
+            for (e in entries) {
+                if (e.name !in nameToId) nameToId[e.name] = nextId++
+            }
+            for (e in entries) {
+                for (imp in e.imports) {
+                    if (imp !in nameToId) nameToId[imp] = nextId++
+                }
+            }
+
+            // Build nodes
+            val nodes = mutableListOf<GraphNode>()
+            // Caller nodes with edges
+            for (e in entries) {
+                val id = nameToId[e.name]!!
+                val outNodes = e.imports.mapNotNull { nameToId[it] }
+                nodes.add(GraphNode(id = id, title = e.name, outNodes = outNodes))
+            }
+            // Leaf nodes (only appear as imports)
+            for ((name, id) in nameToId) {
+                if (entries.none { it.name == name }) {
+                    nodes.add(GraphNode(id = id, title = name))
+                }
+            }
+
+            nodes.sortBy { it.id }
+            return GraphData(nodes)
+        }
+
+        /**
+         * Parse agcj function-info output (afij-like format):
+         * [{"addr":N,"name":"sym.func","size":N,"indegree":N,"outdegree":N,...}]
+         * No explicit edge data, so each function becomes a standalone node.
+         */
+        fun fromFunctionInfo(jsonArray: org.json.JSONArray): GraphData {
+            if (jsonArray.length() == 0) return GraphData(emptyList())
+
+            // If the first element has "imports", delegate to fromCallGraph
+            if (jsonArray.getJSONObject(0).has("imports")) {
+                return fromCallGraph(jsonArray)
+            }
+
+            val nodes = mutableListOf<GraphNode>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val name = obj.optString("name", "0x%X".format(obj.optLong("addr", 0)))
+                val addr = obj.optLong("addr", 0)
+                nodes.add(GraphNode(
+                    id = i,
+                    title = name,
+                    address = addr
+                ))
+            }
+            return GraphData(nodes)
+        }
+
+        /**
          * Parse agj output: [{"name":"...","blocks":[{"addr":...,"ops":[...]}]}]
          * Converts blocks to graph nodes with edges derived from jump/fail targets.
          */

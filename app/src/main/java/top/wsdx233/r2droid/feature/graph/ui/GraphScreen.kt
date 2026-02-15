@@ -38,7 +38,10 @@ data class GraphTypeEntry(
 
 val graphTypeEntries = listOf(
     GraphTypeEntry(GraphType.FunctionFlow, R.string.graph_type_function_flow),
-    GraphTypeEntry(GraphType.XrefGraph, R.string.graph_type_xref)
+    GraphTypeEntry(GraphType.XrefGraph, R.string.graph_type_xref),
+    GraphTypeEntry(GraphType.CallGraph, R.string.graph_type_call),
+    GraphTypeEntry(GraphType.GlobalCallGraph, R.string.graph_type_global_call),
+    GraphTypeEntry(GraphType.DataRefGraph, R.string.graph_type_data_ref)
 )
 
 @Composable

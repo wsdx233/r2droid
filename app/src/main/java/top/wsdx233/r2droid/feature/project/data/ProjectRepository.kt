@@ -415,6 +415,42 @@ class ProjectRepository @Inject constructor() {
     }
 
     /**
+     * Get function call graph (agcj) for the function at the given address.
+     */
+    suspend fun getCallGraph(addr: Long): Result<GraphData> {
+        val cmd = "s $addr; agcj"
+        return R2PipeManager.executeJson(cmd).mapCatching { output ->
+            if (output.isBlank() || output == "[]") throw RuntimeException("Empty call graph output")
+            val jsonArray = JSONArray(output)
+            GraphData.fromFunctionInfo(jsonArray)
+        }
+    }
+
+    /**
+     * Get global function call graph (agCj) for the entire binary.
+     */
+    suspend fun getGlobalCallGraph(): Result<GraphData> {
+        val cmd = "agCj"
+        return R2PipeManager.executeJson(cmd).mapCatching { output ->
+            if (output.isBlank() || output == "[]") throw RuntimeException("Empty global call graph output")
+            val jsonArray = JSONArray(output)
+            GraphData.fromCallGraph(jsonArray)
+        }
+    }
+
+    /**
+     * Get data reference graph (agaj) for the function at the given address.
+     */
+    suspend fun getDataRefGraph(addr: Long): Result<GraphData> {
+        val cmd = "s $addr; agaj"
+        return R2PipeManager.executeJson(cmd).mapCatching { output ->
+            if (output.isBlank() || output == "{}") throw RuntimeException("Empty data ref graph output")
+            val json = JSONObject(output)
+            GraphData.fromAgrj(json)
+        }
+    }
+
+    /**
      * Resolve a function name to its address using afij@<name>.
      * Called lazily on click rather than eagerly on load.
      */

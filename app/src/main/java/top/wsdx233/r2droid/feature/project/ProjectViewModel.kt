@@ -23,7 +23,10 @@ import javax.inject.Inject
  */
 enum class GraphType {
     FunctionFlow,   // agj - function basic block flow graph
-    XrefGraph        // agrj - cross-reference graph
+    XrefGraph,       // agrj - cross-reference graph
+    CallGraph,       // agcj - function call graph
+    GlobalCallGraph, // agCj - global function call graph
+    DataRefGraph     // agaj - data reference graph
 }
 
 sealed interface ProjectEvent {
@@ -539,6 +542,9 @@ class ProjectViewModel @Inject constructor(
             val result = when (graphType) {
                 GraphType.FunctionFlow -> repository.getFunctionGraph(funcStart)
                 GraphType.XrefGraph -> repository.getXrefGraph(funcStart)
+                GraphType.CallGraph -> repository.getCallGraph(funcStart)
+                GraphType.GlobalCallGraph -> repository.getGlobalCallGraph()
+                GraphType.DataRefGraph -> repository.getDataRefGraph(funcStart)
             }
 
             val currentState = _uiState.value

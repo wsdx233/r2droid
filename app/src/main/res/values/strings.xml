@@ -333,6 +333,9 @@
     <string name="proj_tab_graph">Graph</string>
     <string name="graph_type_function_flow">Function Flow</string>
     <string name="graph_type_xref">Xref Graph</string>
+    <string name="graph_type_call">Call Graph</string>
+    <string name="graph_type_global_call">Global Call Graph</string>
+    <string name="graph_type_data_ref">Data Ref Graph</string>
     <string name="graph_no_data">No graph data</string>
     <string name="menu_graph_xrefs">Cross References</string>
     <string name="menu_graph_detail">View Details</string>
