@@ -101,7 +101,7 @@ fun AiChatScreen(viewModel: AiViewModel) {
                 val activeProvider = uiState.config.providers.find {
                     it.id == uiState.config.activeProviderId
                 }
-                Box {
+                Box(modifier = Modifier.weight(1f)) {
                     TextButton(onClick = { showModelSelector = true }) {
                         Text(
                             text = if (activeProvider != null) {
@@ -111,7 +111,8 @@ fun AiChatScreen(viewModel: AiViewModel) {
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                     }
@@ -147,8 +148,6 @@ fun AiChatScreen(viewModel: AiViewModel) {
                         }
                     }
                 }
-
-                Spacer(Modifier.weight(1f))
 
                 // History button
                 IconButton(onClick = { showHistoryDialog = true }) {
