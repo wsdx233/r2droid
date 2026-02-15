@@ -77,7 +77,7 @@ object R2Installer {
             _installState.value = InstallState(true, "正在完成最后设置...", 0.95f)
             copyAssetFolder(context, "libs", context.filesDir)
 
-            writeFile(context, "e r2ghidra.sleighhome = ${File(context.filesDir,"r2work/radare2/plugins/r2ghidra_sleigh")}", File(context.filesDir,"radare2/bin/.radare2rc"))
+            writeFile(context, "e scr.interactive = false\ne r2ghidra.sleighhome = ${File(context.filesDir,"r2work/radare2/plugins/r2ghidra_sleigh")}", File(context.filesDir,"radare2/bin/.radare2rc"))
 
             Log.d(TAG, "Radare2 installation completed successfully.")
 
