@@ -19,8 +19,10 @@ openaiClient = "4.1.0"
 ktor = "3.1.1"
 quickjsKt = "1.0.1"
 kotlinxSerializationJson = "1.7.3"
+composeMarkdown = "0.5.8"
 
 [libraries]
+compose-markdown = { module = "com.github.jeziellago:compose-markdown", version.ref = "composeMarkdown" }
 openai-client = { module = "com.aallam.openai:openai-client", version.ref = "openaiClient" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt-android", version.ref = "quickjsKt" }

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,7 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -61,17 +60,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.ai.data.ActionResult
 import top.wsdx233.r2droid.feature.ai.data.ActionType
@@ -143,10 +138,14 @@ fun MessageBubble(
                     )
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    SimpleMarkdownText(
-                        text = displayContent,
-                        color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurface
+                    MarkdownText(
+                        markdown = displayContent,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface
+                        ),
+                        syntaxHighlightColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        syntaxHighlightTextColor = MaterialTheme.colorScheme.onSurface
                     )
 
                     // Expand/collapse for long messages
@@ -237,7 +236,6 @@ fun StreamingMessageBubble(content: String) {
     } else {
         content
     }
-    val density = LocalDensity.current
 
     Column(
         modifier = Modifier
@@ -257,35 +255,28 @@ fun StreamingMessageBubble(content: String) {
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             modifier = Modifier.widthIn(max = maxWidth)
         ) {
-            Box(modifier = Modifier.padding(12.dp)) {
-                var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-                SimpleMarkdownText(
-                    text = displayContent,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    onTextLayout = { textLayoutResult = it }
-                )
-                // Blinking cursor positioned at end of last line
-                textLayoutResult?.let { layout ->
-                    if (layout.lineCount > 0) {
-                        val lastLine = layout.lineCount - 1
-                        val lineRight = layout.getLineRight(lastLine)
-                        val lineTop = layout.getLineTop(lastLine)
-                        val lineBottom = layout.getLineBottom(lastLine)
-                        Box(
-                            modifier = Modifier
-                                .offset(
-                                    x = with(density) { lineRight.toDp() },
-                                    y = with(density) { lineTop.toDp() }
-                                )
-                                .size(
-                                    width = 2.dp,
-                                    height = with(density) { (lineBottom - lineTop).toDp() }
-                                )
-                                .alpha(cursorAlpha)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Box(modifier = Modifier.weight(1f, fill = false)) {
+                    MarkdownText(
+                        markdown = displayContent,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        syntaxHighlightColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        syntaxHighlightTextColor = MaterialTheme.colorScheme.onSurface
+                    )
                 }
+                // Blinking cursor
+                Box(
+                    modifier = Modifier
+                        .padding(start = 1.dp, bottom = 2.dp)
+                        .size(width = 2.dp, height = 16.dp)
+                        .alpha(cursorAlpha)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
             }
         }
     }
@@ -431,14 +422,14 @@ fun ChatInputBar(
     onStop: () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 4.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
                 value = text,
@@ -467,7 +458,7 @@ fun ChatInputBar(
                     onClick = onSend,
                     enabled = text.isNotBlank()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.ai_send))
+                    Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.ai_send))
                 }
             }
         }
@@ -546,109 +537,5 @@ fun CommandApprovalDialog(
 }
 
 // endregion
-
-// region Simple Markdown Renderer
-
-@Composable
-fun SimpleMarkdownText(
-    text: String,
-    color: Color,
-    onTextLayout: ((TextLayoutResult) -> Unit)? = null
-) {
-    val annotated = buildAnnotatedString {
-        var i = 0
-        val lines = text.split("\n")
-        var inCodeBlock = false
-        var codeBlockContent = StringBuilder()
-
-        for ((lineIdx, line) in lines.withIndex()) {
-            if (line.trimStart().startsWith("```")) {
-                if (inCodeBlock) {
-                    // End code block
-                    withStyle(SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        background = color.copy(alpha = 0.08f)
-                    )) {
-                        append(codeBlockContent.toString())
-                    }
-                    codeBlockContent = StringBuilder()
-                    inCodeBlock = false
-                } else {
-                    inCodeBlock = true
-                }
-                if (lineIdx < lines.size - 1) append("\n")
-                continue
-            }
-
-            if (inCodeBlock) {
-                if (codeBlockContent.isNotEmpty()) codeBlockContent.append("\n")
-                codeBlockContent.append(line)
-                if (lineIdx < lines.size - 1) append("")
-                continue
-            }
-
-            // Process inline markdown
-            var j = 0
-            while (j < line.length) {
-                when {
-                    // Bold **text**
-                    j + 1 < line.length && line[j] == '*' && line[j + 1] == '*' -> {
-                        val end = line.indexOf("**", j + 2)
-                        if (end > 0) {
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                append(line.substring(j + 2, end))
-                            }
-                            j = end + 2
-                        } else {
-                            append(line[j])
-                            j++
-                        }
-                    }
-                    // Inline code `text`
-                    line[j] == '`' -> {
-                        val end = line.indexOf('`', j + 1)
-                        if (end > 0) {
-                            withStyle(SpanStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                background = color.copy(alpha = 0.08f)
-                            )) {
-                                append(line.substring(j + 1, end))
-                            }
-                            j = end + 1
-                        } else {
-                            append(line[j])
-                            j++
-                        }
-                    }
-                    else -> {
-                        append(line[j])
-                        j++
-                    }
-                }
-            }
-            if (lineIdx < lines.size - 1) append("\n")
-        }
-
-        // Handle unclosed code block
-        if (inCodeBlock && codeBlockContent.isNotEmpty()) {
-            withStyle(SpanStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                background = color.copy(alpha = 0.08f)
-            )) {
-                append(codeBlockContent.toString())
-            }
-        }
-    }
-
-    Text(
-        text = annotated,
-        style = MaterialTheme.typography.bodyMedium,
-        color = color,
-        onTextLayout = { onTextLayout?.invoke(it) }
-    )
-}
 
 // endregion

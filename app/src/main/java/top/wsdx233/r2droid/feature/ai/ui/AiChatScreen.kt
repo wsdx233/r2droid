@@ -4,7 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,15 +16,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,13 +49,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.ai.AiEvent
 import top.wsdx233.r2droid.feature.ai.AiViewModel
@@ -69,26 +82,70 @@ fun AiChatScreen(viewModel: AiViewModel) {
     var selectCopyText by remember { mutableStateOf<String?>(null) }
     var deletingSessionId by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     // Filter out ExecutionResult messages for display
     val displayMessages = remember(uiState.messages) {
         uiState.messages.filter { it.role != ChatRole.ExecutionResult }
     }
 
-    // Auto-scroll to bottom
+    // Smart auto-scroll: only follow when user is at bottom
     val messageCount = displayMessages.size
     val hasStreaming = uiState.streamingContent.isNotBlank()
-    LaunchedEffect(messageCount, hasStreaming) {
-        val totalItems = listState.layoutInfo.totalItemsCount
-        if (totalItems > 0) {
-            listState.animateScrollToItem(totalItems - 1)
+
+    var shouldAutoScroll by remember { mutableStateOf(true) }
+
+    // Detect user scroll direction to manage auto-scroll
+    LaunchedEffect(listState) {
+        var prevIndex = listState.firstVisibleItemIndex
+        var prevOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.isScrollInProgress
+            )
+        }.collect { (index, offset, scrolling) ->
+            if (scrolling) {
+                // User scrolled upward → disable auto-scroll immediately
+                if (index < prevIndex || (index == prevIndex && offset < prevOffset)) {
+                    shouldAutoScroll = false
+                }
+            }
+            // Re-enable only when scroll stops at the true bottom
+            if (!scrolling && !listState.canScrollForward) {
+                shouldAutoScroll = true
+            }
+            prevIndex = index
+            prevOffset = offset
+        }
+    }
+
+    // Auto-scroll to true bottom when content changes
+    LaunchedEffect(messageCount, hasStreaming, uiState.streamingContent) {
+        if (shouldAutoScroll) {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                listState.scrollToItem(totalItems - 1, Int.MAX_VALUE)
+            }
+        }
+    }
+
+    // Scroll buttons visibility with delay
+    var showScrollButtons by remember { mutableStateOf(false) }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            showScrollButtons = true
+        } else {
+            delay(1500L)
+            showScrollButtons = false
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp
         ) {
             Row(
@@ -166,44 +223,102 @@ fun AiChatScreen(viewModel: AiViewModel) {
             }
         }
 
-        // Message list
-        LazyColumn(
-            state = listState,
+        // Message list with scroll buttons
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            items(displayMessages, key = { it.id }) { message ->
-                MessageBubble(
-                    message = message,
-                    onCopy = { text ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("AI Chat", text))
-                        Toast.makeText(context, R.string.ai_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    onSelectCopy = { text -> selectCopyText = text },
-                    onEdit = if (message.role == ChatRole.User) { text ->
-                        editingMessageId = message.id
-                        editingText = text
-                    } else null,
-                    onRegenerate = if (message.role == ChatRole.Assistant) {
-                        { viewModel.onEvent(AiEvent.RegenerateFrom(message.id)) }
-                    } else null,
-                    onDelete = { viewModel.onEvent(AiEvent.DeleteMessage(message.id)) }
-                )
-            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(displayMessages, key = { it.id }) { message ->
+                    MessageBubble(
+                        message = message,
+                        onCopy = { text ->
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("AI Chat", text))
+                            Toast.makeText(context, R.string.ai_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        onSelectCopy = { text -> selectCopyText = text },
+                        onEdit = if (message.role == ChatRole.User) { text ->
+                            editingMessageId = message.id
+                            editingText = text
+                        } else null,
+                        onRegenerate = if (message.role == ChatRole.Assistant) {
+                            { viewModel.onEvent(AiEvent.RegenerateFrom(message.id)) }
+                        } else null,
+                        onDelete = { viewModel.onEvent(AiEvent.DeleteMessage(message.id)) }
+                    )
+                }
 
-            // Streaming content
-            if (uiState.isGenerating && uiState.streamingContent.isNotBlank()) {
-                item(key = "streaming") {
-                    StreamingMessageBubble(content = uiState.streamingContent)
+                // Streaming content
+                if (uiState.isGenerating && uiState.streamingContent.isNotBlank()) {
+                    item(key = "streaming") {
+                        StreamingMessageBubble(content = uiState.streamingContent)
+                    }
+                }
+
+                // Thinking indicator
+                if (uiState.isGenerating && uiState.streamingContent.isBlank()) {
+                    item(key = "thinking") {
+                        ThinkingIndicator()
+                    }
                 }
             }
 
-            // Thinking indicator
-            if (uiState.isGenerating && uiState.streamingContent.isBlank()) {
-                item(key = "thinking") {
-                    ThinkingIndicator()
+            // Scroll buttons (right edge, vertically centered)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 8.dp)
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showScrollButtons,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SmallFloatingActionButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(0)
+                                }
+                            },
+                            shape = CircleShape,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        SmallFloatingActionButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val total = listState.layoutInfo.totalItemsCount
+                                    if (total > 0) {
+                                        listState.scrollToItem(total - 1, Int.MAX_VALUE)
+                                        shouldAutoScroll = true
+                                    }
+                                }
+                            },
+                            shape = CircleShape,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

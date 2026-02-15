@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.UpdateInfo
 import top.wsdx233.r2droid.util.UpdateManager
@@ -49,9 +50,13 @@ fun UpdateDialog(
                         style = MaterialTheme.typography.titleSmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = updateInfo.releaseNotes,
-                        style = MaterialTheme.typography.bodySmall
+                    MarkdownText(
+                        markdown = updateInfo.releaseNotes,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        syntaxHighlightColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        syntaxHighlightTextColor = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

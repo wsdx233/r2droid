@@ -96,6 +96,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
+    // Markdown
+    implementation(libs.compose.markdown)
+
     // AI Chat
     implementation(libs.openai.client)
     implementation(libs.ktor.client.okhttp)
