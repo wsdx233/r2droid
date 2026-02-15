@@ -295,6 +295,15 @@ fun AiChatScreen(viewModel: AiViewModel) {
         )
     }
 
+    // Command approval dialog
+    uiState.pendingApproval?.let { pending ->
+        CommandApprovalDialog(
+            pendingApproval = pending,
+            onApprove = { viewModel.onEvent(AiEvent.ApproveCommand) },
+            onDeny = { viewModel.onEvent(AiEvent.DenyCommand) }
+        )
+    }
+
     // Delete chat confirmation
     deletingSessionId?.let { sessionId ->
         AlertDialog(

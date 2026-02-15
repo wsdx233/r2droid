@@ -77,6 +77,7 @@ import top.wsdx233.r2droid.feature.ai.data.ActionResult
 import top.wsdx233.r2droid.feature.ai.data.ActionType
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
+import top.wsdx233.r2droid.feature.ai.PendingApproval
 
 // region Message Bubbles
 
@@ -493,6 +494,55 @@ fun ThinkingIndicator() {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+}
+
+// endregion
+
+// region Command Approval Dialog
+
+@Composable
+fun CommandApprovalDialog(
+    pendingApproval: PendingApproval,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { /* Block dismiss, must choose */ },
+        title = { Text(stringResource(R.string.ai_approval_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.ai_approval_message),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = pendingApproval.command,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onApprove) {
+                Text(stringResource(R.string.ai_approval_allow))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDeny) {
+                Text(stringResource(R.string.ai_approval_deny))
+            }
+        }
+    )
 }
 
 // endregion

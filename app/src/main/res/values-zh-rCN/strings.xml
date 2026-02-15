@@ -418,4 +418,10 @@
     <string name="ai_show_more">展开全部（%1$d 字符）</string>
     <string name="ai_show_less">收起</string>
 
+    <!-- AI Command Approval -->
+    <string name="ai_approval_title">需要批准执行指令</string>
+    <string name="ai_approval_message">AI 助手请求执行以下指令，该指令可能耗时较长或存在风险：</string>
+    <string name="ai_approval_allow">允许</string>
+    <string name="ai_approval_deny">拒绝</string>
+
 </resources>

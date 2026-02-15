@@ -19,6 +19,7 @@ import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.feature.ai.data.ChatSession
 import top.wsdx233.r2droid.feature.ai.data.R2ActionExecutor
 import top.wsdx233.r2droid.feature.ai.data.ActionResult
+import kotlinx.coroutines.CompletableDeferred
 import javax.inject.Inject
 
 sealed interface AiEvent {
@@ -35,7 +36,14 @@ sealed interface AiEvent {
     object SaveChat : AiEvent
     data class LoadChat(val sessionId: String) : AiEvent
     data class DeleteChat(val sessionId: String) : AiEvent
+    object ApproveCommand : AiEvent
+    object DenyCommand : AiEvent
 }
+
+data class PendingApproval(
+    val command: String,
+    val type: ActionType
+)
 
 data class AiUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -45,7 +53,8 @@ data class AiUiState(
     val config: AiProviderConfig = AiProviderConfig(),
     val systemPrompt: String = AiSettingsManager.DEFAULT_SYSTEM_PROMPT,
     val chatSessions: List<ChatSession> = emptyList(),
-    val currentChatId: String? = null
+    val currentChatId: String? = null,
+    val pendingApproval: PendingApproval? = null
 )
 
 @HiltViewModel
@@ -58,6 +67,7 @@ class AiViewModel @Inject constructor(
 
     private var generationJob: Job? = null
     private val actionExecutor = R2ActionExecutor()
+    private var approvalDeferred: CompletableDeferred<Boolean>? = null
 
     init {
         loadSettings()
@@ -92,6 +102,8 @@ class AiViewModel @Inject constructor(
             is AiEvent.SaveChat -> saveCurrentChat()
             is AiEvent.LoadChat -> loadChat(event.sessionId)
             is AiEvent.DeleteChat -> deleteChat(event.sessionId)
+            is AiEvent.ApproveCommand -> resolveApproval(true)
+            is AiEvent.DenyCommand -> resolveApproval(false)
         }
     }
 
@@ -137,6 +149,34 @@ class AiViewModel @Inject constructor(
                     val feedbackBuilder = StringBuilder("Execution Results:\n")
 
                     for (action in parsed.actions) {
+                        // Check if command requires user approval
+                        if (action.type == ActionType.R2Command && AiSettingsManager.requiresApproval(action.content)) {
+                            _uiState.update {
+                                it.copy(
+                                    pendingApproval = PendingApproval(action.content, action.type),
+                                    streamingContent = responseText + "\n\n⚠️ Waiting for approval: [[${action.content}]]"
+                                )
+                            }
+                            val deferred = CompletableDeferred<Boolean>()
+                            approvalDeferred = deferred
+                            val approved = deferred.await()
+                            _uiState.update { it.copy(pendingApproval = null) }
+                            if (!approved) {
+                                val denied = ActionResult(
+                                    type = action.type,
+                                    input = action.content,
+                                    output = "Command denied by user",
+                                    success = false
+                                )
+                                results.add(denied)
+                                feedbackBuilder.appendLine("R2 Command: ${action.content}")
+                                feedbackBuilder.appendLine("Output:")
+                                feedbackBuilder.appendLine("Command denied by user")
+                                feedbackBuilder.appendLine()
+                                continue
+                            }
+                        }
+
                         val result = when (action.type) {
                             ActionType.R2Command -> {
                                 _uiState.update {
@@ -212,16 +252,23 @@ class AiViewModel @Inject constructor(
         }
     }
 
+    private fun resolveApproval(approved: Boolean) {
+        approvalDeferred?.complete(approved)
+        approvalDeferred = null
+    }
+
     private fun stopGeneration() {
+        approvalDeferred?.complete(false)
+        approvalDeferred = null
         generationJob?.cancel()
         val partial = _uiState.value.streamingContent
         if (partial.isNotBlank()) {
             val msg = ChatMessage(role = ChatRole.Assistant, content = partial)
             _uiState.update {
-                it.copy(messages = it.messages + msg, isGenerating = false, streamingContent = "")
+                it.copy(messages = it.messages + msg, isGenerating = false, streamingContent = "", pendingApproval = null)
             }
         } else {
-            _uiState.update { it.copy(isGenerating = false, streamingContent = "") }
+            _uiState.update { it.copy(isGenerating = false, streamingContent = "", pendingApproval = null) }
         }
     }
 

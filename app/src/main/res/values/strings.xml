@@ -415,4 +415,10 @@
     <string name="ai_history_delete_message">Are you sure you want to delete this conversation?</string>
     <string name="ai_show_more">Show all (%1$d chars)</string>
     <string name="ai_show_less">Collapse</string>
+
+    <!-- AI Command Approval -->
+    <string name="ai_approval_title">Command Approval Required</string>
+    <string name="ai_approval_message">The AI assistant wants to execute the following command, which may be time-consuming or potentially dangerous:</string>
+    <string name="ai_approval_allow">Allow</string>
+    <string name="ai_approval_deny">Deny</string>
 </resources>

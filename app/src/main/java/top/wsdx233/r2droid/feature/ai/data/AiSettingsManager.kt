@@ -12,6 +12,7 @@ object AiSettingsManager {
     private const val KEY_PROVIDER_CONFIG = "provider_config"
     private const val KEY_SYSTEM_PROMPT = "system_prompt"
     private const val KEY_CHAT_SESSIONS = "chat_sessions"
+    private const val KEY_DANGEROUS_COMMANDS = "dangerous_commands"
 
     private lateinit var prefs: SharedPreferences
     private val json = Json { ignoreUnknownKeys = true }
@@ -138,6 +139,36 @@ object AiSettingsManager {
             prefs.edit().putString(KEY_SYSTEM_PROMPT, value).apply()
         }
 
+    // region Dangerous Commands
+
+    val DEFAULT_DANGEROUS_COMMANDS = listOf("aa", "aaa", "aaaa", "!*")
+
+    var dangerousCommands: List<String>
+        get() {
+            val raw = prefs.getString(KEY_DANGEROUS_COMMANDS, null) ?: return DEFAULT_DANGEROUS_COMMANDS
+            return try {
+                json.decodeFromString(raw)
+            } catch (_: Exception) {
+                DEFAULT_DANGEROUS_COMMANDS
+            }
+        }
+        set(value) {
+            prefs.edit().putString(KEY_DANGEROUS_COMMANDS, json.encodeToString(value)).apply()
+        }
+
+    fun requiresApproval(cmd: String): Boolean {
+        val trimmed = cmd.trim()
+        return dangerousCommands.any { pattern ->
+            if (pattern.endsWith("*")) {
+                trimmed.startsWith(pattern.dropLast(1))
+            } else {
+                trimmed == pattern
+            }
+        }
+    }
+
+    // endregion
+
     const val DEFAULT_SYSTEM_PROMPT = """You are an expert Reverse Engineering Agent named 'r2auto' inside a android application r2droid.
 You are operating inside a Radare2 environment via r2pipe.
 Your goal is to analyze the binary provided based on the user's request.
@@ -164,8 +195,9 @@ Your goal is to analyze the binary provided based on the user's request.
 5. **Format**: Use Markdown for your explanations. Be concise but professional.
 
 **Important:**
-- Respond [end] after you finish all your command and JavaScript code calls.
+- Respond [end] when and only after you finish all response message and give user a final answer.
 - Use `pdf~HEAD` for large functions to avoid huge output.
+- R2droid may has analysis this binary , before run aaa you need to fully check current status.
 - Only use JavaScript when r2 commands alone are insufficient for data parsing or logic.
 - Remeber you are on a limited env on android system, so shell command should be carefully considered.
 - Rely solely on tool outputs."""
