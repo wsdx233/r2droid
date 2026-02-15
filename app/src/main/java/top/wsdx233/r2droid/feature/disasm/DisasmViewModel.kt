@@ -74,6 +74,7 @@ sealed interface DisasmEvent {
     data class WriteHex(val address: Long, val hex: String) : DisasmEvent
     data class WriteString(val address: Long, val text: String) : DisasmEvent
     object RefreshData : DisasmEvent
+    object Reset : DisasmEvent
     data class FetchXrefs(val address: Long) : DisasmEvent
     object DismissXrefs : DisasmEvent
     // Function operations
@@ -145,6 +146,7 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.WriteHex -> writeHex(event.address, event.hex)
             is DisasmEvent.WriteString -> writeString(event.address, event.text)
             is DisasmEvent.RefreshData -> refreshData()
+            is DisasmEvent.Reset -> reset()
             is DisasmEvent.FetchXrefs -> fetchXrefs(event.address)
             is DisasmEvent.DismissXrefs -> dismissXrefs()
             is DisasmEvent.AnalyzeFunction -> analyzeFunction(event.address)
@@ -159,6 +161,20 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.FetchInstructionDetail -> fetchInstructionDetail(event.address)
             is DisasmEvent.DismissInstructionDetail -> dismissInstructionDetail()
         }
+    }
+
+    // 当前数据管理器对应的会话 ID，用于检测会话变更
+    private var currentSessionId: Int = -1
+
+    /**
+     * 重置所有数据，用于切换项目时清理旧数据。
+     */
+    fun reset() {
+        disasmDataManager = null
+        _disasmDataManagerState.value = null
+        _disasmCacheVersion.value = 0
+        _scrollTarget.value = null
+        currentSessionId = -1
     }
 
     // Job for scroll-related loading - cancelled on each new scroll request
@@ -200,6 +216,12 @@ class DisasmViewModel @Inject constructor(
      * Uses Section info to calculate virtual address range.
      */
     fun loadDisassembly(sections: List<Section>, currentFilePath: String?, currentOffset: Long) {
+        // 检测会话变更，如果是新项目则重置旧数据
+        val newSessionId = R2PipeManager.sessionId
+        if (newSessionId != currentSessionId) {
+            reset()
+            currentSessionId = newSessionId
+        }
         if (disasmDataManager != null) {
             // Already initialized, just preload around current cursor
             viewModelScope.launch {

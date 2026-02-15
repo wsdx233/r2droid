@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * R2PipeManager
@@ -34,6 +35,10 @@ object R2PipeManager {
     // 原子标志位，用于快速判断连接状态
     private val _isConnected = AtomicBoolean(false)
     val isConnected: Boolean get() = _isConnected.get()
+
+    // 会话计数器，每次 open() 递增，用于子 ViewModel 检测会话变更并重置数据
+    private val _sessionId = AtomicInteger(0)
+    val sessionId: Int get() = _sessionId.get()
 
     // 待处理的文件路径，由 HomeViewModel 设置，ProjectViewModel 读取
     var pendingFilePath: String? = null
@@ -108,6 +113,7 @@ object R2PipeManager {
                          }
 
                         _isConnected.set(true)
+                        _sessionId.incrementAndGet()
                         currentFilePath = filePath // 保存当前文件路径
                         currentProjectId = pendingProjectId // 保存当前项目ID
                         pendingProjectId = null // 清除pending
@@ -149,20 +155,23 @@ object R2PipeManager {
 
                 try {
                     _state.value = State.Executing(cmd)
-                    
+
+                    // 保存本地引用，防止 forceClose() 在执行期间将 r2Pipe 置空导致 NPE
+                    val pipe = r2Pipe!!
+
                     // 执行命令 (R2pipe.cmd 是阻塞调用的)
-                    val output = r2Pipe!!.cmd(cmd)
-                    
+                    val output = pipe.cmd(cmd)
+
                     _state.value = State.Success(cmd, output)
                     Result.success(output)
                 } catch (e: Exception) {
                     _state.value = State.Failure(cmd, e)
-                    
+
                     // 如果检测到进程意外终止或管道破裂，更新连接状态
-                    if (!r2Pipe!!.isProcessRunning()) {
+                    if (r2Pipe?.isProcessRunning() != true) {
                         _isConnected.set(false)
                     }
-                    
+
                     Result.failure(e)
                 }
             }
@@ -200,18 +209,26 @@ object R2PipeManager {
     }
 
     /**
-     * 非挂起版本的关闭方法，用于 ViewModel.onCleared 等场景
+     * 非挂起版本的关闭方法，用于 ViewModel.onCleared 等场景。
+     * 使用 forceClose 强制终止，避免在长时间命令执行时因 mutex 死锁。
      */
     fun close() {
-        scope. launch {
-            try {
-                // Check if already closed to avoid unnecessary lock contention
-                if (r2Pipe != null) {
-                    quit()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        forceClose()
+    }
+
+    /**
+     * 强制关闭当前会话，不等待 mutex。
+     * 直接杀死 R2 进程，使任何正在持有 mutex 的 execute() 调用因 IO 异常而退出。
+     * 用于：退出项目时需要立即终止（即使 aaa 等耗时命令正在执行）。
+     */
+    fun forceClose() {
+        _isConnected.set(false)
+        currentFilePath = null
+        currentProjectId = null
+        _state.value = State.Idle
+        try {
+            r2Pipe?.forceQuit()
+        } catch (_: Exception) {}
+        r2Pipe = null
     }
 }

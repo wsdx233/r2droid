@@ -27,6 +27,7 @@ sealed interface HexEvent {
     data class WriteString(val address: Long, val text: String) : HexEvent
     data class WriteAsm(val address: Long, val asm: String) : HexEvent
     object RefreshData : HexEvent
+    object Reset : HexEvent
 }
 
 @HiltViewModel
@@ -58,7 +59,21 @@ class HexViewModel @Inject constructor(
             is HexEvent.WriteString -> writeString(event.address, event.text)
             is HexEvent.WriteAsm -> writeAsm(event.address, event.asm)
             is HexEvent.RefreshData -> refreshData()
+            is HexEvent.Reset -> reset()
         }
+    }
+
+    // 当前数据管理器对应的会话 ID，用于检测会话变更
+    private var currentSessionId: Int = -1
+
+    /**
+     * 重置所有数据，用于切换项目时清理旧数据。
+     */
+    fun reset() {
+        hexDataManager = null
+        _hexDataManagerState.value = null
+        _hexCacheVersion.value = 0
+        currentSessionId = -1
     }
 
     /**
@@ -66,6 +81,12 @@ class HexViewModel @Inject constructor(
      * Uses Section info to calculate virtual address range.
      */
     fun loadHex(sections: List<Section>, currentFilePath: String?, currentOffset: Long) {
+        // 检测会话变更，如果是新项目则重置旧数据
+        val newSessionId = R2PipeManager.sessionId
+        if (newSessionId != currentSessionId) {
+            reset()
+            currentSessionId = newSessionId
+        }
         if (hexDataManager != null) return // Already initialized
 
         viewModelScope.launch {

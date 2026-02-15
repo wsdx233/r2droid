@@ -69,9 +69,9 @@ class HomeViewModel : ViewModel() {
     fun onFileSelected(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
-                // 如果之前的会话未关闭，先强制关闭
+                // 如果之前的会话未关闭，先强制关闭（不等待 mutex，避免阻塞）
                 if (R2PipeManager.isConnected) {
-                    R2PipeManager.quit()
+                    R2PipeManager.forceClose()
                 }
 
                 // Determine file path. 
@@ -114,9 +114,9 @@ class HomeViewModel : ViewModel() {
                     return@launch
                 }
 
-                // Close existing session if any
+                // Close existing session if any（强制关闭，不等待 mutex）
                 if (R2PipeManager.isConnected) {
-                    R2PipeManager.quit()
+                    R2PipeManager.forceClose()
                 }
 
                 // Set pending file path and restore script path

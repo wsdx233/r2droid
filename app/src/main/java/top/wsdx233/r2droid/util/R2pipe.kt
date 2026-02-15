@@ -225,6 +225,24 @@ class R2pipe(context: Context, private val filePath: String? = null, private val
         }
     }
 
+    /**
+     * 强制终止 R2 进程，不发送 quit 命令，不等待。
+     * 用于在长时间命令执行期间需要立即终止的场景。
+     */
+    fun forceQuit() {
+        isRunning = false
+        try { writer?.close() } catch (_: Exception) {}
+        try { inputStream?.close() } catch (_: Exception) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                process?.destroyForcibly()
+            } else {
+                process?.destroy()
+            }
+        } catch (_: Exception) {}
+        process = null
+    }
+
     fun isProcessRunning(): Boolean = isRunning
 
     protected fun finalize() {
