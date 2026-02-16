@@ -213,8 +213,8 @@ class AiViewModel @Inject constructor(
                     // If not complete, feed results back and continue
                     if (!parsed.isComplete && !parsed.hasAsk) {
                         var feedbackText = feedbackBuilder.toString()
-                        if (feedbackText.length > 30000) {
-                            feedbackText = feedbackText.take(30000) + "\n... [Output Truncated] ..."
+                        if (feedbackText.length > 8000) {
+                            feedbackText = feedbackText.take(8000) + "\n... [Output Truncated] ..."
                         }
                         val feedbackMsg = ChatMessage(
                             role = ChatRole.ExecutionResult,

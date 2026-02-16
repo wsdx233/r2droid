@@ -21,8 +21,15 @@ object LogManager {
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs = _logs.asStateFlow()
 
+    private const val MAX_LOG_MESSAGE_LENGTH = 2000
+
     fun log(type: LogType, message: String) {
-        val entry = LogEntry(type = type, message = message)
+        val truncatedMessage = if (message.length > MAX_LOG_MESSAGE_LENGTH) {
+            message.take(MAX_LOG_MESSAGE_LENGTH) + "... (truncated ${message.length - MAX_LOG_MESSAGE_LENGTH} chars)"
+        } else {
+            message
+        }
+        val entry = LogEntry(type = type, message = truncatedMessage)
         // Keep only last 1000 logs to prevent memory issues
         val currentLogs = _logs.value
         val newLogs = if (currentLogs.size > 1000) {

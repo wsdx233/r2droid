@@ -211,14 +211,6 @@ fun StreamingMessageBubble(content: String) {
         animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
         label = "cursorBlink"
     )
-    // Truncate display during streaming to keep UI responsive
-    val maxStreamingDisplay = 1200
-    val displayContent = if (content.length > maxStreamingDisplay) {
-        "...\n" + content.takeLast(maxStreamingDisplay)
-    } else {
-        content
-    }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -243,7 +235,7 @@ fun StreamingMessageBubble(content: String) {
             ) {
                 Box(modifier = Modifier.weight(1f, fill = false)) {
                     MarkdownText(
-                        markdown = displayContent,
+                        markdown = content,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = MaterialTheme.colorScheme.onSurface
                         ),
