@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
@@ -245,41 +247,60 @@ fun CommandScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(8.dp)
-                .verticalScroll(scrollState)
         ) {
-            SelectionContainer {
-                Column {
-                    commandHistory.forEach { (cmd, result) ->
-                        // Command
-                        Text(
-                            text = "$ $cmd",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        // Result
-                        if (result.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                SelectionContainer {
+                    Column {
+                        commandHistory.forEach { (cmd, result) ->
+                            // Command
                             Text(
-                                text = result,
+                                text = "$ $cmd",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            // Result
+                            if (result.isNotEmpty()) {
+                                Text(
+                                    text = result,
+                                    color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                        }
+
+                        // Current output (if executing)
+                        if (output.isNotEmpty()) {
+                            Text(
+                                text = output,
                                 color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
-
-                    // Current output (if executing)
-                    if (output.isNotEmpty()) {
-                        Text(
-                            text = output,
-                            color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
                 }
+            }
+
+            // Clear button in top-right corner
+            FilledTonalIconButton(
+                onClick = { onCommandHistoryChange(emptyList()) },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.logs_clear_desc),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
         }
         
