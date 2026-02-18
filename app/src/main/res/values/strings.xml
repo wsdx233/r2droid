@@ -134,6 +134,7 @@
 
     <!-- Project Analysis -->
     <string name="analysis_analyzing">Analyzing...</string>
+    <string name="analysis_loading">Loading...</string>
 
     <!-- Project Components -->
     <string name="menu_copy">Copy</string>

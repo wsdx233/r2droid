@@ -177,7 +177,7 @@ fun ProjectScreen(
             )
         }
         is ProjectUiState.Analyzing -> {
-            AnalysisProgressScreen(logs = logs)
+            AnalysisProgressScreen(logs = logs, isRestoring = R2PipeManager.pendingRestoreFlags != null)
         }
         else -> {
             ProjectScaffold(

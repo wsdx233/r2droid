@@ -41,6 +41,7 @@ import top.wsdx233.r2droid.util.LogType
 @Composable
 fun AnalysisProgressScreen(
     logs: List<LogEntry>,
+    isRestoring: Boolean = false,
     onClearLogs: () -> Unit = {}
 ) {
     Scaffold(
@@ -55,7 +56,7 @@ fun AnalysisProgressScreen(
                         )
                         Spacer(modifier = Modifier.size(12.dp))
                         Column {
-                            Text(stringResource(R.string.analysis_analyzing))
+                            Text(stringResource(if (isRestoring) R.string.analysis_loading else R.string.analysis_analyzing))
                             LinearProgressIndicator(
                                 modifier = Modifier
                                     .padding(top = 4.dp)
