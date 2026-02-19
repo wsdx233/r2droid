@@ -125,6 +125,32 @@ class ProjectViewModel @Inject constructor(
     // Project-scoped decompiler type (initialized from global default)
     private val _currentDecompiler = MutableStateFlow(SettingsManager.decompilerDefault)
     val currentDecompiler: StateFlow<String> = _currentDecompiler.asStateFlow()
+
+    // Decompiler display settings (reactive)
+    private val _decompilerShowLineNumbers = MutableStateFlow(SettingsManager.decompilerShowLineNumbers)
+    val decompilerShowLineNumbers: StateFlow<Boolean> = _decompilerShowLineNumbers.asStateFlow()
+
+    private val _decompilerWordWrap = MutableStateFlow(SettingsManager.decompilerWordWrap)
+    val decompilerWordWrap: StateFlow<Boolean> = _decompilerWordWrap.asStateFlow()
+
+    private val _resetZoomTrigger = MutableStateFlow(0)
+    val resetZoomTrigger: StateFlow<Int> = _resetZoomTrigger.asStateFlow()
+
+    fun toggleLineNumbers() {
+        val new = !_decompilerShowLineNumbers.value
+        _decompilerShowLineNumbers.value = new
+        SettingsManager.decompilerShowLineNumbers = new
+    }
+
+    fun toggleWordWrap() {
+        val new = !_decompilerWordWrap.value
+        _decompilerWordWrap.value = new
+        SettingsManager.decompilerWordWrap = new
+    }
+
+    fun resetDecompilerZoom() {
+        _resetZoomTrigger.value++
+    }
     
     fun onEvent(event: ProjectEvent) {
         when (event) {

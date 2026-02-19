@@ -49,6 +49,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -226,6 +228,8 @@ fun ProjectScaffold(
                         if (selectedDetailTabIndex == 2) {
                             var showDecompilerMenu by remember { mutableStateOf(false) }
                             val currentDecompiler by viewModel.currentDecompiler.collectAsState()
+                            val showLineNumbers by viewModel.decompilerShowLineNumbers.collectAsState()
+                            val wordWrap by viewModel.decompilerWordWrap.collectAsState()
                             Box {
                                 androidx.compose.material3.IconButton(onClick = { showDecompilerMenu = true }) {
                                     Icon(Icons.Filled.Build, contentDescription = stringResource(R.string.decompiler_switch))
@@ -234,55 +238,63 @@ fun ProjectScaffold(
                                     expanded = showDecompilerMenu,
                                     onDismissRequest = { showDecompilerMenu = false }
                                 ) {
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                androidx.compose.material3.RadioButton(
-                                                    selected = currentDecompiler == "r2ghidra",
-                                                    onClick = null
-                                                )
-                                                Text(stringResource(R.string.decompiler_r2ghidra), modifier = Modifier.padding(start = 8.dp))
-                                            }
-                                        },
-                                        onClick = {
-                                            showDecompilerMenu = false
-                                            if (currentDecompiler != "r2ghidra") {
-                                                viewModel.onEvent(ProjectEvent.SwitchDecompiler("r2ghidra"))
-                                            }
+                                    // Section: Decompiler
+                                    Text(
+                                        stringResource(R.string.decompiler_section_decompiler),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                    listOf("r2ghidra", "jsdec", "native").forEach { type ->
+                                        val labelRes = when (type) {
+                                            "r2ghidra" -> R.string.decompiler_r2ghidra
+                                            "jsdec" -> R.string.decompiler_jsdec
+                                            else -> R.string.decompiler_native
                                         }
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    androidx.compose.material3.RadioButton(selected = currentDecompiler == type, onClick = null)
+                                                    Text(stringResource(labelRes), modifier = Modifier.padding(start = 8.dp))
+                                                }
+                                            },
+                                            onClick = {
+                                                showDecompilerMenu = false
+                                                if (currentDecompiler != type) viewModel.onEvent(ProjectEvent.SwitchDecompiler(type))
+                                            }
+                                        )
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                    // Section: Display
+                                    Text(
+                                        stringResource(R.string.decompiler_section_display),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                                     )
                                     androidx.compose.material3.DropdownMenuItem(
                                         text = {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                androidx.compose.material3.RadioButton(
-                                                    selected = currentDecompiler == "jsdec",
-                                                    onClick = null
-                                                )
-                                                Text(stringResource(R.string.decompiler_jsdec), modifier = Modifier.padding(start = 8.dp))
+                                                Text(stringResource(R.string.settings_decompiler_show_line_numbers), modifier = Modifier.weight(1f))
+                                                Switch(checked = showLineNumbers, onCheckedChange = null)
                                             }
                                         },
-                                        onClick = {
-                                            showDecompilerMenu = false
-                                            if (currentDecompiler != "jsdec") {
-                                                viewModel.onEvent(ProjectEvent.SwitchDecompiler("jsdec"))
-                                            }
-                                        }
+                                        onClick = { viewModel.toggleLineNumbers() }
                                     )
                                     androidx.compose.material3.DropdownMenuItem(
                                         text = {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                androidx.compose.material3.RadioButton(
-                                                    selected = currentDecompiler == "native",
-                                                    onClick = null
-                                                )
-                                                Text(stringResource(R.string.decompiler_native), modifier = Modifier.padding(start = 8.dp))
+                                                Text(stringResource(R.string.settings_decompiler_word_wrap), modifier = Modifier.weight(1f))
+                                                Switch(checked = wordWrap, onCheckedChange = null)
                                             }
                                         },
+                                        onClick = { viewModel.toggleWordWrap() }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_reset_zoom)) },
                                         onClick = {
                                             showDecompilerMenu = false
-                                            if (currentDecompiler != "native") {
-                                                viewModel.onEvent(ProjectEvent.SwitchDecompiler("native"))
-                                            }
+                                            viewModel.resetDecompilerZoom()
                                         }
                                     )
                                 }

@@ -2,6 +2,8 @@ package top.wsdx233.r2droid.feature.decompiler.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,7 +38,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.core.data.model.DecompilationData
-import top.wsdx233.r2droid.data.SettingsManager
 import top.wsdx233.r2droid.feature.project.ProjectViewModel
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
@@ -47,14 +49,29 @@ fun DecompilationViewer(
     onAddressClick: (Long) -> Unit,
     onJumpAndDecompile: (Long) -> Unit = {}
 ) {
-    val showLineNumbers = remember { SettingsManager.decompilerShowLineNumbers }
-    val wordWrap = remember { SettingsManager.decompilerWordWrap }
+    val showLineNumbers by viewModel.decompilerShowLineNumbers.collectAsState()
+    val wordWrap by viewModel.decompilerWordWrap.collectAsState()
+
     if (data.code.isBlank()) {
-          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No Decompilation Data", style = MaterialTheme.typography.bodyLarge)
         }
         return
     }
+
+    // Pinch-to-zoom scale
+    val baseFontSize = 13f
+    val baseLineHeight = 18f
+    var scale by remember { mutableFloatStateOf(1f) }
+    val resetZoomTrigger by viewModel.resetZoomTrigger.collectAsState()
+    LaunchedEffect(resetZoomTrigger) {
+        if (resetZoomTrigger > 0) scale = 1f
+    }
+    val transformState = rememberTransformableState { zoomChange, _, _ ->
+        scale = (scale * zoomChange).coerceIn(0.5f, 3f)
+    }
+    val scaledFontSize = (baseFontSize * scale).sp
+    val scaledLineHeight = (baseLineHeight * scale).sp
 
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val scrollState = rememberScrollState()
@@ -178,10 +195,10 @@ fun DecompilationViewer(
         }
     }
 
-    // Calculate line number width based on total lines
-    val lineNumberWidth = remember(lines.size) {
+    // Calculate line number width based on total lines and scale
+    val lineNumberWidth = remember(lines.size, scale) {
         val digits = lines.size.toString().length
-        (digits * 10 + 16).dp // Approximate width per digit + padding
+        (digits * 10 * scale + 16).dp
     }
 
     val horizontalScrollState = rememberScrollState()
@@ -191,6 +208,7 @@ fun DecompilationViewer(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF1E1E1E))
+                .transformable(state = transformState)
         ) {
             // Line numbers column (conditional)
             if (showLineNumbers) {
@@ -207,14 +225,14 @@ fun DecompilationViewer(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(18.dp)
+                                    .height(scaledLineHeight.value.dp)
                                     .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
                                 contentAlignment = Alignment.CenterEnd
                             ) {
                                 Text(
                                     text = (index + 1).toString(),
                                     fontFamily = LocalAppFont.current,
-                                    fontSize = 13.sp,
+                                    fontSize = scaledFontSize,
                                     color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
                                     modifier = Modifier.padding(end = 8.dp)
                                 )
@@ -235,9 +253,9 @@ fun DecompilationViewer(
                 Text(
                     text = annotatedString,
                     fontFamily = LocalAppFont.current,
-                    fontSize = 13.sp,
+                    fontSize = scaledFontSize,
                     color = Color(0xFFD4D4D4),
-                    lineHeight = 18.sp,
+                    lineHeight = scaledLineHeight,
                     softWrap = wordWrap,
                     onTextLayout = { textLayoutResult = it },
                     modifier = Modifier.pointerInput(cursorAddress) {
@@ -248,10 +266,8 @@ fun DecompilationViewer(
                                 val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
                                 if (note != null && note.offset != 0L) {
                                     if (note.offset == cursorAddress) {
-                                        // Already selected — jump to function and refresh decompilation
                                         onJumpAndDecompile(note.offset)
                                     } else {
-                                        // First click — just highlight/select
                                         onAddressClick(note.offset)
                                     }
                                 }

@@ -123,6 +123,9 @@
     <string name="decompiler_native">native</string>
     <string name="decompiler_jsdec">jsdec</string>
     <string name="decompiler_switch">Switch Decompiler</string>
+    <string name="decompiler_section_decompiler">Decompiler</string>
+    <string name="decompiler_section_display">Display</string>
+    <string name="decompiler_reset_zoom">Reset Zoom</string>
 
     <!-- Install Screen -->
     <string name="install_title">Installing resources</string>

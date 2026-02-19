@@ -93,6 +93,9 @@
     <string name="decompiler_native">native</string>
     <string name="decompiler_jsdec">jsdec</string>
     <string name="decompiler_switch">切换反编译器</string>
+    <string name="decompiler_section_decompiler">反编译器</string>
+    <string name="decompiler_section_display">显示</string>
+    <string name="decompiler_reset_zoom">重置缩放</string>
 
     <!-- Install Screen -->
     <string name="install_title">正在安装资源</string>
