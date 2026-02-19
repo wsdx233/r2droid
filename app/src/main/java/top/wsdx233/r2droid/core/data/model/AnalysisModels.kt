@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.core.data.model
 
 import android.util.Base64
 import org.json.JSONObject
+import top.wsdx233.r2droid.core.data.parser.CLexer
 
 data class BinInfo(
     val arch: String,
@@ -162,23 +163,29 @@ data class DecompilationData(
                      annotations.add(DecompilationAnnotation.fromJson(notesJson.getJSONObject(i)))
                 }
             }
+            // Apply CLexer if no syntax highlighting exists (e.g. native decompiler)
+            if (code.isNotEmpty() && annotations.none { it.syntaxHighlight != null }) {
+                return DecompilationData(code, annotations + CLexer.tokenize(code))
+            }
             return DecompilationData(code, annotations)
         }
 
         fun fromPddj(json: JSONObject): DecompilationData {
             val lines = json.optJSONArray("lines") ?: return DecompilationData("", emptyList())
             val sb = StringBuilder()
-            val annotations = mutableListOf<DecompilationAnnotation>()
+            val offsetAnnotations = mutableListOf<DecompilationAnnotation>()
             for (i in 0 until lines.length()) {
                 val line = lines.getJSONObject(i)
                 val start = sb.length
                 sb.append(line.optString("str", ""))
                 if (line.has("offset")) {
-                    annotations.add(DecompilationAnnotation(start, sb.length, "syntax_highlight", offset = line.optLong("offset", 0)))
+                    offsetAnnotations.add(DecompilationAnnotation(start, sb.length, "syntax_highlight", offset = line.optLong("offset", 0)))
                 }
                 if (i < lines.length() - 1) sb.append("\n")
             }
-            return DecompilationData(sb.toString(), annotations)
+            val code = sb.toString()
+            val syntaxAnnotations = CLexer.tokenize(code)
+            return DecompilationData(code, offsetAnnotations + syntaxAnnotations)
         }
     }
 }
