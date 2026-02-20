@@ -4,8 +4,8 @@
     
     <!-- Home Screen -->
     <string name="home_subtitle">基于R2的安卓逆向工具</string>
-    <string name="home_open_file_title">打开文件</string>
-    <string name="home_open_file_desc">选择要分析的二进制文件</string>
+    <string name="home_open_file_title">打开</string>
+    <string name="home_open_file_desc">分析二进制文件</string>
     <string name="home_features_title">功能</string>
     <string name="home_features_desc">探索更多实用工具</string>
     <string name="home_recent_projects">最近项目</string>
@@ -571,5 +571,32 @@
     <string name="frida_spawn">启动</string>
     <string name="frida_search_apps">搜索应用…</string>
     <string name="frida_no_apps">未找到应用</string>
+
+    <!-- R2Frida Project Tab -->
+    <string name="proj_category_r2frida">r2frida</string>
+    <string name="r2frida_tab_overview">概览</string>
+    <string name="r2frida_tab_libraries">库</string>
+    <string name="r2frida_tab_scripts">脚本</string>
+    <string name="r2frida_tab_entries">入口</string>
+    <string name="r2frida_tab_exports">导出</string>
+    <string name="r2frida_tab_strings">字符串</string>
+    <string name="r2frida_tab_symbols">符号</string>
+    <string name="r2frida_tab_sections">段</string>
+    <string name="r2frida_search_libraries">搜索库…</string>
+    <string name="r2frida_search_entries">搜索入口…</string>
+    <string name="r2frida_search_exports">搜索导出…</string>
+    <string name="r2frida_search_strings">搜索字符串…</string>
+    <string name="r2frida_search_symbols">搜索符号…</string>
+    <string name="r2frida_search_sections">搜索段…</string>
+    <string name="r2frida_overview_title">Frida 会话信息</string>
+    <string name="r2frida_script_hint">在此编写 Frida 脚本…</string>
+    <string name="r2frida_script_run">运行脚本</string>
+    <string name="r2frida_script_output">输出</string>
+    <string name="r2frida_script_no_output">无输出</string>
+    <string name="r2frida_script_running">运行中…</string>
+    <string name="r2frida_loading">加载中…</string>
+    <string name="r2frida_no_data">无数据</string>
+    <string name="r2frida_no_overview">r2frida 模式下无标准概览信息。\n请切换到「r2frida」标签查看会话信息。</string>
+    <string name="r2frida_lib_version">版本: %1$s</string>
 
 </resources>

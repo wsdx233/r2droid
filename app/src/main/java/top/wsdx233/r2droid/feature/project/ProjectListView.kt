@@ -15,7 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.R
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
+import top.wsdx233.r2droid.util.R2PipeManager
 import top.wsdx233.r2droid.feature.bininfo.ui.FunctionList
 import top.wsdx233.r2droid.feature.bininfo.ui.ImportList
 import top.wsdx233.r2droid.feature.bininfo.ui.OverviewCard
@@ -105,7 +110,15 @@ fun ProjectListView(
 
     when (tabIndex) {
         0 -> state.binInfo?.let { OverviewCard(it, listItemActions) }
-            ?: Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
+            ?: if (R2PipeManager.isR2FridaSession) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(stringResource(R.string.r2frida_no_overview),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(32.dp))
+                }
+            } else Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
         1 -> SearchScreen(actions = listItemActions)
         2 -> if (state.sections == null) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else SectionList(state.sections, listItemActions,

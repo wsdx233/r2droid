@@ -4,10 +4,10 @@
     
     <!-- Home Screen -->
     <string name="home_subtitle">Mobile Reverse Engineering</string>
-    <string name="home_open_file_title">Open File</string>
-    <string name="home_open_file_desc">Select a binary to analyze</string>
+    <string name="home_open_file_title">Open</string>
+    <string name="home_open_file_desc">Select binary to analyze</string>
     <string name="home_features_title">Features</string>
-    <string name="home_features_desc">Explore more tools</string>
+    <string name="home_features_desc">Go to Explore more tools</string>
     <string name="home_recent_projects">Recent Projects</string>
     <string name="home_saved_projects">Saved Projects</string>
     <string name="home_no_recent_projects">No recent projects</string>
@@ -569,5 +569,32 @@
     <string name="frida_spawn">Spawn</string>
     <string name="frida_search_apps">Search apps…</string>
     <string name="frida_no_apps">No apps found</string>
+
+    <!-- R2Frida Project Tab -->
+    <string name="proj_category_r2frida">r2frida</string>
+    <string name="r2frida_tab_overview">Overview</string>
+    <string name="r2frida_tab_libraries">Libraries</string>
+    <string name="r2frida_tab_scripts">Scripts</string>
+    <string name="r2frida_tab_entries">Entries</string>
+    <string name="r2frida_tab_exports">Exports</string>
+    <string name="r2frida_tab_strings">Strings</string>
+    <string name="r2frida_tab_symbols">Symbols</string>
+    <string name="r2frida_tab_sections">Sections</string>
+    <string name="r2frida_search_libraries">Search libraries…</string>
+    <string name="r2frida_search_entries">Search entries…</string>
+    <string name="r2frida_search_exports">Search exports…</string>
+    <string name="r2frida_search_strings">Search strings…</string>
+    <string name="r2frida_search_symbols">Search symbols…</string>
+    <string name="r2frida_search_sections">Search sections…</string>
+    <string name="r2frida_overview_title">Frida Session Info</string>
+    <string name="r2frida_script_hint">Write Frida script here…</string>
+    <string name="r2frida_script_run">Run Script</string>
+    <string name="r2frida_script_output">Output</string>
+    <string name="r2frida_script_no_output">No output</string>
+    <string name="r2frida_script_running">Running…</string>
+    <string name="r2frida_loading">Loading…</string>
+    <string name="r2frida_no_data">No data</string>
+    <string name="r2frida_no_overview">No standard overview in r2frida mode.\nSwitch to the \"r2frida\" tab for session info.</string>
+    <string name="r2frida_lib_version">ver: %1$s</string>
 
 </resources>

@@ -63,6 +63,10 @@ object R2PipeManager {
     // 标记自上次保存/更新后是否执行过指令（即项目是否有未保存的变更）
     var isDirtyAfterSave: Boolean = false
 
+    // 标记当前会话是否为 r2frida 会话
+    var isR2FridaSession: Boolean = false
+        private set
+
     /**
      * 状态封装类
      * 用于描述当前 R2Pipe 的工作状态
@@ -157,6 +161,7 @@ object R2PipeManager {
                         _isConnected.set(true)
                         _sessionId.incrementAndGet()
                         currentFilePath = rawArgs
+                        isR2FridaSession = rawArgs.contains("frida://")
                         currentProjectId = pendingProjectId
                         pendingProjectId = null
                         isDirtyAfterSave = false
@@ -278,6 +283,7 @@ object R2PipeManager {
         currentFilePath = null
         currentProjectId = null
         isDirtyAfterSave = false
+        isR2FridaSession = false
         _state.value = State.Idle
         try {
             r2Pipe?.forceQuit()

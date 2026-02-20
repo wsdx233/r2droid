@@ -93,10 +93,14 @@ import top.wsdx233.r2droid.core.ui.components.CommandSuggestButton
 import top.wsdx233.r2droid.core.ui.components.CommandSuggestionPanel
 import kotlinx.coroutines.delay
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
+import top.wsdx233.r2droid.feature.r2frida.ui.*
+import androidx.compose.material.icons.filled.BugReport
 
 enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
     List(R.string.proj_category_list, Icons.Filled.List),
     Detail(R.string.proj_category_detail, Icons.Filled.Info),
+    R2Frida(R.string.proj_category_r2frida, Icons.Filled.BugReport),
     Project(R.string.proj_category_project, Icons.Filled.Build),
     AI(R.string.proj_category_ai, Icons.Filled.SmartToy)
 }
@@ -108,6 +112,7 @@ fun ProjectScaffold(
     hexViewModel: HexViewModel = hiltViewModel(),
     disasmViewModel: DisasmViewModel = hiltViewModel(),
     aiViewModel: AiViewModel = hiltViewModel(),
+    r2fridaViewModel: R2FridaViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -135,7 +140,9 @@ fun ProjectScaffold(
     var selectedDetailTabIndex by remember { mutableIntStateOf(1) }
     var selectedProjectTabIndex by remember { mutableIntStateOf(0) }
     var selectedAiTabIndex by remember { mutableIntStateOf(0) }
+    var selectedR2FridaTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
+    val isR2Frida = R2PipeManager.isR2FridaSession
 
     // Hoisted ListTab state (survives category switches)
     val listSearchQueries = remember { mutableStateMapOf<Int, String>() }
@@ -177,6 +184,11 @@ fun ProjectScaffold(
     val detailTabs = listOf(R.string.proj_tab_hex, R.string.proj_tab_disassembly, R.string.proj_tab_decompile, R.string.proj_tab_graph)
     val projectTabs = listOf(R.string.proj_tab_settings, R.string.proj_tab_cmd, R.string.proj_tab_logs)
     val aiTabs = listOf(R.string.ai_tab_chat, R.string.ai_tab_settings)
+    val r2fridaTabs = listOf(
+        R.string.r2frida_tab_overview, R.string.r2frida_tab_libraries, R.string.r2frida_tab_scripts,
+        R.string.r2frida_tab_entries, R.string.r2frida_tab_exports, R.string.r2frida_tab_strings,
+        R.string.r2frida_tab_symbols, R.string.r2frida_tab_sections
+    )
 
     Scaffold(
         topBar = {
@@ -541,6 +553,28 @@ fun ProjectScaffold(
                                 }
                             }
                         }
+                        MainCategory.R2Frida -> {
+                            ScrollableTabRow(
+                                selectedTabIndex = selectedR2FridaTabIndex,
+                                edgePadding = 0.dp,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                indicator = { tabPositions ->
+                                    TabRowDefaults.SecondaryIndicator(
+                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedR2FridaTabIndex]),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            ) {
+                                r2fridaTabs.forEachIndexed { index, title ->
+                                    Tab(
+                                        selected = selectedR2FridaTabIndex == index,
+                                        onClick = { selectedR2FridaTabIndex = index },
+                                        text = { Text(text = stringResource(title)) }
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // Level 1: Category (swipe up to open command panel)
@@ -552,7 +586,9 @@ fun ProjectScaffold(
                         },
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     ) {
-                        MainCategory.values().forEach { category ->
+                        MainCategory.values()
+                            .filter { it != MainCategory.R2Frida || isR2Frida }
+                            .forEach { category ->
                             NavigationBarItem(
                                 selected = selectedCategory == category,
                                 onClick = { selectedCategory = category },
@@ -632,6 +668,71 @@ fun ProjectScaffold(
                             when (selectedAiTabIndex) {
                                 0 -> AiChatScreen(aiViewModel)
                                 1 -> AiProviderSettingsScreen(aiViewModel)
+                            }
+                        }
+                        MainCategory.R2Frida -> {
+                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                            val fridaActions = remember(clipboardManager) {
+                                top.wsdx233.r2droid.core.ui.components.ListItemActions(
+                                    onCopy = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(it)) },
+                                    onJumpToHex = { addr ->
+                                        selectedCategory = MainCategory.Detail
+                                        selectedDetailTabIndex = 0
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                                    },
+                                    onJumpToDisasm = { addr ->
+                                        selectedCategory = MainCategory.Detail
+                                        selectedDetailTabIndex = 1
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                                    },
+                                    onShowXrefs = { addr ->
+                                        disasmViewModel.onEvent(top.wsdx233.r2droid.feature.disasm.DisasmEvent.FetchXrefs(addr))
+                                    }
+                                )
+                            }
+
+                            val fridaOverview by r2fridaViewModel.overview.collectAsState()
+                            val fridaLibraries by r2fridaViewModel.libraries.collectAsState()
+                            val fridaEntries by r2fridaViewModel.entries.collectAsState()
+                            val fridaExports by r2fridaViewModel.exports.collectAsState()
+                            val fridaStrings by r2fridaViewModel.strings.collectAsState()
+                            val fridaSymbols by r2fridaViewModel.symbols.collectAsState()
+                            val fridaSections by r2fridaViewModel.sections.collectAsState()
+                            val fridaScriptLogs by r2fridaViewModel.scriptLogs.collectAsState()
+                            val fridaScriptRunning by r2fridaViewModel.scriptRunning.collectAsState()
+
+                            androidx.compose.runtime.LaunchedEffect(selectedR2FridaTabIndex) {
+                                when (selectedR2FridaTabIndex) {
+                                    0 -> r2fridaViewModel.loadOverview()
+                                    1 -> r2fridaViewModel.loadLibraries()
+                                    2 -> r2fridaViewModel.clearScriptLogs()
+                                    3 -> r2fridaViewModel.loadEntries()
+                                    4 -> r2fridaViewModel.loadExports()
+                                    5 -> r2fridaViewModel.loadStrings()
+                                    6 -> r2fridaViewModel.loadSymbols()
+                                    7 -> r2fridaViewModel.loadSections()
+                                }
+                            }
+
+                            when (selectedR2FridaTabIndex) {
+                                0 -> FridaOverviewScreen(fridaOverview)
+                                1 -> FridaLibraryList(fridaLibraries, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadLibraries(true) })
+                                2 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
+                                    onRun = { r2fridaViewModel.runScript(it) })
+                                3 -> FridaEntryList(fridaEntries, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadEntries(true) })
+                                4 -> FridaExportList(fridaExports, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadExports(true) },
+                                    searchHint = stringResource(R.string.r2frida_search_exports))
+                                5 -> FridaStringList(fridaStrings, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadStrings(true) })
+                                6 -> FridaExportList(fridaSymbols, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadSymbols(true) },
+                                    searchHint = stringResource(R.string.r2frida_search_symbols))
+                                7 -> FridaExportList(fridaSections, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadSections(true) },
+                                    searchHint = stringResource(R.string.r2frida_search_sections))
                             }
                         }
                     }

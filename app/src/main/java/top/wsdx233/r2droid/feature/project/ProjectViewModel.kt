@@ -378,8 +378,16 @@ class ProjectViewModel @Inject constructor(
             clearLogs()
             val result = R2PipeManager.openRaw(context, rawArgs)
             if (result.isSuccess) {
-                loadOverview()
                 R2PipeManager.pendingCustomCommand = null
+                if (R2PipeManager.isR2FridaSession) {
+                    // r2frida sessions don't support standard iIj, skip loadOverview
+                    _uiState.value = ProjectUiState.Success(
+                        binInfo = null,
+                        cursorAddress = 0L
+                    )
+                } else {
+                    loadOverview()
+                }
             } else {
                 _uiState.value = ProjectUiState.Error(
                     result.exceptionOrNull()?.message ?: "Unknown error"
