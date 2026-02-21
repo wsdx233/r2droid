@@ -191,7 +191,9 @@ fun MainAppNavigation(
     pendingFileUri: Uri? = null,
     onPendingFileUriConsumed: () -> Unit = {}
 ) {
-    var currentScreen by remember { mutableStateOf(AppScreen.Home) }
+    var currentScreen by remember {
+        mutableStateOf(if (R2PipeManager.isConnected) AppScreen.Project else AppScreen.Home)
+    }
     val context = LocalContext.current
 
     // 处理从外部 Intent 传入的文件 URI
