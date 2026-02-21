@@ -100,6 +100,14 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
+    fun clearNonLibraryCache() {
+        _entries.value = null
+        _exports.value = null
+        _strings.value = null
+        _symbols.value = null
+        _sections.value = null
+    }
+
     fun clearScriptLogs() = LogManager.clear()
 
     fun runScript(script: String) {

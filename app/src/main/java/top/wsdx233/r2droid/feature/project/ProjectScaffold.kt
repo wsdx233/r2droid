@@ -660,6 +660,11 @@ fun ProjectScaffold(
                             when (selectedR2FridaTabIndex) {
                                 0 -> FridaOverviewScreen(fridaOverview)
                                 1 -> FridaLibraryList(fridaLibraries, fridaActions,
+                                    cursorAddress = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L,
+                                    onSeek = { addr ->
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                                        r2fridaViewModel.clearNonLibraryCache()
+                                    },
                                     onRefresh = { r2fridaViewModel.loadLibraries(true) })
                                 2 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
                                     onRun = { r2fridaViewModel.runScript(it) })
