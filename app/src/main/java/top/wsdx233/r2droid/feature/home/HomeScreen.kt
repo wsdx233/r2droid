@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.screen.home
 
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -63,6 +64,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.collectLatest
 import top.wsdx233.r2droid.core.data.model.SavedProject
+import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
+import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
 
 @Composable
 fun HomeScreen(
@@ -140,139 +143,247 @@ fun HomeScreen(
         )
     }
 
+    val widthClass = LocalWindowWidthClass.current
+    val isWide = widthClass != WindowWidthClass.Compact
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
+        if (isWide) {
+            // --- Landscape / Tablet: two-pane layout ---
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Left pane: header + actions + bottom bar
+                HomeLeftPane(
+                    modifier = Modifier.weight(0.4f),
+                    onOpenFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    onFeatures = viewModel::onFeaturesClicked,
+                    onSettings = viewModel::onSettingsClicked,
+                    onAbout = viewModel::onAboutClicked
+                )
+                // Right pane: saved projects
+                HomeSavedProjectsPane(
+                    modifier = Modifier.weight(0.6f),
+                    viewModel = viewModel,
+                    context = context,
+                    onDeleteRequest = { showDeleteDialog = it }
+                )
+            }
+        } else {
+            // --- Portrait / Phone: original single-column layout ---
+            HomeCompactLayout(
+                onOpenFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+                viewModel = viewModel,
+                context = context,
+                onDeleteRequest = { showDeleteDialog = it }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeLeftPane(
+    modifier: Modifier,
+    onOpenFile: () -> Unit,
+    onFeatures: () -> Unit,
+    onSettings: () -> Unit,
+    onAbout: () -> Unit
+) {
+    Column(modifier = modifier) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        )
+        Text(
+            text = stringResource(R.string.home_subtitle),
+            style = MaterialTheme.typography.titleMedium.copy(
+                color = MaterialTheme.colorScheme.secondary
+            )
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        HomeActionButton(
+            title = stringResource(R.string.home_open_file_title),
+            description = stringResource(R.string.home_open_file_desc),
+            icon = Icons.Default.FolderOpen,
+            onClick = onOpenFile
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        HomeActionButton(
+            title = stringResource(R.string.home_features_title),
+            description = stringResource(R.string.home_features_desc),
+            icon = Icons.Default.Build,
+            onClick = onFeatures,
+            containerColor = Color(0xFFE0F2F1),
+            contentColor = Color(0xFF00695C),
+            iconContainerColor = Color(0xFF009688).copy(alpha = 0.12f),
+            iconColor = Color(0xFF009688)
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header Section
-            Spacer(modifier = Modifier.height(32.dp))
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.home_settings), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onAbout) {
+                Icon(Icons.Default.Info, contentDescription = stringResource(R.string.home_about), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeSavedProjectsPane(
+    modifier: Modifier,
+    viewModel: HomeViewModel,
+    context: Context,
+    onDeleteRequest: (SavedProject) -> Unit
+) {
+    Column(modifier = modifier) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.displayMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                text = stringResource(R.string.home_saved_projects),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
             )
+            if (viewModel.isLoadingProjects) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        if (viewModel.savedProjects.isEmpty() && !viewModel.isLoadingProjects) {
+            EmptyHistoryState()
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(viewModel.savedProjects, key = { it.id }) { project ->
+                    SavedProjectCard(
+                        project = project,
+                        onRestore = { viewModel.onRestoreProject(context, project) },
+                        onDelete = { onDeleteRequest(project) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeCompactLayout(
+    onOpenFile: () -> Unit,
+    viewModel: HomeViewModel,
+    context: Context,
+    onDeleteRequest: (SavedProject) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        )
+        Text(
+            text = stringResource(R.string.home_subtitle),
+            style = MaterialTheme.typography.titleMedium.copy(
+                color = MaterialTheme.colorScheme.secondary
+            )
+        )
+        Spacer(modifier = Modifier.height(48.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            HomeActionButton(
+                title = stringResource(R.string.home_open_file_title),
+                description = stringResource(R.string.home_open_file_desc),
+                icon = Icons.Default.FolderOpen,
+                onClick = onOpenFile,
+                modifier = Modifier.weight(1f)
+            )
+            HomeActionButton(
+                title = stringResource(R.string.home_features_title),
+                description = stringResource(R.string.home_features_desc),
+                icon = Icons.Default.Build,
+                onClick = viewModel::onFeaturesClicked,
+                modifier = Modifier.weight(1f),
+                containerColor = Color(0xFFE0F2F1),
+                contentColor = Color(0xFF00695C),
+                iconContainerColor = Color(0xFF009688).copy(alpha = 0.12f),
+                iconColor = Color(0xFF009688)
+            )
+        }
+        Spacer(modifier = Modifier.height(32.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = stringResource(R.string.home_subtitle),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    color = MaterialTheme.colorScheme.secondary
-                )
+                text = stringResource(R.string.home_saved_projects),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
             )
-            
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Main Actions: Open File and Features
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                HomeActionButton(
-                    title = stringResource(R.string.home_open_file_title),
-                    description = stringResource(R.string.home_open_file_desc),
-                    icon = Icons.Default.FolderOpen,
-                    onClick = {
-                        filePickerLauncher.launch(arrayOf("*/*"))
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-
-                HomeActionButton(
-                    title = stringResource(R.string.home_features_title),
-                    description = stringResource(R.string.home_features_desc),
-                    icon = Icons.Default.Build,
-                    onClick = viewModel::onFeaturesClicked,
-                    modifier = Modifier.weight(1f),
-                    containerColor = Color(0xFFE0F2F1),
-                    contentColor = Color(0xFF00695C),
-                    iconContainerColor = Color(0xFF009688).copy(alpha = 0.12f),
-                    iconColor = Color(0xFF009688)
-                )
+            if (viewModel.isLoadingProjects) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Saved Projects Section
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        if (viewModel.savedProjects.isEmpty() && !viewModel.isLoadingProjects) {
+            EmptyHistoryState()
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = stringResource(R.string.home_saved_projects),
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-                if (viewModel.isLoadingProjects) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
+                items(viewModel.savedProjects, key = { it.id }) { project ->
+                    SavedProjectCard(
+                        project = project,
+                        onRestore = { viewModel.onRestoreProject(context, project) },
+                        onDelete = { onDeleteRequest(project) }
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (viewModel.savedProjects.isEmpty() && !viewModel.isLoadingProjects) {
-                EmptyHistoryState()
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(viewModel.savedProjects, key = { it.id }) { project ->
-                        SavedProjectCard(
-                            project = project,
-                            onRestore = { viewModel.onRestoreProject(context, project) },
-                            onDelete = { showDeleteDialog = project }
-                        )
-                    }
+        }
+        if (viewModel.savedProjects.isEmpty()) {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = viewModel::onSettingsClicked) {
+                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.home_settings), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Text(stringResource(R.string.home_settings), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
-            if (viewModel.savedProjects.isEmpty()) {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-
-            // Bottom Actions (Settings, About)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = viewModel::onSettingsClicked) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = stringResource(R.string.home_settings),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.home_settings),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(R.string.home_about),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    IconButton(onClick = viewModel::onAboutClicked) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = stringResource(R.string.home_about),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.home_about), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = viewModel::onAboutClicked) {
+                    Icon(Icons.Default.Info, contentDescription = stringResource(R.string.home_about), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

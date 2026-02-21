@@ -89,8 +89,10 @@ class MainActivity : ComponentActivity() {
                 top.wsdx233.r2droid.data.SettingsManager.getCustomFont() ?: androidx.compose.ui.text.font.FontFamily.Monospace
             }
 
+            val windowWidthClass = top.wsdx233.r2droid.core.ui.adaptive.calculateWindowWidthClass()
             androidx.compose.runtime.CompositionLocalProvider(
-                top.wsdx233.r2droid.ui.theme.LocalAppFont provides customFont
+                top.wsdx233.r2droid.ui.theme.LocalAppFont provides customFont,
+                top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass provides windowWidthClass
             ) {
                 val darkModeSetting by top.wsdx233.r2droid.data.SettingsManager.darkModeFlow.collectAsState()
 

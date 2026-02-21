@@ -42,10 +42,16 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.foundation.layout.fillMaxHeight
+import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
+import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -143,6 +149,7 @@ fun ProjectScaffold(
     var selectedR2FridaTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
     val isR2Frida = R2PipeManager.isR2FridaSession
+    val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
 
     // Hoisted ListTab state (survives category switches)
     val listSearchQueries = remember { mutableStateMapOf<Int, String>() }
@@ -468,148 +475,73 @@ fun ProjectScaffold(
             }
         },
         bottomBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shadowElevation = 8.dp
-            ) {
-                Column {
-                    // Level 2: Sub-tabs
-                    when (selectedCategory) {
-                        MainCategory.List -> {
-                            ScrollableTabRow(
-                                selectedTabIndex = selectedListTabIndex,
-                                edgePadding = 0.dp,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                indicator = { tabPositions ->
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedListTabIndex]),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            ) {
-                                listTabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedListTabIndex == index,
-                                        onClick = { selectedListTabIndex = index },
-                                        text = { Text(text = stringResource(title)) }
-                                    )
-                                }
-                            }
-                        }
-                        MainCategory.Detail -> {
-                            ScrollableTabRow(
-                                selectedTabIndex = selectedDetailTabIndex,
-                                edgePadding = 0.dp,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                indicator = { tabPositions ->
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedDetailTabIndex]),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            ) {
-                                detailTabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedDetailTabIndex == index,
-                                        onClick = { selectedDetailTabIndex = index },
-                                        text = { Text(text = stringResource(title)) }
-                                    )
-                                }
-                            }
-                        }
-                        MainCategory.Project -> {
-                            TabRow(
-                                selectedTabIndex = selectedProjectTabIndex,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                indicator = { tabPositions ->
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedProjectTabIndex]),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            ) {
-                                projectTabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedProjectTabIndex == index,
-                                        onClick = { selectedProjectTabIndex = index },
-                                        text = { Text(text = stringResource(title)) }
-                                    )
-                                }
-                            }
-                        }
-                        MainCategory.AI -> {
-                            TabRow(
-                                selectedTabIndex = selectedAiTabIndex,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                indicator = { tabPositions ->
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedAiTabIndex]),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            ) {
-                                aiTabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedAiTabIndex == index,
-                                        onClick = { selectedAiTabIndex = index },
-                                        text = { Text(text = stringResource(title)) }
-                                    )
-                                }
-                            }
-                        }
-                        MainCategory.R2Frida -> {
-                            ScrollableTabRow(
-                                selectedTabIndex = selectedR2FridaTabIndex,
-                                edgePadding = 0.dp,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                indicator = { tabPositions ->
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedR2FridaTabIndex]),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            ) {
-                                r2fridaTabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedR2FridaTabIndex == index,
-                                        onClick = { selectedR2FridaTabIndex = index },
-                                        text = { Text(text = stringResource(title)) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Level 1: Category (swipe up to open command panel)
-                    NavigationBar(
-                        modifier = Modifier.pointerInput(Unit) {
-                            detectVerticalDragGestures { _, dragAmount ->
-                                if (dragAmount < -40) showCommandSheet = true
-                            }
-                        },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ) {
-                        MainCategory.values()
-                            .filter { it != MainCategory.R2Frida || isR2Frida }
-                            .forEach { category ->
-                            NavigationBarItem(
-                                selected = selectedCategory == category,
-                                onClick = { selectedCategory = category },
-                                icon = { Icon(category.icon, contentDescription = stringResource(category.titleRes)) },
-                                label = { Text(stringResource(category.titleRes)) }
-                            )
-                        }
-                    }
-                }
+            if (!isWide) {
+                ProjectBottomBar(
+                    selectedCategory = selectedCategory,
+                    onCategorySelected = { selectedCategory = it },
+                    selectedListTabIndex = selectedListTabIndex,
+                    onListTabSelected = { selectedListTabIndex = it },
+                    selectedDetailTabIndex = selectedDetailTabIndex,
+                    onDetailTabSelected = { selectedDetailTabIndex = it },
+                    selectedProjectTabIndex = selectedProjectTabIndex,
+                    onProjectTabSelected = { selectedProjectTabIndex = it },
+                    selectedAiTabIndex = selectedAiTabIndex,
+                    onAiTabSelected = { selectedAiTabIndex = it },
+                    selectedR2FridaTabIndex = selectedR2FridaTabIndex,
+                    onR2FridaTabSelected = { selectedR2FridaTabIndex = it },
+                    listTabs = listTabs,
+                    detailTabs = detailTabs,
+                    projectTabs = projectTabs,
+                    aiTabs = aiTabs,
+                    r2fridaTabs = r2fridaTabs,
+                    isR2Frida = isR2Frida,
+                    onSwipeUpCommand = { showCommandSheet = true }
+                )
             }
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+        Row(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+            // NavigationRail for wide screens
+            if (isWide) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    MainCategory.values()
+                        .filter { it != MainCategory.R2Frida || isR2Frida }
+                        .forEach { category ->
+                            NavigationRailItem(
+                                selected = selectedCategory == category,
+                                onClick = { selectedCategory = category },
+                                icon = { Icon(category.icon, contentDescription = stringResource(category.titleRes)) },
+                                label = { Text(stringResource(category.titleRes), style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                }
+            }
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                // Sub-tabs on top for wide mode
+                if (isWide) {
+                    ProjectSubTabs(
+                        selectedCategory = selectedCategory,
+                        selectedListTabIndex = selectedListTabIndex,
+                        onListTabSelected = { selectedListTabIndex = it },
+                        selectedDetailTabIndex = selectedDetailTabIndex,
+                        onDetailTabSelected = { selectedDetailTabIndex = it },
+                        selectedProjectTabIndex = selectedProjectTabIndex,
+                        onProjectTabSelected = { selectedProjectTabIndex = it },
+                        selectedAiTabIndex = selectedAiTabIndex,
+                        onAiTabSelected = { selectedAiTabIndex = it },
+                        selectedR2FridaTabIndex = selectedR2FridaTabIndex,
+                        onR2FridaTabSelected = { selectedR2FridaTabIndex = it },
+                        listTabs = listTabs,
+                        detailTabs = detailTabs,
+                        projectTabs = projectTabs,
+                        aiTabs = aiTabs,
+                        r2fridaTabs = r2fridaTabs
+                    )
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
             when (val state = uiState) {
                 is ProjectUiState.Idle -> {
                     Text(stringResource(R.string.common_idle), Modifier.align(Alignment.Center))
@@ -750,7 +682,9 @@ fun ProjectScaffold(
                 }
                 else -> {}
             }
-        }
+        } // Box
+            } // Column
+        } // Row
     }
 
     // Command bottom sheet (swipe up from bottom bar)
@@ -775,6 +709,75 @@ fun ProjectScaffold(
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun ProjectSubTabs(
+    selectedCategory: MainCategory,
+    selectedListTabIndex: Int,
+    onListTabSelected: (Int) -> Unit,
+    selectedDetailTabIndex: Int,
+    onDetailTabSelected: (Int) -> Unit,
+    selectedProjectTabIndex: Int,
+    onProjectTabSelected: (Int) -> Unit,
+    selectedAiTabIndex: Int,
+    onAiTabSelected: (Int) -> Unit,
+    selectedR2FridaTabIndex: Int,
+    onR2FridaTabSelected: (Int) -> Unit,
+    listTabs: List<Int>,
+    detailTabs: List<Int>,
+    projectTabs: List<Int>,
+    aiTabs: List<Int>,
+    r2fridaTabs: List<Int>
+) {
+    val indicator = @Composable { tabPositions: List<TabPosition>, idx: Int ->
+        TabRowDefaults.SecondaryIndicator(
+            modifier = Modifier.tabIndicatorOffset(tabPositions[idx]),
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+    when (selectedCategory) {
+        MainCategory.List -> ScrollableTabRow(
+            selectedTabIndex = selectedListTabIndex, edgePadding = 0.dp,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { indicator(it, selectedListTabIndex) }
+        ) {
+            listTabs.forEachIndexed { i, t -> Tab(selectedListTabIndex == i, { onListTabSelected(i) }, text = { Text(stringResource(t)) }) }
+        }
+        MainCategory.Detail -> ScrollableTabRow(
+            selectedTabIndex = selectedDetailTabIndex, edgePadding = 0.dp,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { indicator(it, selectedDetailTabIndex) }
+        ) {
+            detailTabs.forEachIndexed { i, t -> Tab(selectedDetailTabIndex == i, { onDetailTabSelected(i) }, text = { Text(stringResource(t)) }) }
+        }
+        MainCategory.Project -> TabRow(
+            selectedTabIndex = selectedProjectTabIndex,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { indicator(it, selectedProjectTabIndex) }
+        ) {
+            projectTabs.forEachIndexed { i, t -> Tab(selectedProjectTabIndex == i, { onProjectTabSelected(i) }, text = { Text(stringResource(t)) }) }
+        }
+        MainCategory.AI -> TabRow(
+            selectedTabIndex = selectedAiTabIndex,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { indicator(it, selectedAiTabIndex) }
+        ) {
+            aiTabs.forEachIndexed { i, t -> Tab(selectedAiTabIndex == i, { onAiTabSelected(i) }, text = { Text(stringResource(t)) }) }
+        }
+        MainCategory.R2Frida -> ScrollableTabRow(
+            selectedTabIndex = selectedR2FridaTabIndex, edgePadding = 0.dp,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { indicator(it, selectedR2FridaTabIndex) }
+        ) {
+            r2fridaTabs.forEachIndexed { i, t -> Tab(selectedR2FridaTabIndex == i, { onR2FridaTabSelected(i) }, text = { Text(stringResource(t)) }) }
         }
     }
 }
@@ -854,6 +857,74 @@ private fun CommandBottomSheetContent(
                     fontSize = 12.sp,
                     color = if (output.isEmpty()) placeholder else fg
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectBottomBar(
+    selectedCategory: MainCategory,
+    onCategorySelected: (MainCategory) -> Unit,
+    selectedListTabIndex: Int,
+    onListTabSelected: (Int) -> Unit,
+    selectedDetailTabIndex: Int,
+    onDetailTabSelected: (Int) -> Unit,
+    selectedProjectTabIndex: Int,
+    onProjectTabSelected: (Int) -> Unit,
+    selectedAiTabIndex: Int,
+    onAiTabSelected: (Int) -> Unit,
+    selectedR2FridaTabIndex: Int,
+    onR2FridaTabSelected: (Int) -> Unit,
+    listTabs: List<Int>,
+    detailTabs: List<Int>,
+    projectTabs: List<Int>,
+    aiTabs: List<Int>,
+    r2fridaTabs: List<Int>,
+    isR2Frida: Boolean,
+    onSwipeUpCommand: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 8.dp
+    ) {
+        Column {
+            ProjectSubTabs(
+                selectedCategory = selectedCategory,
+                selectedListTabIndex = selectedListTabIndex,
+                onListTabSelected = onListTabSelected,
+                selectedDetailTabIndex = selectedDetailTabIndex,
+                onDetailTabSelected = onDetailTabSelected,
+                selectedProjectTabIndex = selectedProjectTabIndex,
+                onProjectTabSelected = onProjectTabSelected,
+                selectedAiTabIndex = selectedAiTabIndex,
+                onAiTabSelected = onAiTabSelected,
+                selectedR2FridaTabIndex = selectedR2FridaTabIndex,
+                onR2FridaTabSelected = onR2FridaTabSelected,
+                listTabs = listTabs,
+                detailTabs = detailTabs,
+                projectTabs = projectTabs,
+                aiTabs = aiTabs,
+                r2fridaTabs = r2fridaTabs
+            )
+            NavigationBar(
+                modifier = Modifier.pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        if (dragAmount < -40) onSwipeUpCommand()
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ) {
+                MainCategory.values()
+                    .filter { it != MainCategory.R2Frida || isR2Frida }
+                    .forEach { category ->
+                        NavigationBarItem(
+                            selected = selectedCategory == category,
+                            onClick = { onCategorySelected(category) },
+                            icon = { Icon(category.icon, contentDescription = stringResource(category.titleRes)) },
+                            label = { Text(stringResource(category.titleRes)) }
+                        )
+                    }
             }
         }
     }
