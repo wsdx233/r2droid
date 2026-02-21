@@ -24,7 +24,7 @@
             android:name="top.wsdx233.r2droid.activity.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:theme="@style/Theme.R2droid">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
