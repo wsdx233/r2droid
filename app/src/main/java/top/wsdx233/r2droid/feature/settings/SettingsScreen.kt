@@ -59,6 +59,9 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
     private val _darkMode = MutableStateFlow(SettingsManager.darkMode)
     val darkMode = _darkMode.asStateFlow()
 
+    private val _menuAtTouch = MutableStateFlow(SettingsManager.menuAtTouch)
+    val menuAtTouch = _menuAtTouch.asStateFlow()
+
     private val _decompilerShowLineNumbers = MutableStateFlow(SettingsManager.decompilerShowLineNumbers)
     val decompilerShowLineNumbers = _decompilerShowLineNumbers.asStateFlow()
 
@@ -144,6 +147,11 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         _darkMode.value = mode
     }
 
+    fun setMenuAtTouch(value: Boolean) {
+        SettingsManager.menuAtTouch = value
+        _menuAtTouch.value = value
+    }
+
     fun setDecompilerShowLineNumbers(value: Boolean) {
         SettingsManager.decompilerShowLineNumbers = value
         _decompilerShowLineNumbers.value = value
@@ -185,6 +193,7 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         SettingsManager.decompilerDefault = "r2ghidra"
         SettingsManager.maxLogEntries = 100
         SettingsManager.keepAliveNotification = true
+        SettingsManager.menuAtTouch = true
         _fontPath.value = null
         _language.value = "system"
         _projectHome.value = null
@@ -195,6 +204,7 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         _decompilerDefault.value = "r2ghidra"
         _maxLogEntries.value = 100
         _keepAlive.value = true
+        _menuAtTouch.value = true
     }
 }
 
@@ -214,6 +224,7 @@ fun SettingsScreen(
     val decompilerDefault by viewModel.decompilerDefault.collectAsState()
     val maxLogEntries by viewModel.maxLogEntries.collectAsState()
     val keepAlive by viewModel.keepAlive.collectAsState()
+    val menuAtTouch by viewModel.menuAtTouch.collectAsState()
 
     val context = LocalContext.current
     
@@ -388,6 +399,15 @@ fun SettingsScreen(
                     subtitle = darkModeLabel,
                     icon = Icons.Default.DarkMode,
                     onClick = { showDarkModeDialog = true }
+                )
+            }
+
+            item {
+                SettingsToggleItem(
+                    title = stringResource(R.string.settings_menu_at_touch),
+                    subtitle = stringResource(R.string.settings_menu_at_touch_desc),
+                    checked = menuAtTouch,
+                    onCheckedChange = { viewModel.setMenuAtTouch(it) }
                 )
             }
 

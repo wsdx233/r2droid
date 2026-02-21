@@ -71,6 +71,8 @@
     <string name="settings_dark_mode_system">跟随系统</string>
     <string name="settings_dark_mode_light">浅色</string>
     <string name="settings_dark_mode_dark">深色</string>
+    <string name="settings_menu_at_touch">菜单跟随点击位置</string>
+    <string name="settings_menu_at_touch_desc">在手指点击位置弹出菜单，而非固定位置</string>
     <string name="settings_restart_title">需要重启</string>
     <string name="settings_restart_message">语言更改将在重启应用后生效，是否立即重启？</string>
     <string name="settings_restart_now">立即重启</string>

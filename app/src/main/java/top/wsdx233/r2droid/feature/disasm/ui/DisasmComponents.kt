@@ -90,8 +90,8 @@ private fun formatJumpIndex(index: Int): String {
 fun DisasmRow(
     instr: DisasmInstruction,
     isSelected: Boolean,
-    onClick: (Offset) -> Unit,
-    onLongClick: (Offset) -> Unit,
+    onClick: (Offset, Int) -> Unit,
+    onLongClick: (Offset, Int) -> Unit,
     showMenu: Boolean = false,
     menuContent: @Composable () -> Unit = {},
     jumpIndex: Int? = null,           // Index for this jump (if it's a jump instruction)
@@ -177,8 +177,8 @@ fun DisasmRow(
                 .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                 .pointerInput(onClick, onLongClick) {
                     detectTapGestures(
-                        onTap = { offset -> onClick(offset) },
-                        onLongPress = { offset -> onLongClick(offset) }
+                        onTap = { offset -> onClick(offset, size.height) },
+                        onLongPress = { offset -> onLongClick(offset, size.height) }
                     )
                 }
         ) {

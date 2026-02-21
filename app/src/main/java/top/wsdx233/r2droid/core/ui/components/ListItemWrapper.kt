@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import top.wsdx233.r2droid.R
@@ -53,6 +54,7 @@ fun UnifiedListItemWrapper(
     var expanded by remember { mutableStateOf(false) }
     var menuScreen by remember { mutableStateOf("Main") }
     var tapOffset by remember { mutableStateOf(Offset.Zero) }
+    var boxHeight by remember { mutableStateOf(0) }
     val density = LocalDensity.current
 
     Box(
@@ -60,6 +62,7 @@ fun UnifiedListItemWrapper(
             .fillMaxWidth()
             .shadow(elevation, shape)
             .clip(shape)
+            .onGloballyPositioned { boxHeight = it.size.height }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -82,7 +85,9 @@ fun UnifiedListItemWrapper(
                 expanded = false
                 menuScreen = "Main"
             },
-            offset = with(density) { DpOffset(tapOffset.x.toDp(), tapOffset.y.toDp()) }
+            offset = if (top.wsdx233.r2droid.data.SettingsManager.menuAtTouch) {
+                with(density) { DpOffset(tapOffset.x.toDp(), (tapOffset.y - boxHeight).toDp()) }
+            } else DpOffset.Zero
         ) {
             when (menuScreen) {
                 "Main" -> {

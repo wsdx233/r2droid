@@ -80,6 +80,7 @@ fun DisassemblyViewer(
     var showMenu by remember { mutableStateOf(false) }
     var menuTargetAddress by remember { mutableStateOf<Long?>(null) }
     var menuTapOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var menuRowHeight by remember { mutableStateOf(0) }
 
     var showModifyDialog by remember { mutableStateOf(false) }
     var modifyType by remember { mutableStateOf("hex") } // hex, string, asm
@@ -290,18 +291,20 @@ fun DisassemblyViewer(
                     DisasmRow(
                         instr = instr, 
                         isSelected = instr.addr == cursorAddress, 
-                        onClick = { offset ->
+                        onClick = { offset, height ->
                             if (instr.addr == cursorAddress) {
                                 menuTargetAddress = instr.addr
                                 menuTapOffset = offset
+                                menuRowHeight = height
                                 showMenu = true
                             } else {
                                 onInstructionClick(instr.addr)
                             }
                         },
-                        onLongClick = { offset ->
+                        onLongClick = { offset, height ->
                             menuTargetAddress = instr.addr
                             menuTapOffset = offset
+                            menuRowHeight = height
                             showMenu = true
                         },
                         showMenu = isThisRowMenuTarget,
@@ -385,9 +388,11 @@ fun DisassemblyViewer(
                                     onInstructionClick(addr)
                                     showMenu = false
                                 },
-                                offset = with(density) {
-                                    androidx.compose.ui.unit.DpOffset(menuTapOffset.x.toDp(), menuTapOffset.y.toDp())
-                                }
+                                offset = if (top.wsdx233.r2droid.data.SettingsManager.menuAtTouch) {
+                                    with(density) {
+                                        androidx.compose.ui.unit.DpOffset(menuTapOffset.x.toDp(), (menuTapOffset.y - menuRowHeight).toDp())
+                                    }
+                                } else androidx.compose.ui.unit.DpOffset.Zero
                             )
                         },
                         jumpIndex = jumpIdx,

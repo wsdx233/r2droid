@@ -20,6 +20,7 @@ object SettingsManager {
     private const val KEY_KEEP_ALIVE = "keep_alive_notification"
     private const val KEY_FRIDA_HOST = "frida_host"
     private const val KEY_FRIDA_PORT = "frida_port"
+    private const val KEY_MENU_AT_TOUCH = "menu_at_touch"
 
     private lateinit var prefs: SharedPreferences
 
@@ -124,4 +125,8 @@ object SettingsManager {
     var fridaPort: String
         get() = prefs.getString(KEY_FRIDA_PORT, "27042") ?: "27042"
         set(value) { prefs.edit().putString(KEY_FRIDA_PORT, value).apply() }
+
+    var menuAtTouch: Boolean
+        get() = prefs.getBoolean(KEY_MENU_AT_TOUCH, true)
+        set(value) { prefs.edit().putBoolean(KEY_MENU_AT_TOUCH, value).apply() }
 }

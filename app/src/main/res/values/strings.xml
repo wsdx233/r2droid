@@ -101,6 +101,8 @@
     <string name="settings_dark_mode_system">Follow System</string>
     <string name="settings_dark_mode_light">Light</string>
     <string name="settings_dark_mode_dark">Dark</string>
+    <string name="settings_menu_at_touch">Menu at Touch Position</string>
+    <string name="settings_menu_at_touch_desc">Show context menu at finger position instead of fixed position</string>
     <string name="settings_restart_title">Restart Required</string>
     <string name="settings_restart_message">Language change will take effect after restarting the app. Restart now?</string>
     <string name="settings_restart_now">Restart</string>
