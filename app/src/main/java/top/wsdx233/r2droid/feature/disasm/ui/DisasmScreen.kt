@@ -78,7 +78,13 @@ fun DisassemblyViewer(
 ) {
     val disasmDataManager = viewModel.disasmDataManager
     val cacheVersion by viewModel.disasmCacheVersion.collectAsState()
-    
+    val multiSelectState by viewModel.multiSelectState.collectAsState()
+
+    // Back handler to cancel multi-select
+    androidx.activity.compose.BackHandler(enabled = multiSelectState.active) {
+        viewModel.onEvent(top.wsdx233.r2droid.feature.disasm.DisasmEvent.ClearMultiSelect)
+    }
+
     // Menu & Dialog States
     var showMenu by remember { mutableStateOf(false) }
     var menuTargetAddress by remember { mutableStateOf<Long?>(null) }
@@ -292,10 +298,13 @@ fun DisassemblyViewer(
                     val targetIdx = targetToIndex[instr.addr]
                     
                     DisasmRow(
-                        instr = instr, 
-                        isSelected = instr.addr == cursorAddress, 
+                        instr = instr,
+                        isSelected = instr.addr == cursorAddress,
+                        isMultiSelected = multiSelectState.contains(instr.addr),
                         onClick = { offset, height ->
-                            if (instr.addr == cursorAddress) {
+                            if (multiSelectState.active) {
+                                viewModel.onEvent(DisasmEvent.UpdateMultiSelect(instr.addr))
+                            } else if (instr.addr == cursorAddress) {
                                 menuTargetAddress = instr.addr
                                 menuTapOffset = offset
                                 menuRowHeight = height
@@ -304,11 +313,8 @@ fun DisassemblyViewer(
                                 onInstructionClick(instr.addr)
                             }
                         },
-                        onLongClick = { offset, height ->
-                            menuTargetAddress = instr.addr
-                            menuTapOffset = offset
-                            menuRowHeight = height
-                            showMenu = true
+                        onLongClick = { _, _ ->
+                            viewModel.onEvent(DisasmEvent.StartMultiSelect(instr.addr))
                         },
                         showMenu = isThisRowMenuTarget,
                         menuContent = {

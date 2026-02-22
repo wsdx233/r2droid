@@ -90,13 +90,17 @@ private fun formatJumpIndex(index: Int): String {
 fun DisasmRow(
     instr: DisasmInstruction,
     isSelected: Boolean,
+    isMultiSelected: Boolean = false,
     onClick: (Offset, Int) -> Unit,
     onLongClick: (Offset, Int) -> Unit,
     showMenu: Boolean = false,
     menuContent: @Composable () -> Unit = {},
-    jumpIndex: Int? = null,           // Index for this jump (if it's a jump instruction)
-    jumpTargetIndex: Int? = null      // Index if this is a jump target
+    jumpIndex: Int? = null,
+    jumpTargetIndex: Int? = null
 ) {
+    // Whether this row has any highlight (cursor or multi-select)
+    val highlighted = isSelected || isMultiSelected
+
     // Column background colors
     val colJumpBg = dc(0xFFF3F8FF, 0xFF1E2A3A)
     val colAddressBg = dc(0xFFEFF8EE, 0xFF1E2E28)
@@ -174,7 +178,14 @@ fun DisasmRow(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                .background(
+                    when {
+                        isSelected && isMultiSelected -> MaterialTheme.colorScheme.tertiaryContainer
+                        isSelected -> MaterialTheme.colorScheme.primaryContainer
+                        isMultiSelected -> MaterialTheme.colorScheme.secondaryContainer
+                        else -> Color.Transparent
+                    }
+                )
                 .pointerInput(onClick, onLongClick) {
                     detectTapGestures(
                         onTap = { offset -> onClick(offset, size.height) },
@@ -190,7 +201,7 @@ fun DisasmRow(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (isSelected) Color.Transparent else colFlagBg)
+                            .background(if (highlighted) Color.Transparent else colFlagBg)
                             .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -214,7 +225,7 @@ fun DisasmRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (isSelected) Color.Transparent else colFuncHeaderBg)
+                        .background(if (highlighted) Color.Transparent else colFuncHeaderBg)
                         .padding(start = 80.dp, top = 2.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -255,7 +266,7 @@ fun DisasmRow(
                     modifier = Modifier
                         .width(22.dp)
                         .fillMaxHeight()
-                        .background(if (isSelected) Color.Transparent else colJumpBg),
+                        .background(if (highlighted) Color.Transparent else colJumpBg),
                     contentAlignment = Alignment.Center
                 ) {
                     when {
@@ -306,7 +317,7 @@ fun DisasmRow(
                     modifier = Modifier
                         .width(56.dp)
                         .fillMaxHeight()
-                        .background(if (isSelected) Color.Transparent else colAddressBg)
+                        .background(if (highlighted) Color.Transparent else colAddressBg)
                         .padding(horizontal = 2.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {
@@ -324,7 +335,7 @@ fun DisasmRow(
                     modifier = Modifier
                         .width(60.dp)
                         .fillMaxHeight()
-                        .background(if (isSelected) Color.Transparent else colBytesBg)
+                        .background(if (highlighted) Color.Transparent else colBytesBg)
                         .padding(horizontal = 2.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -341,7 +352,7 @@ fun DisasmRow(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .background(if (isSelected) Color.Transparent else colOpcodeBg)
+                        .background(if (highlighted) Color.Transparent else colOpcodeBg)
                         .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -359,7 +370,7 @@ fun DisasmRow(
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .background(if (isSelected) Color.Transparent else colInlineCommentBg)
+                            .background(if (highlighted) Color.Transparent else colInlineCommentBg)
                             .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -378,7 +389,7 @@ fun DisasmRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else colInlineCommentBg)
+                        .background(if (highlighted) Color.Transparent else colInlineCommentBg)
                         .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -396,7 +407,7 @@ fun DisasmRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else colR2CommentBg)
+                        .background(if (highlighted) Color.Transparent else colR2CommentBg)
                         .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -416,7 +427,7 @@ fun DisasmRow(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else colXrefBg)
+                            .background(if (highlighted) Color.Transparent else colXrefBg)
                             .padding(start = 80.dp, top = 1.dp, bottom = 1.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

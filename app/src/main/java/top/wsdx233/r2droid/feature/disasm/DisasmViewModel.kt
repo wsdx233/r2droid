@@ -80,6 +80,16 @@ data class AiPolishState(
     val error: String? = null
 )
 
+data class MultiSelectState(
+    val active: Boolean = false,
+    val startAddr: Long = -1L,
+    val endAddr: Long = -1L
+) {
+    fun contains(addr: Long): Boolean = active && addr in minOf(startAddr, endAddr)..maxOf(startAddr, endAddr)
+    val rangeStart get() = minOf(startAddr, endAddr)
+    val rangeEnd get() = maxOf(startAddr, endAddr)
+}
+
 /**
  * ViewModel for Disassembly Viewer.
  * Manages DisasmDataManager and disasm-related interactions.
@@ -113,6 +123,11 @@ sealed interface DisasmEvent {
     object DismissInstructionDetail : DisasmEvent
     data class AiPolishDisassembly(val address: Long) : DisasmEvent
     object DismissAiPolish : DisasmEvent
+    // Multi-select
+    data class StartMultiSelect(val addr: Long) : DisasmEvent
+    data class UpdateMultiSelect(val addr: Long) : DisasmEvent
+    object ClearMultiSelect : DisasmEvent
+    object ExtendToFunction : DisasmEvent
 }
 
 @HiltViewModel
@@ -155,6 +170,10 @@ class DisasmViewModel @Inject constructor(
     private val _aiPolishState = MutableStateFlow(AiPolishState())
     val aiPolishState: StateFlow<AiPolishState> = _aiPolishState.asStateFlow()
 
+    // Multi-select State
+    private val _multiSelectState = MutableStateFlow(MultiSelectState())
+    val multiSelectState: StateFlow<MultiSelectState> = _multiSelectState.asStateFlow()
+
     // Scroll target: emitted after data is loaded at target address
     // Pair of (targetAddress, index) - UI observes this to scroll after data is ready
     private val _scrollTarget = MutableStateFlow<Pair<Long, Int>?>(null)
@@ -192,6 +211,10 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.DismissInstructionDetail -> dismissInstructionDetail()
             is DisasmEvent.AiPolishDisassembly -> polishDisassemblyWithAi(event.address)
             is DisasmEvent.DismissAiPolish -> dismissAiPolish()
+            is DisasmEvent.StartMultiSelect -> _multiSelectState.value = MultiSelectState(true, event.addr, event.addr)
+            is DisasmEvent.UpdateMultiSelect -> _multiSelectState.value = _multiSelectState.value.copy(endAddr = event.addr)
+            is DisasmEvent.ClearMultiSelect -> _multiSelectState.value = MultiSelectState()
+            is DisasmEvent.ExtendToFunction -> extendSelectionToFunction()
         }
     }
 
@@ -206,6 +229,7 @@ class DisasmViewModel @Inject constructor(
         _disasmDataManagerState.value = null
         _disasmCacheVersion.value = 0
         _scrollTarget.value = null
+        _multiSelectState.value = MultiSelectState()
         currentSessionId = -1
     }
 
@@ -430,6 +454,89 @@ class DisasmViewModel @Inject constructor(
     
     fun dismissXrefs() {
         _xrefsState.value = _xrefsState.value.copy(visible = false)
+    }
+
+    // === Multi-select Operations ===
+
+    private fun extendSelectionToFunction() {
+        val state = _multiSelectState.value
+        if (!state.active) {
+            android.util.Log.d("DisasmMS", "extendToFunction: not active")
+            return
+        }
+        viewModelScope.launch {
+            val cmd = "afij @ ${state.startAddr}"
+            android.util.Log.d("DisasmMS", "extendToFunction: cmd=$cmd")
+            val output = R2PipeManager.executeJson(cmd).getOrDefault("[]")
+            android.util.Log.d("DisasmMS", "extendToFunction: output=$output")
+            try {
+                val arr = JSONArray(output)
+                if (arr.length() > 0) {
+                    val obj = arr.getJSONObject(0)
+                    val funcStart = obj.getLong("addr")
+                    val funcSize = obj.getLong("realsz")
+                    val funcEnd = funcStart + funcSize
+                    android.util.Log.d("DisasmMS", "extendToFunction: funcStart=0x${funcStart.toString(16)} size=$funcSize end=0x${funcEnd.toString(16)}")
+                    val snapshot = disasmDataManager?.getSnapshot()
+                    if (snapshot == null) {
+                        android.util.Log.d("DisasmMS", "extendToFunction: snapshot is null")
+                        return@launch
+                    }
+                    val inRange = snapshot.filter { it.addr >= funcStart && it.addr < funcEnd }
+                    android.util.Log.d("DisasmMS", "extendToFunction: ${inRange.size} instrs in range")
+                    val lastAddr = inRange.lastOrNull()?.addr ?: (funcEnd - 1)
+                    android.util.Log.d("DisasmMS", "extendToFunction: lastAddr=0x${lastAddr.toString(16)}")
+                    _multiSelectState.value = state.copy(
+                        startAddr = funcStart, endAddr = lastAddr
+                    )
+                } else {
+                    android.util.Log.d("DisasmMS", "extendToFunction: afij returned empty array")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DisasmMS", "extendToFunction: error", e)
+            }
+        }
+    }
+
+    fun fillSelectedRange(value: String) {
+        val state = _multiSelectState.value
+        if (!state.active) return
+        val start = state.rangeStart
+        val end = state.rangeEnd
+        viewModelScope.launch {
+            // Calculate byte length from instructions in range
+            val snapshot = disasmDataManager?.getSnapshot() ?: return@launch
+            val instrsInRange = snapshot.filter { it.addr in start..end }
+            val totalBytes = instrsInRange.sumOf { it.bytes.length / 2 }
+            if (totalBytes <= 0) return@launch
+
+            val clean = value.replace(" ", "")
+            val isHex = clean.isNotEmpty() && clean.all { it in "0123456789abcdefABCDEF" }
+            if (isHex) {
+                val unitLen = (clean.length / 2).coerceAtLeast(1)
+                val repeated = clean.repeat((totalBytes + unitLen - 1) / unitLen).take(totalBytes * 2)
+                R2PipeManager.execute("wx $repeated @ $start")
+            } else {
+                // Treat as assembly opcode - write at each instruction
+                for (instr in instrsInRange) {
+                    R2PipeManager.execute("wa $value @ ${instr.addr}")
+                }
+            }
+            resetAndScrollTo(start)
+            _dataModifiedEvent.value = System.currentTimeMillis()
+            _multiSelectState.value = MultiSelectState()
+        }
+    }
+
+    fun getSelectedInstructions(): List<top.wsdx233.r2droid.core.data.model.DisasmInstruction> {
+        val state = _multiSelectState.value
+        if (!state.active) return emptyList()
+        val snapshot = disasmDataManager?.getSnapshot() ?: return emptyList()
+        return snapshot.filter { it.addr in state.rangeStart..state.rangeEnd }
+    }
+
+    fun getSelectedCount(): Int {
+        return getSelectedInstructions().size
     }
 
     // === Function Operations ===

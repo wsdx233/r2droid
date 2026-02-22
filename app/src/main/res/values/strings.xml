@@ -675,4 +675,14 @@
     <string name="report_doc_col_length">Length</string>
     <string name="report_doc_col_content">Content</string>
 
+    <!-- Multi-select -->
+    <string name="multiselect_copy">Copy</string>
+    <string name="multiselect_copy_instructions">Instructions Only</string>
+    <string name="multiselect_copy_full">Full (pd output)</string>
+    <string name="multiselect_fill">Fill</string>
+    <string name="multiselect_fill_title">Fill Selected Range</string>
+    <string name="multiselect_fill_hint">Hex bytes or opcode (e.g. 90, nop)</string>
+    <string name="multiselect_extend">Extend</string>
+    <string name="multiselect_close">Close</string>
+    <string name="multiselect_count">%d selected</string>
 </resources>

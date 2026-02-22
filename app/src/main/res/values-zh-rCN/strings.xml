@@ -677,4 +677,14 @@
     <string name="report_doc_col_length">长度</string>
     <string name="report_doc_col_content">内容</string>
 
+    <!-- Multi-select -->
+    <string name="multiselect_copy">复制</string>
+    <string name="multiselect_copy_instructions">仅指令</string>
+    <string name="multiselect_copy_full">完整 (pd输出)</string>
+    <string name="multiselect_fill">填充</string>
+    <string name="multiselect_fill_title">填充选中范围</string>
+    <string name="multiselect_fill_hint">十六进制字节或指令 (如 90, nop)</string>
+    <string name="multiselect_extend">扩展</string>
+    <string name="multiselect_close">关闭</string>
+    <string name="multiselect_count">已选中 %d 条</string>
 </resources>

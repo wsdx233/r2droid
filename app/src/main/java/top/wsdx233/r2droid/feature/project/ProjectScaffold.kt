@@ -103,6 +103,9 @@ import top.wsdx233.r2droid.util.R2PipeManager
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
 import top.wsdx233.r2droid.feature.r2frida.ui.*
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FormatPaint
+import androidx.compose.material.icons.filled.SelectAll
 
 enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
     List(R.string.proj_category_list, Icons.Filled.List),
@@ -325,21 +328,131 @@ fun ProjectScaffold(
                                 }
                             }
                         }
-                        if (selectedDetailTabIndex == 1 && isAiEnabled) {
-                            androidx.compose.material3.IconButton(
-                                onClick = {
-                                    val currentAddress = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L
-                                    disasmViewModel.onEvent(DisasmEvent.AiPolishDisassembly(currentAddress))
+                        // Multi-select actions for disasm tab
+                        val disasmMultiSelect by disasmViewModel.multiSelectState.collectAsState()
+                        if (selectedDetailTabIndex == 1 && disasmMultiSelect.active) {
+                            val msClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                            val msScope = rememberCoroutineScope()
+                            // Selected count badge
+                            Text(
+                                stringResource(R.string.multiselect_count, disasmViewModel.getSelectedCount()),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                            // Copy button with dropdown
+                            var showCopyMenu by remember { mutableStateOf(false) }
+                            Box {
+                                androidx.compose.material3.IconButton(onClick = { showCopyMenu = true }) {
+                                    Icon(
+                                        androidx.compose.material.icons.Icons.Filled.ContentCopy,
+                                        contentDescription = stringResource(R.string.multiselect_copy),
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
-                            ) {
+                                androidx.compose.material3.DropdownMenu(
+                                    expanded = showCopyMenu,
+                                    onDismissRequest = { showCopyMenu = false }
+                                ) {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.multiselect_copy_instructions)) },
+                                        onClick = {
+                                            showCopyMenu = false
+                                            val instrs = disasmViewModel.getSelectedInstructions()
+                                            val text = instrs.joinToString("\n") { it.disasm }
+                                            msClipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                        }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.multiselect_copy_full)) },
+                                        onClick = {
+                                            showCopyMenu = false
+                                            val state = disasmMultiSelect
+                                            val instrs = disasmViewModel.getSelectedInstructions()
+                                            val n = instrs.size
+                                            val start = state.rangeStart
+                                            msScope.launch {
+                                                val result = top.wsdx233.r2droid.util.R2PipeManager.execute("pd $n @ $start").getOrDefault("")
+                                                msClipboard.setText(androidx.compose.ui.text.AnnotatedString(result))
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            // Fill button
+                            var showFillDialog by remember { mutableStateOf(false) }
+                            androidx.compose.material3.IconButton(onClick = { showFillDialog = true }) {
                                 Icon(
-                                    Icons.Filled.AutoFixHigh,
-                                    contentDescription = stringResource(R.string.disasm_ai_explain)
+                                    androidx.compose.material.icons.Icons.Filled.FormatPaint,
+                                    contentDescription = stringResource(R.string.multiselect_fill),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
-                        }
-                        androidx.compose.material3.IconButton(onClick = { showJumpDialog = true }) {
-                            Icon(Icons.AutoMirrored.Filled.MenuOpen, contentDescription = stringResource(R.string.menu_jump))
+                            if (showFillDialog) {
+                                var fillValue by remember { mutableStateOf("") }
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showFillDialog = false },
+                                    title = { Text(stringResource(R.string.multiselect_fill_title)) },
+                                    text = {
+                                        androidx.compose.material3.OutlinedTextField(
+                                            value = fillValue,
+                                            onValueChange = { fillValue = it },
+                                            label = { Text(stringResource(R.string.multiselect_fill_hint)) },
+                                            singleLine = true
+                                        )
+                                    },
+                                    confirmButton = {
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                showFillDialog = false
+                                                disasmViewModel.fillSelectedRange(fillValue)
+                                            },
+                                            enabled = fillValue.isNotBlank()
+                                        ) { Text("OK") }
+                                    },
+                                    dismissButton = {
+                                        androidx.compose.material3.TextButton(onClick = { showFillDialog = false }) {
+                                            Text(stringResource(R.string.home_delete_cancel))
+                                        }
+                                    }
+                                )
+                            }
+                            // Extend to function button
+                            androidx.compose.material3.IconButton(
+                                onClick = { disasmViewModel.onEvent(DisasmEvent.ExtendToFunction) }
+                            ) {
+                                Icon(
+                                    androidx.compose.material.icons.Icons.Filled.SelectAll,
+                                    contentDescription = stringResource(R.string.multiselect_extend),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            // Close multi-select
+                            androidx.compose.material3.IconButton(
+                                onClick = { disasmViewModel.onEvent(DisasmEvent.ClearMultiSelect) }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Cancel,
+                                    contentDescription = stringResource(R.string.multiselect_close),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else {
+                            if (selectedDetailTabIndex == 1 && isAiEnabled) {
+                                androidx.compose.material3.IconButton(
+                                    onClick = {
+                                        val currentAddress = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L
+                                        disasmViewModel.onEvent(DisasmEvent.AiPolishDisassembly(currentAddress))
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.AutoFixHigh,
+                                        contentDescription = stringResource(R.string.disasm_ai_explain)
+                                    )
+                                }
+                            }
+                            androidx.compose.material3.IconButton(onClick = { showJumpDialog = true }) {
+                                Icon(Icons.AutoMirrored.Filled.MenuOpen, contentDescription = stringResource(R.string.menu_jump))
+                            }
                         }
                     }
                 }
