@@ -53,10 +53,21 @@ import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
 import top.wsdx233.r2droid.core.ui.components.AutoHideAddressScrollbar
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 import top.wsdx233.r2droid.R
 import androidx.compose.runtime.setValue
+import top.wsdx233.r2droid.feature.debug.ui.RegisterBottomSheet
+import androidx.compose.material.icons.filled.BugReport
 
 /**
  * Virtualized Disassembly Viewer - uses DisasmDataManager for smooth infinite scrolling.
@@ -79,6 +90,21 @@ fun DisassemblyViewer(
     val disasmDataManager = viewModel.disasmDataManager
     val cacheVersion by viewModel.disasmCacheVersion.collectAsState()
     val multiSelectState by viewModel.multiSelectState.collectAsState()
+    val breakpoints by viewModel.breakpoints.collectAsState()
+    val pcAddress by viewModel.pcAddress.collectAsState()
+    val debugStatus by viewModel.debugStatus.collectAsState()
+    val registers by viewModel.registers.collectAsState()
+    val debugBackend by viewModel.debugBackend.collectAsState()
+
+    var showRegisters by remember { mutableStateOf(false) }
+    var showDebugControls by remember { mutableStateOf(false) }
+    var showDebugSettings by remember { mutableStateOf(false) }
+
+    LaunchedEffect(debugStatus) {
+        if (debugStatus == top.wsdx233.r2droid.feature.disasm.DebugStatus.SUSPENDED) {
+            showRegisters = true
+        }
+    }
 
     // Back handler to cancel multi-select
     androidx.activity.compose.BackHandler(enabled = multiSelectState.active) {
@@ -301,6 +327,9 @@ fun DisassemblyViewer(
                         instr = instr,
                         isSelected = instr.addr == cursorAddress,
                         isMultiSelected = multiSelectState.contains(instr.addr),
+                        isPC = instr.addr == pcAddress,
+                        isBreakpoint = breakpoints.contains(instr.addr),
+                        onGutterClick = { viewModel.toggleBreakpoint(instr.addr) },
                         onClick = { offset, height ->
                             if (multiSelectState.active) {
                                 viewModel.onEvent(DisasmEvent.UpdateMultiSelect(instr.addr))
@@ -449,19 +478,33 @@ fun DisassemblyViewer(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Addr: ${"0x%X".format(currentAddr)}", 
-                fontSize = 12.sp, 
-                fontFamily = LocalAppFont.current
-            )
-            Text(
-                "Loaded: $loadedCount instrs", 
-                fontSize = 12.sp, 
-                fontFamily = LocalAppFont.current
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Addr: ${"0x%X".format(currentAddr)}", 
+                    fontSize = 12.sp, 
+                    fontFamily = LocalAppFont.current
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Loaded: $loadedCount instrs", 
+                    fontSize = 12.sp, 
+                    fontFamily = LocalAppFont.current
+                )
+            }
+            IconButton(
+                onClick = { showDebugControls = !showDebugControls },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BugReport,
+                    contentDescription = "Toggle Debug Controls",
+                    tint = if (showDebugControls) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         
         // Context Menu
@@ -685,6 +728,70 @@ fun DisassemblyViewer(
                         onClick = { viewModel.onEvent(DisasmEvent.DismissAiPolish) }
                     ) {
                         Text(androidx.compose.ui.res.stringResource(R.string.func_close))
+                    }
+                }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showDebugControls,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
+        ) {
+            DebugControlBar(
+                debugStatus = debugStatus,
+                onInitEsil = { viewModel.initEsil() },
+                onStepInto = { viewModel.performDebugAction("step") },
+                onStepOver = { viewModel.performDebugAction("over") },
+                onContinue = { viewModel.performDebugAction("continue") },
+                onPause = { viewModel.pauseExecution() },
+                onShowRegisters = { showRegisters = true },
+                onSettings = { showDebugSettings = true }
+            )
+        }
+
+        if (showRegisters) {
+            RegisterBottomSheet(
+                registers = registers,
+                onDismissRequest = { showRegisters = false }
+            )
+        }
+
+        if (showDebugSettings) {
+            AlertDialog(
+                onDismissRequest = { showDebugSettings = false },
+                title = { Text("Debug Backend") },
+                text = {
+                    Column {
+                        val backends = top.wsdx233.r2droid.feature.debug.data.DebugBackend.values()
+                        backends.forEach { backend ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.setDebugBackend(backend)
+                                        showDebugSettings = false
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                androidx.compose.material3.RadioButton(
+                                    selected = debugBackend == backend,
+                                    onClick = {
+                                        viewModel.setDebugBackend(backend)
+                                        showDebugSettings = false
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = backend.name)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showDebugSettings = false }) {
+                        Text("Close")
                     }
                 }
             )

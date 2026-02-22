@@ -90,6 +90,8 @@ data class MultiSelectState(
     val rangeEnd get() = maxOf(startAddr, endAddr)
 }
 
+enum class DebugStatus { IDLE, SUSPENDED, RUNNING }
+
 /**
  * ViewModel for Disassembly Viewer.
  * Manages DisasmDataManager and disasm-related interactions.
@@ -133,7 +135,8 @@ sealed interface DisasmEvent {
 @HiltViewModel
 class DisasmViewModel @Inject constructor(
     private val disasmRepository: DisasmRepository,
-    private val aiRepository: AiRepository
+    private val aiRepository: AiRepository,
+    private val debuggerRepository: top.wsdx233.r2droid.feature.debug.data.DebuggerRepository
 ) : ViewModel() {
 
     // DisasmDataManager for virtualized disassembly viewing
@@ -182,6 +185,30 @@ class DisasmViewModel @Inject constructor(
     // Event to notify that data has been modified
     private val _dataModifiedEvent = MutableStateFlow(0L)
     val dataModifiedEvent: StateFlow<Long> = _dataModifiedEvent.asStateFlow()
+
+    // 调试后端模式
+    private val _debugBackend = MutableStateFlow(top.wsdx233.r2droid.feature.debug.data.DebugBackend.ESIL)
+    val debugBackend: StateFlow<top.wsdx233.r2droid.feature.debug.data.DebugBackend> = _debugBackend.asStateFlow()
+
+    fun setDebugBackend(backend: top.wsdx233.r2droid.feature.debug.data.DebugBackend) {
+        _debugBackend.value = backend
+    }
+
+    // 当前 PC (Program Counter) 地址
+    private val _pcAddress = MutableStateFlow<Long?>(null)
+    val pcAddress: StateFlow<Long?> = _pcAddress.asStateFlow()
+
+    // 断点集合
+    private val _breakpoints = MutableStateFlow<Set<Long>>(emptySet())
+    val breakpoints: StateFlow<Set<Long>> = _breakpoints.asStateFlow()
+
+    // 寄存器状态
+    private val _registers = MutableStateFlow<org.json.JSONObject>(org.json.JSONObject())
+    val registers: StateFlow<org.json.JSONObject> = _registers.asStateFlow()
+
+    // 调试器状态
+    private val _debugStatus = MutableStateFlow(DebugStatus.IDLE)
+    val debugStatus: StateFlow<DebugStatus> = _debugStatus.asStateFlow()
 
     fun onEvent(event: DisasmEvent) {
         when (event) {
@@ -247,6 +274,62 @@ class DisasmViewModel @Inject constructor(
             val index = manager.loadAndFindIndex(addr)
             _disasmCacheVersion.value++
             _scrollTarget.value = Pair(addr, index)
+        }
+    }
+
+    // 初始化 ESIL 环境
+    fun initEsil() {
+        viewModelScope.launch {
+            R2PipeManager.execute("aei; aeim; aeip") // 初始化 ESIL 和内存，并设置当前 PC
+            _debugBackend.value = top.wsdx233.r2droid.feature.debug.data.DebugBackend.ESIL
+            updateDebugState()
+        }
+    }
+
+    // 切换断点
+    fun toggleBreakpoint(addr: Long) {
+        viewModelScope.launch {
+            debuggerRepository.toggleBreakpoint(addr)
+            _breakpoints.value = debuggerRepository.getBreakpoints().getOrDefault(emptySet())
+            // also trigger UI update for current row immediately
+            _disasmCacheVersion.value++
+        }
+    }
+
+    // 调试操作 (Step / Continue)
+    fun performDebugAction(action: String) {
+        viewModelScope.launch {
+            _debugStatus.value = DebugStatus.RUNNING
+            
+            when (action) {
+                "step" -> debuggerRepository.stepInto(_debugBackend.value)
+                "over" -> debuggerRepository.stepOver(_debugBackend.value)
+                "continue" -> debuggerRepository.continueExecution(_debugBackend.value)
+            }
+            
+            // 阻塞命令返回后，更新状态
+            updateDebugState()
+        }
+    }
+
+    // 暂停执行
+    fun pauseExecution() {
+        // 利用已有的 interrupt 发送 SIGINT 给 R2 进程，强行打断 dc 的阻塞
+        R2PipeManager.interrupt()
+    }
+
+    // 获取 PC 和 寄存器更新 UI，并自动滚动到 PC 位置
+    suspend fun updateDebugState() {
+        val pc = debuggerRepository.getCurrentPC().getOrNull()
+        _pcAddress.value = pc
+        _debugStatus.value = DebugStatus.SUSPENDED
+        
+        val regs = debuggerRepository.getRegisters().getOrDefault(org.json.JSONObject())
+        _registers.value = regs
+
+        // 自动让反汇编视图滚动到 PC 位置
+        if (pc != null) {
+            loadAndScrollTo(pc)
         }
     }
 

@@ -25,6 +25,22 @@ import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowRightAlt
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.size
+import top.wsdx233.r2droid.feature.disasm.DebugStatus
 
 /** Pick color based on current theme */
 @Composable
@@ -91,6 +107,9 @@ fun DisasmRow(
     instr: DisasmInstruction,
     isSelected: Boolean,
     isMultiSelected: Boolean = false,
+    isPC: Boolean = false,
+    isBreakpoint: Boolean = false,
+    onGutterClick: () -> Unit = {},
     onClick: (Offset, Int) -> Unit,
     onLongClick: (Offset, Int) -> Unit,
     showMenu: Boolean = false,
@@ -175,11 +194,13 @@ fun DisasmRow(
     val hasInlineComment = inlineComment.isNotEmpty()
     
     Box {
+        val pcHighlightColor = Color(0x40FFEB3B)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     when {
+                        isPC -> pcHighlightColor
                         isSelected && isMultiSelected -> MaterialTheme.colorScheme.tertiaryContainer
                         isSelected -> MaterialTheme.colorScheme.primaryContainer
                         isMultiSelected -> MaterialTheme.colorScheme.secondaryContainer
@@ -261,6 +282,33 @@ fun DisasmRow(
                     .height(IntrinsicSize.Min),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // --- 新增：调试控制槽区 (Gutter) ---
+                Box(
+                    modifier = Modifier
+                        .width(24.dp)
+                        .fillMaxHeight()
+                        .clickable { onGutterClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 画断点红点
+                    if (isBreakpoint) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(Color.Red, shape = CircleShape)
+                        )
+                    }
+                    // 画 PC 指针图标 (覆盖在红点上方或旁边)
+                    if (isPC) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowRightAlt,
+                            contentDescription = "PC",
+                            tint = Color.Yellow,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
                 // Jump indicator column (fixed width) - with background color
                 Box(
                     modifier = Modifier
@@ -450,6 +498,61 @@ fun DisasmRow(
         // Render menu inside Box so it anchors to this row
         if (showMenu) {
             menuContent()
+        }
+    }
+}
+
+@Composable
+fun DebugControlBar(
+    modifier: Modifier = Modifier,
+    debugStatus: top.wsdx233.r2droid.feature.disasm.DebugStatus,
+    onInitEsil: () -> Unit,
+    onStepInto: () -> Unit,
+    onStepOver: () -> Unit,
+    onContinue: () -> Unit,
+    onPause: () -> Unit,
+    onShowRegisters: () -> Unit = {},
+    onSettings: () -> Unit = {}
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        modifier = modifier.padding(16.dp).background(Color.Transparent)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (debugStatus == top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE) {
+                IconButton(onClick = onInitEsil) {
+                    Icon(Icons.Default.PowerSettingsNew, "Init ESIL")
+                }
+            } else {
+                if (debugStatus == top.wsdx233.r2droid.feature.disasm.DebugStatus.RUNNING) {
+                    IconButton(onClick = onPause) {
+                        Icon(Icons.Default.Pause, "Pause")
+                    }
+                } else {
+                    IconButton(onClick = onContinue) {
+                        Icon(Icons.Default.PlayArrow, "Continue")
+                    }
+                    IconButton(onClick = onStepInto) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Step Into")
+                    }
+                    IconButton(onClick = onStepOver) {
+                        Icon(Icons.Default.Redo, "Step Over")
+                    }
+                    IconButton(onClick = onShowRegisters) {
+                        Icon(Icons.Default.List, "Show Registers")
+                    }
+                }
+            }
+            if (debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.RUNNING) {
+                IconButton(onClick = onSettings) {
+                    Icon(Icons.Default.Settings, "Debug Settings")
+                }
+            }
         }
     }
 }
