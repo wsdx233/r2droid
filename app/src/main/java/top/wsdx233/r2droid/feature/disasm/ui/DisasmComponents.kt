@@ -282,41 +282,28 @@ fun DisasmRow(
                     .height(IntrinsicSize.Min),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // --- 新增：调试控制槽区 (Gutter) ---
+
+
+                // Jump indicator column (fixed width) - with background color
+                // Used as gutter for breakpoints and PC indicator
                 Box(
                     modifier = Modifier
-                        .width(24.dp)
+                        .width(26.dp)
                         .fillMaxHeight()
+                        .background(if (highlighted) Color.Transparent else colJumpBg)
                         .clickable { onGutterClick() },
                     contentAlignment = Alignment.Center
                 ) {
-                    // 画断点红点
+                    // Render breakpoint red dot in background
                     if (isBreakpoint) {
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
-                                .background(Color.Red, shape = CircleShape)
+                                .size(12.dp)
+                                .background(Color.Red.copy(alpha=0.8f), shape = CircleShape)
                         )
                     }
-                    // 画 PC 指针图标 (覆盖在红点上方或旁边)
-                    if (isPC) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowRightAlt,
-                            contentDescription = "PC",
-                            tint = Color.Yellow,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                // Jump indicator column (fixed width) - with background color
-                Box(
-                    modifier = Modifier
-                        .width(22.dp)
-                        .fillMaxHeight()
-                        .background(if (highlighted) Color.Transparent else colJumpBg),
-                    contentAlignment = Alignment.Center
-                ) {
+                    
+                    // Main Jump text
                     when {
                         // External jump out - green left arrow
                         isExternalJumpOut -> {
@@ -357,6 +344,16 @@ fun DisasmRow(
                                 fontSize = 9.sp
                             )
                         }
+                    }
+
+                    // Render PC arrow overriding everything (or overlaying)
+                    if (isPC) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowRightAlt,
+                            contentDescription = "PC",
+                            tint = Color.Yellow,
+                            modifier = Modifier.size(16.dp).align(Alignment.Center)
+                        )
                     }
                 }
                 

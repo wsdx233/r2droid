@@ -286,13 +286,18 @@ class DisasmViewModel @Inject constructor(
         }
     }
 
-    // 切换断点
+    // 切换断点 (本地管理状态，不依赖R2缓存)
     fun toggleBreakpoint(addr: Long) {
+        val currentBreakpoints = _breakpoints.value.toMutableSet()
+        val isAdd = !currentBreakpoints.contains(addr)
+        
+        if (isAdd) currentBreakpoints.add(addr) else currentBreakpoints.remove(addr)
+        _breakpoints.value = currentBreakpoints
+        // Trigger UI update locally
+        _disasmCacheVersion.value++
+
         viewModelScope.launch {
-            debuggerRepository.toggleBreakpoint(addr)
-            _breakpoints.value = debuggerRepository.getBreakpoints().getOrDefault(emptySet())
-            // also trigger UI update for current row immediately
-            _disasmCacheVersion.value++
+            debuggerRepository.toggleBreakpoint(addr, isAdd) // 发送实际指令到 r2
         }
     }
 

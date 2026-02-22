@@ -19,15 +19,14 @@ class DebuggerRepository @Inject constructor() {
         bps
     }
 
-    // 切换断点
-    suspend fun toggleBreakpoint(addr: Long): Result<Boolean> {
-        val bps = getBreakpoints().getOrDefault(emptySet())
+    // 切换断点 (只发送指令，状态由ViewModel本地管理)
+    suspend fun toggleBreakpoint(addr: Long, isAdd: Boolean): Result<String> {
         val isFrida = R2PipeManager.isR2FridaSession
         val prefix = if (isFrida) ":" else ""
-        return if (bps.contains(addr)) {
-            R2PipeManager.execute("${prefix}db- $addr").map { false } // 移除
+        return if (isAdd) {
+            R2PipeManager.execute("${prefix}db $addr")  // 添加
         } else {
-            R2PipeManager.execute("${prefix}db $addr").map { true }  // 添加
+            R2PipeManager.execute("${prefix}db- $addr") // 移除
         }
     }
 
