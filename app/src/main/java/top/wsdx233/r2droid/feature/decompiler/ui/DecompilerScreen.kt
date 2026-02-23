@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -201,6 +202,26 @@ fun DecompilationViewer(
 
     val horizontalScrollState = rememberScrollState()
 
+    // Compute per-line heights when word wrap is enabled (wrapped lines need more space)
+    val lineHeights = remember(textLayoutResult, wordWrap, lines.size) {
+        val layout = textLayoutResult ?: return@remember null
+        if (!wordWrap) return@remember null
+        var charOffset = 0
+        lines.mapIndexed { i, line ->
+            val start = charOffset
+            charOffset += line.length + 1
+            val vLine = layout.getLineForOffset(start.coerceAtMost(layout.layoutInput.text.length - 1))
+            val top = layout.getLineTop(vLine)
+            val bottom = if (i < lines.size - 1) {
+                val ns = charOffset.coerceAtMost(layout.layoutInput.text.length - 1)
+                layout.getLineTop(layout.getLineForOffset(ns))
+            } else {
+                layout.getLineBottom(layout.lineCount - 1)
+            }
+            bottom - top
+        }
+    }
+
     SelectionContainer {
         Row(
             modifier = Modifier
@@ -247,30 +268,34 @@ fun DecompilationViewer(
         ) {
             // Line numbers column (conditional)
             if (showLineNumbers) {
-                Box(
-                    modifier = Modifier
-                        .width(lineNumberWidth)
-                        .verticalScroll(scrollState)
-                        .background(Color(0xFF252526))
-                        .padding(top = 8.dp, bottom = 8.dp)
-                ) {
-                    Column {
-                        lines.forEachIndexed { index, _ ->
-                            val isCurrentLine = index == cursorLineIndex
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(scaledLineHeight.value.dp)
-                                    .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                Text(
-                                    text = (index + 1).toString(),
-                                    fontFamily = LocalAppFont.current,
-                                    fontSize = scaledFontSize,
-                                    color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
+                DisableSelection {
+                    Box(
+                        modifier = Modifier
+                            .width(lineNumberWidth)
+                            .verticalScroll(scrollState)
+                            .background(Color(0xFF252526))
+                            .padding(top = 8.dp, bottom = 8.dp)
+                    ) {
+                        Column {
+                            lines.forEachIndexed { index, _ ->
+                                val isCurrentLine = index == cursorLineIndex
+                                val h = lineHeights?.getOrNull(index)?.let { with(density) { it.toDp() } }
+                                    ?: scaledLineHeight.value.dp
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(h)
+                                        .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Text(
+                                        text = (index + 1).toString(),
+                                        fontFamily = LocalAppFont.current,
+                                        fontSize = scaledFontSize,
+                                        color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                }
                             }
                         }
                     }
