@@ -249,6 +249,10 @@ class ProjectViewModel @Inject constructor(
     private val _decompilerWordWrap = MutableStateFlow(SettingsManager.decompilerWordWrap)
     val decompilerWordWrap: StateFlow<Boolean> = _decompilerWordWrap.asStateFlow()
 
+    private val _decompilerSoraMode = MutableStateFlow(false)
+    val decompilerSoraMode: StateFlow<Boolean> = _decompilerSoraMode.asStateFlow()
+    fun toggleSoraMode() { _decompilerSoraMode.value = !_decompilerSoraMode.value }
+
     private val _decompilerZoomScale = MutableStateFlow(SettingsManager.decompilerZoomScale)
     val decompilerZoomScale: StateFlow<Float> = _decompilerZoomScale.asStateFlow()
 

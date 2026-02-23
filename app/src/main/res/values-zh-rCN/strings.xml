@@ -101,6 +101,11 @@
     <string name="decompiler_section_decompiler">反编译器</string>
     <string name="decompiler_section_display">显示</string>
     <string name="decompiler_reset_zoom">重置缩放</string>
+    <string name="decompiler_export_view">导出查看</string>
+    <string name="decompiler_export_builtin">内置编辑器</string>
+    <string name="decompiler_export_external">外部编辑器</string>
+    <string name="decompiler_export_success">已导出到 Download/R2droidExport</string>
+    <string name="decompiler_export_no_data">无反编译数据</string>
 
     <!-- Install Screen -->
     <string name="install_title">正在安装资源</string>

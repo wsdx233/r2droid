@@ -103,10 +103,21 @@ fun ProjectDetailView(
             }
         }
         2 -> {
+            val soraMode by viewModel.decompilerSoraMode.collectAsState()
             if (state.decompilation == null) {
                 androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }
+            } else if (soraMode) {
+                val code = state.decompilation.code
+                top.wsdx233.r2droid.core.ui.components.SoraCodeEditor(
+                    modifier = Modifier.fillMaxSize(),
+                    scopeName = "source.cpp",
+                    onEditorReady = { editor ->
+                        editor.setText(code)
+                        editor.isEditable = false
+                    }
+                )
             } else {
                 DecompilationViewer(
                     viewModel = viewModel,

@@ -156,6 +156,9 @@ fun ProjectScaffold(
     val isAiEnabled = top.wsdx233.r2droid.data.SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
 
+    // Decompiler export state
+    var exportDecompCode by remember { mutableStateOf<String?>(null) }
+
     // Hoisted CommandScreen state
     var cmdInput by remember { mutableStateOf("") }
     var cmdHistory by remember { mutableStateOf(listOf<Pair<String, String>>()) }
@@ -323,6 +326,28 @@ fun ProjectScaffold(
                                         onClick = {
                                             showDecompilerMenu = false
                                             viewModel.resetDecompilerZoom()
+                                        }
+                                    )
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                    Text(
+                                        stringResource(R.string.decompiler_export_view),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_export_builtin)) },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            viewModel.toggleSoraMode()
+                                        }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_export_external)) },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            val code = (uiState as? ProjectUiState.Success)?.decompilation?.code
+                                            if (!code.isNullOrBlank()) exportDecompCode = code
                                         }
                                     )
                                 }
@@ -839,6 +864,33 @@ fun ProjectScaffold(
                     }
                 }
             )
+        }
+    }
+
+    // External export
+    val exportContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(exportDecompCode) {
+        val code = exportDecompCode ?: return@LaunchedEffect
+        exportDecompCode = null
+        try {
+            val dir = java.io.File(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                "R2droidExport"
+            )
+            dir.mkdirs()
+            val fileName = "decompile_${System.currentTimeMillis()}.c"
+            val file = java.io.File(dir, fileName)
+            file.writeText(code)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                exportContext, "${exportContext.packageName}.fileprovider", file
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "text/x-csrc")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            exportContext.startActivity(android.content.Intent.createChooser(intent, null))
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(exportContext, e.message, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 }

@@ -135,6 +135,11 @@
     <string name="decompiler_section_decompiler">Decompiler</string>
     <string name="decompiler_section_display">Display</string>
     <string name="decompiler_reset_zoom">Reset Zoom</string>
+    <string name="decompiler_export_view">Export View</string>
+    <string name="decompiler_export_builtin">Built-in Editor</string>
+    <string name="decompiler_export_external">External Editor</string>
+    <string name="decompiler_export_success">Exported to Download/R2droidExport</string>
+    <string name="decompiler_export_no_data">No decompilation data</string>
 
     <!-- Install Screen -->
     <string name="install_title">Installing resources</string>
