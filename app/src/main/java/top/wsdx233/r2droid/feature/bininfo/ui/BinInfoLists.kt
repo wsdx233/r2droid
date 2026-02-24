@@ -20,14 +20,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.FunctionInfo
 import top.wsdx233.r2droid.core.data.model.ImportInfo
@@ -44,7 +58,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import top.wsdx233.r2droid.core.data.db.*
 import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
 import top.wsdx233.r2droid.core.ui.components.FilterableList
@@ -515,6 +531,34 @@ fun FunctionItem(func: FunctionInfo, actions: ListItemActions) {
 }
 
 @Composable
+private fun ShimmerPlaceholder() {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = -300f,
+        targetValue = 900f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_offset"
+    )
+    val baseColor = MaterialTheme.colorScheme.surfaceContainerLow
+    val shimmerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val brush = Brush.linearGradient(
+        colors = listOf(baseColor, shimmerColor, baseColor),
+        start = Offset(translateAnim, 0f),
+        end = Offset(translateAnim + 300f, 0f)
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(brush)
+    )
+}
+
+@Composable
 private fun <T : Any> GenericPagingList(
     pagingData: Flow<PagingData<T>>,
     placeholder: String,
@@ -526,6 +570,18 @@ private fun <T : Any> GenericPagingList(
 ) {
     val lazyPagingItems = pagingData.collectAsLazyPagingItems()
     val listState = rememberLazyListState()
+
+    // Debounce: only trigger Paging loads after scroll position stays stable for 200ms.
+    // Using firstVisibleItemIndex instead of isScrollInProgress because
+    // scrollToItem() (used by the scrollbar) is instant and doesn't set isScrollInProgress.
+    var scrollSettled by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { idx ->
+            scrollSettled = false
+            delay(75)
+            scrollSettled = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Spacer(modifier = Modifier.height(4.dp))
@@ -541,7 +597,19 @@ private fun <T : Any> GenericPagingList(
         Box(modifier = Modifier.weight(1f)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(count = lazyPagingItems.itemCount, key = lazyPagingItems.itemKey { itemKey(it) }) { index ->
-                    lazyPagingItems[index]?.let { itemContent(it) }
+                    val cached = lazyPagingItems.peek(index)
+                    if (cached != null) {
+                        itemContent(cached)
+                    } else {
+                        // Only call [index] once to trigger the Paging load,
+                        // then rely on peek() on subsequent recompositions.
+                        val triggered = remember { mutableStateOf(false) }
+                        if (scrollSettled && !triggered.value) {
+                            lazyPagingItems[index]
+                            triggered.value = true
+                        }
+                        ShimmerPlaceholder()
+                    }
                 }
             }
             if (lazyPagingItems.itemCount > 0) {

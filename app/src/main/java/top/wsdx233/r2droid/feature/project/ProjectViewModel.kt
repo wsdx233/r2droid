@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -101,6 +104,46 @@ sealed class SaveProjectState {
     data class Error(val message: String) : SaveProjectState()
 }
 
+/**
+ * Debug wrapper: logs every load() call from the Paging library
+ * so we can see exactly what offset/limit is being requested.
+ */
+private class LoggingPagingSource<T : Any>(
+    private val delegate: PagingSource<Int, T>,
+    private val tag: String
+) : PagingSource<Int, T>() {
+
+    init {
+        // Forward invalidation from delegate to this wrapper
+        delegate.registerInvalidatedCallback { invalidate() }
+        registerInvalidatedCallback { delegate.invalidate() }
+    }
+
+    override fun getRefreshKey(state: PagingState<Int, T>): Int? {
+        return delegate.getRefreshKey(state)
+    }
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, T> {
+        val type = when (params) {
+            is LoadParams.Refresh -> "REFRESH"
+            is LoadParams.Append -> "APPEND"
+            is LoadParams.Prepend -> "PREPEND"
+        }
+        Log.d(tag, "load($type) key=${params.key}, loadSize=${params.loadSize}")
+        val start = System.currentTimeMillis()
+        val result = delegate.load(params)
+        val elapsed = System.currentTimeMillis() - start
+        when (result) {
+            is LoadResult.Page -> Log.d(tag, "  -> Page: ${result.data.size} items, prev=${result.prevKey}, next=${result.nextKey}, ${elapsed}ms")
+            is LoadResult.Error -> Log.e(tag, "  -> Error: ${result.throwable}", result.throwable)
+            is LoadResult.Invalid -> Log.w(tag, "  -> Invalid, ${elapsed}ms")
+        }
+        return result
+    }
+
+    override val jumpingSupported: Boolean get() = delegate.jumpingSupported
+}
+
 @HiltViewModel
 class ProjectViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -140,7 +183,7 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val stringsPagingData: Flow<PagingData<StringEntity>> = _stringsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) stringDao.getPagingSource()
             else stringDao.searchStrings(query)
         }.flow
@@ -158,7 +201,7 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val sectionsPagingData: Flow<PagingData<SectionEntity>> = _sectionsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) sectionDao.getPagingSource() else sectionDao.search(query)
         }.flow
     }.cachedIn(viewModelScope)
@@ -173,7 +216,7 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val symbolsPagingData: Flow<PagingData<SymbolEntity>> = _symbolsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) symbolDao.getPagingSource() else symbolDao.search(query)
         }.flow
     }.cachedIn(viewModelScope)
@@ -188,7 +231,7 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val importsPagingData: Flow<PagingData<ImportEntity>> = _importsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) importDao.getPagingSource() else importDao.search(query)
         }.flow
     }.cachedIn(viewModelScope)
@@ -203,7 +246,7 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val relocationsPagingData: Flow<PagingData<RelocationEntity>> = _relocationsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) relocationDao.getPagingSource() else relocationDao.search(query)
         }.flow
     }.cachedIn(viewModelScope)
@@ -218,8 +261,9 @@ class ProjectViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val functionsPagingData: Flow<PagingData<FunctionEntity>> = _functionsSearchQuery.flatMapLatest { query ->
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = true)) {
-            if (query.isBlank()) functionDao.getPagingSource() else functionDao.search(query)
+        Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
+            val source = if (query.isBlank()) functionDao.getPagingSource() else functionDao.search(query)
+            LoggingPagingSource(source, "PagingLoad-Functions")
         }.flow
     }.cachedIn(viewModelScope)
 

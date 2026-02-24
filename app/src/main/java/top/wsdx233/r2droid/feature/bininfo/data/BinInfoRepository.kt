@@ -120,7 +120,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(StringEntity(vAddr, str, type, section))
-                if (buffer.size >= 5000) {
+                if (buffer.size >= 10000) {
                     stringDao.insertAll(buffer)
                     buffer.clear()
                 }
@@ -157,7 +157,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(SectionEntity(vAddr, name, size, vSize, perm, pAddr))
-                if (buffer.size >= 5000) { sectionDao.insertAll(buffer); buffer.clear() }
+                if (buffer.size >= 10000) { sectionDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray(); reader.close()
             if (buffer.isNotEmpty()) sectionDao.insertAll(buffer)
@@ -193,7 +193,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(SymbolEntity(name = name, type = type, vAddr = vAddr, pAddr = pAddr, isImported = isImported, realname = realname))
-                if (buffer.size >= 5000) { symbolDao.insertAll(buffer); buffer.clear() }
+                if (buffer.size >= 10000) { symbolDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray(); reader.close()
             android.util.Log.d("SyncSymbols", "Parsed ${buffer.size} symbols, inserting to DB")
@@ -228,7 +228,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(ImportEntity(name = name, ordinal = ordinal, type = type, plt = plt))
-                if (buffer.size >= 5000) { importDao.insertAll(buffer); buffer.clear() }
+                if (buffer.size >= 10000) { importDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray(); reader.close()
             if (buffer.isNotEmpty()) importDao.insertAll(buffer)
@@ -256,7 +256,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(RelocationEntity(name = name, type = type, vAddr = vAddr, pAddr = pAddr))
-                if (buffer.size >= 5000) { relocationDao.insertAll(buffer); buffer.clear() }
+                if (buffer.size >= 10000) { relocationDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray(); reader.close()
             if (buffer.isNotEmpty()) relocationDao.insertAll(buffer)
@@ -285,7 +285,7 @@ class BinInfoRepository @Inject constructor(
                 }
                 reader.endObject()
                 buffer.add(FunctionEntity(addr, name, size, nbbs, signature))
-                if (buffer.size >= 5000) { functionDao.insertAll(buffer); buffer.clear() }
+                if (buffer.size >= 10000) { functionDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray(); reader.close()
             if (buffer.isNotEmpty()) functionDao.insertAll(buffer)
