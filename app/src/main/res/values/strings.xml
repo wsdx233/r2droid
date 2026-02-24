@@ -621,12 +621,14 @@
     <string name="r2frida_tab_strings">Strings</string>
     <string name="r2frida_tab_symbols">Symbols</string>
     <string name="r2frida_tab_sections">Sections</string>
+    <string name="r2frida_tab_mappings">Mappings</string>
     <string name="r2frida_search_libraries">Search libraries…</string>
     <string name="r2frida_search_entries">Search entries…</string>
     <string name="r2frida_search_exports">Search exports…</string>
     <string name="r2frida_search_strings">Search strings…</string>
     <string name="r2frida_search_symbols">Search symbols…</string>
     <string name="r2frida_search_sections">Search sections…</string>
+    <string name="r2frida_search_mappings">Search mappings…</string>
     <string name="r2frida_overview_title">Frida Session Info</string>
     <string name="r2frida_script_hint">Write Frida script here…</string>
     <string name="r2frida_script_run">Run Script</string>

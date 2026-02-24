@@ -78,3 +78,19 @@ data class FridaString(
         )
     }
 }
+
+data class FridaMapping(
+    val base: String,
+    val size: Long,
+    val protection: String,
+    val filePath: String?
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = FridaMapping(
+            base = json.optString("base"),
+            size = json.optLong("size"),
+            protection = json.optString("protection"),
+            filePath = json.optJSONObject("file")?.optString("path")
+        )
+    }
+}

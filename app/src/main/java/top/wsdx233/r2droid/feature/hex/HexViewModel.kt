@@ -102,6 +102,33 @@ class HexViewModel @Inject constructor(
                 }
             }
 
+            // r2frida mode: use :dmj for address boundaries
+            if (endAddress <= startAddress && R2PipeManager.isR2FridaSession) {
+                try {
+                    val raw = R2PipeManager.execute(":dmj").getOrNull()?.trim() ?: ""
+                    val idx = raw.indexOfFirst { it == '[' }
+                    val json = if (idx > 0) raw.substring(idx) else raw
+                    if (json.startsWith("[")) {
+                        val arr = org.json.JSONArray(json)
+                        var minAddr = Long.MAX_VALUE
+                        var maxAddr = 0L
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val base = java.lang.Long.decode(obj.optString("base", "0"))
+                            val size = obj.optLong("size", 0)
+                            if (base > 0 && size > 0) {
+                                minAddr = minOf(minAddr, base)
+                                maxAddr = maxOf(maxAddr, base + size)
+                            }
+                        }
+                        if (maxAddr > minAddr && minAddr != Long.MAX_VALUE) {
+                            startAddress = minAddr
+                            endAddress = maxAddr
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
             // Fallback if sections are empty or invalid
             if (endAddress <= startAddress) {
                 // Try Java File API as fallback (file offset based)

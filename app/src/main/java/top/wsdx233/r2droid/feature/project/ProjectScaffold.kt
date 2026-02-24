@@ -201,7 +201,8 @@ fun ProjectScaffold(
     val projectTabs = listOf(R.string.proj_tab_settings, R.string.proj_tab_cmd, R.string.proj_tab_logs)
     val aiTabs = listOf(R.string.ai_tab_chat, R.string.ai_tab_settings, R.string.ai_tab_prompts)
     val r2fridaTabs = listOf(
-        R.string.r2frida_tab_overview, R.string.r2frida_tab_libraries, R.string.r2frida_tab_scripts,
+        R.string.r2frida_tab_overview, R.string.r2frida_tab_libraries, R.string.r2frida_tab_mappings,
+        R.string.r2frida_tab_scripts,
         R.string.r2frida_tab_entries, R.string.r2frida_tab_exports, R.string.r2frida_tab_strings,
         R.string.r2frida_tab_symbols, R.string.r2frida_tab_sections
     )
@@ -789,6 +790,7 @@ fun ProjectScaffold(
 
                             val fridaOverview by r2fridaViewModel.overview.collectAsState()
                             val fridaLibraries by r2fridaViewModel.libraries.collectAsState()
+                            val fridaMappings by r2fridaViewModel.mappings.collectAsState()
                             val fridaEntries by r2fridaViewModel.entries.collectAsState()
                             val fridaExports by r2fridaViewModel.exports.collectAsState()
                             val fridaStrings by r2fridaViewModel.strings.collectAsState()
@@ -801,12 +803,13 @@ fun ProjectScaffold(
                                 when (selectedR2FridaTabIndex) {
                                     0 -> r2fridaViewModel.loadOverview()
                                     1 -> r2fridaViewModel.loadLibraries()
-                                    2 -> r2fridaViewModel.clearScriptLogs()
-                                    3 -> r2fridaViewModel.loadEntries()
-                                    4 -> r2fridaViewModel.loadExports()
-                                    5 -> r2fridaViewModel.loadStrings()
-                                    6 -> r2fridaViewModel.loadSymbols()
-                                    7 -> r2fridaViewModel.loadSections()
+                                    2 -> r2fridaViewModel.loadMappings()
+                                    3 -> r2fridaViewModel.clearScriptLogs()
+                                    4 -> r2fridaViewModel.loadEntries()
+                                    5 -> r2fridaViewModel.loadExports()
+                                    6 -> r2fridaViewModel.loadStrings()
+                                    7 -> r2fridaViewModel.loadSymbols()
+                                    8 -> r2fridaViewModel.loadSections()
                                 }
                             }
 
@@ -819,19 +822,25 @@ fun ProjectScaffold(
                                         r2fridaViewModel.clearNonLibraryCache()
                                     },
                                     onRefresh = { r2fridaViewModel.loadLibraries(true) })
-                                2 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
+                                2 -> FridaMappingList(fridaMappings, fridaActions,
+                                    cursorAddress = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L,
+                                    onSeek = { addr ->
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                                    },
+                                    onRefresh = { r2fridaViewModel.loadMappings(true) })
+                                3 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
                                     onRun = { r2fridaViewModel.runScript(it) })
-                                3 -> FridaEntryList(fridaEntries, fridaActions,
+                                4 -> FridaEntryList(fridaEntries, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadEntries(true) })
-                                4 -> FridaExportList(fridaExports, fridaActions,
+                                5 -> FridaExportList(fridaExports, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadExports(true) },
                                     searchHint = stringResource(R.string.r2frida_search_exports))
-                                5 -> FridaStringList(fridaStrings, fridaActions,
+                                6 -> FridaStringList(fridaStrings, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadStrings(true) })
-                                6 -> FridaExportList(fridaSymbols, fridaActions,
+                                7 -> FridaExportList(fridaSymbols, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadSymbols(true) },
                                     searchHint = stringResource(R.string.r2frida_search_symbols))
-                                7 -> FridaExportList(fridaSections, fridaActions,
+                                8 -> FridaExportList(fridaSections, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadSections(true) },
                                     searchHint = stringResource(R.string.r2frida_search_sections))
                             }

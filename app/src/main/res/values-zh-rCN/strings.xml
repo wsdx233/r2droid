@@ -623,12 +623,14 @@
     <string name="r2frida_tab_strings">字符串</string>
     <string name="r2frida_tab_symbols">符号</string>
     <string name="r2frida_tab_sections">段</string>
+    <string name="r2frida_tab_mappings">映射</string>
     <string name="r2frida_search_libraries">搜索库…</string>
     <string name="r2frida_search_entries">搜索入口…</string>
     <string name="r2frida_search_exports">搜索导出…</string>
     <string name="r2frida_search_strings">搜索字符串…</string>
     <string name="r2frida_search_symbols">搜索符号…</string>
     <string name="r2frida_search_sections">搜索段…</string>
+    <string name="r2frida_search_mappings">搜索映射…</string>
     <string name="r2frida_overview_title">Frida 会话信息</string>
     <string name="r2frida_script_hint">在此编写 Frida 脚本…</string>
     <string name="r2frida_script_run">运行脚本</string>

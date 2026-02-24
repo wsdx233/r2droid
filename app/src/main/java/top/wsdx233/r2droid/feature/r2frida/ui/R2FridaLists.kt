@@ -119,6 +119,49 @@ fun FridaStringList(items: List<FridaString>?, actions: ListItemActions, onRefre
     }
 }
 
+// ── Mapping List ──
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FridaMappingList(
+    items: List<FridaMapping>?, actions: ListItemActions,
+    cursorAddress: Long, onSeek: (Long) -> Unit, onRefresh: () -> Unit
+) {
+    if (items == null) { LoadingBox(); return }
+    FilterableList(
+        items = items,
+        filterPredicate = { item, q ->
+            item.base.contains(q, true) ||
+            item.protection.contains(q, true) ||
+            (item.filePath?.contains(q, true) == true)
+        },
+        placeholder = stringResource(R.string.r2frida_search_mappings),
+        onRefresh = onRefresh
+    ) { mapping ->
+        val base = parseHexAddr(mapping.base)
+        val isCurrent = base != null && cursorAddress >= base && cursorAddress < base + mapping.size
+        val displayName = mapping.filePath?.substringAfterLast('/') ?: mapping.base
+        val fullText = "Mapping: ${mapping.base}, Size: 0x${mapping.size.toString(16)}, Perm: ${mapping.protection}, File: ${mapping.filePath ?: "anonymous"}"
+        FridaLibraryItemWrapper(
+            title = displayName, address = base, fullText = fullText,
+            actions = actions, isCurrent = isCurrent,
+            onClick = { base?.let(onSeek) }
+        ) {
+            FridaItemContent(
+                displayName,
+                when {
+                    mapping.protection.contains("x") -> MaterialTheme.colorScheme.error
+                    mapping.protection.contains("w") -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.primary
+                },
+                tags = listOf(mapping.protection, "0x${mapping.size.toString(16)}"),
+                badge = mapping.base,
+                subtitle = mapping.filePath
+            )
+        }
+    }
+}
+
 // ── Shared helpers ──
 
 @Composable

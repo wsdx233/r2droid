@@ -35,6 +35,10 @@ class R2FridaRepository {
         FridaExport.fromJson(it)
     }
 
+    suspend fun getMappings(): Result<List<FridaMapping>> = parseJsonArray(":dmj") {
+        FridaMapping.fromJson(it)
+    }
+
     suspend fun executeScript(script: String, cacheDir: String): Result<String> = runCatching {
         val file = java.io.File(cacheDir, "frida_script.js")
         file.writeText(script)

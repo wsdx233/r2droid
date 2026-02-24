@@ -41,6 +41,9 @@ class R2FridaViewModel @Inject constructor(
     private val _sections = MutableStateFlow<List<FridaExport>?>(null)
     val sections: StateFlow<List<FridaExport>?> = _sections.asStateFlow()
 
+    private val _mappings = MutableStateFlow<List<FridaMapping>?>(null)
+    val mappings: StateFlow<List<FridaMapping>?> = _mappings.asStateFlow()
+
     val scriptLogs = LogManager.logs
 
     private val _scriptRunning = MutableStateFlow(false)
@@ -100,12 +103,21 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
+    fun loadMappings(force: Boolean = false) {
+        if (!force && _mappings.value != null) return
+        viewModelScope.launch {
+            repo.getMappings().onSuccess { _mappings.value = it }
+                .onFailure { _mappings.value = emptyList() }
+        }
+    }
+
     fun clearNonLibraryCache() {
         _entries.value = null
         _exports.value = null
         _strings.value = null
         _symbols.value = null
         _sections.value = null
+        _mappings.value = null
     }
 
     fun clearScriptLogs() = LogManager.clear()
