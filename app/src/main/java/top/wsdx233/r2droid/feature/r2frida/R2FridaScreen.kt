@@ -1,6 +1,8 @@
 package top.wsdx233.r2droid.feature.r2frida
 
+import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -49,7 +51,7 @@ fun R2FridaScreen(onBack: () -> Unit, onConnect: (String) -> Unit = {}) {
     }
 
     if (installed && installState.status != R2FridaInstallState.Status.DONE) {
-        R2FridaFeatureScreen(onBack = onBack, onConnect = onConnect)
+        R2FridaFeatureScreen(onBack = onBack, onConnect = onConnect, onReinstall = { installed = false })
     } else {
         R2FridaInstallScreen(onBack = onBack, installState = installState, onInstalled = {
             R2FridaInstaller.resetState()
@@ -382,7 +384,7 @@ private suspend fun fetchFridaProcesses(context: android.content.Context, host: 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit) {
+private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit, onReinstall: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -393,10 +395,17 @@ private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit
     var processes by remember { mutableStateOf<List<FridaProcess>>(emptyList()) }
     var processLoading by remember { mutableStateOf(false) }
     var processError by remember { mutableStateOf<String?>(null) }
+    var processesExpanded by remember { mutableStateOf(false) }
 
     // Local apps state
     var localApps by remember { mutableStateOf<List<ApplicationInfo>>(emptyList()) }
     var appSearchQuery by remember { mutableStateOf("") }
+    var appsExpanded by remember { mutableStateOf(false) }
+
+    // Help & Settings state
+    var showHelpSheet by remember { mutableStateOf(false) }
+    var showConfigDialog by remember { mutableStateOf(false) }
+    var showReinstallConfirm by remember { mutableStateOf(false) }
 
     val pm = context.packageManager
 
@@ -432,6 +441,14 @@ private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showHelpSheet = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = stringResource(R.string.frida_help))
+                    }
+                    IconButton(onClick = { showConfigDialog = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.frida_config))
                     }
                 }
             )
@@ -499,9 +516,31 @@ private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit
                     )
                 }
             } else {
-                items(processes, key = { it.pid }) { proc ->
+                val maxCollapsed = 5
+                val visibleProcesses = if (processesExpanded || processes.size <= maxCollapsed)
+                    processes else processes.take(maxCollapsed)
+                items(visibleProcesses, key = { it.pid }) { proc ->
                     ProcessItem(proc) {
                         onConnect("\"frida://attach/remote/$host:$port/${proc.name}\"")
+                    }
+                }
+                if (processes.size > maxCollapsed) {
+                    item {
+                        TextButton(
+                            onClick = { processesExpanded = !processesExpanded },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                if (processesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (processesExpanded) stringResource(R.string.frida_collapse)
+                                else stringResource(R.string.frida_show_all, processes.size)
+                            )
+                        }
                     }
                 }
             }
@@ -544,7 +583,10 @@ private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit
                     )
                 }
             } else {
-                items(filtered, key = { it.packageName }) { app ->
+                val maxCollapsedApps = 5
+                val visibleApps = if (appsExpanded || filtered.size <= maxCollapsedApps)
+                    filtered else filtered.take(maxCollapsedApps)
+                items(visibleApps, key = { it.packageName }) { app ->
                     AppItem(app, pm,
                         onAttach = {
                             onConnect("\"frida://attach/remote/$host:$port/${app.packageName}\"")
@@ -554,8 +596,66 @@ private fun R2FridaFeatureScreen(onBack: () -> Unit, onConnect: (String) -> Unit
                         }
                     )
                 }
+                if (filtered.size > maxCollapsedApps) {
+                    item {
+                        TextButton(
+                            onClick = { appsExpanded = !appsExpanded },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                if (appsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (appsExpanded) stringResource(R.string.frida_collapse)
+                                else stringResource(R.string.frida_show_all, filtered.size)
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+
+    // Help Bottom Sheet
+    if (showHelpSheet) {
+        FridaHelpSheet(onDismiss = { showHelpSheet = false })
+    }
+
+    // Config Dialog
+    if (showConfigDialog) {
+        FridaConfigDialog(
+            onDismiss = { showConfigDialog = false },
+            onReinstall = {
+                showConfigDialog = false
+                showReinstallConfirm = true
+            }
+        )
+    }
+
+    // Reinstall Confirmation
+    if (showReinstallConfirm) {
+        AlertDialog(
+            onDismissRequest = { showReinstallConfirm = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+            title = { Text(stringResource(R.string.frida_reinstall_confirm_title)) },
+            text = { Text(stringResource(R.string.frida_reinstall_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showReinstallConfirm = false
+                    val pluginsDir = R2FridaInstaller.getPluginsDir(context)
+                    pluginsDir.listFiles()?.filter { it.name.startsWith("io_frida") }?.forEach { it.delete() }
+                    onReinstall()
+                }) { Text(stringResource(R.string.common_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReinstallConfirm = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
     }
 }
 
@@ -670,4 +770,196 @@ private fun AppItem(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FridaHelpSheet(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        FridaHelpSheetContent(context, onDismiss)
+    }
+}
+
+@Composable
+private fun FridaHelpSheetContent(context: android.content.Context, onDismiss: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Title
+        Text(
+            stringResource(R.string.frida_help_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Server mode card
+        FridaHelpModeCard(
+            icon = Icons.Default.Dns,
+            title = stringResource(R.string.frida_help_server_title),
+            description = stringResource(R.string.frida_help_server_desc),
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+
+        // Gadget mode card
+        FridaHelpModeCard(
+            icon = Icons.Default.Extension,
+            title = stringResource(R.string.frida_help_gadget_title),
+            description = stringResource(R.string.frida_help_gadget_desc),
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        // Link cards
+        FridaLinkCard(
+            title = stringResource(R.string.frida_help_releases),
+            description = stringResource(R.string.frida_help_releases_desc),
+            url = "https://github.com/frida/frida/releases",
+            icon = Icons.Default.NewReleases,
+            context = context
+        )
+
+        FridaLinkCard(
+            title = stringResource(R.string.frida_help_gadgeter),
+            description = stringResource(R.string.frida_help_gadgeter_desc),
+            url = "https://github.com/wsdx233/Gadgeter",
+            icon = Icons.Default.PhoneAndroid,
+            context = context
+        )
+    }
+}
+
+@Composable
+private fun FridaHelpModeCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    containerColor: androidx.compose.ui.graphics.Color
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FridaLinkCard(
+    title: String,
+    description: String,
+    url: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    context: android.content.Context
+) {
+    OutlinedCard(
+        onClick = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        },
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                icon, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.Default.OpenInNew,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun FridaConfigDialog(onDismiss: () -> Unit, onReinstall: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+        title = { Text(stringResource(R.string.frida_config_title)) },
+        text = {
+            Column {
+                OutlinedCard(
+                    onClick = onReinstall,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.frida_reinstall),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                stringResource(R.string.frida_reinstall_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.func_close))
+            }
+        }
+    )
 }

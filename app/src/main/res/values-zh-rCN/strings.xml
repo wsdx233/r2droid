@@ -617,6 +617,24 @@
     <string name="frida_spawn">启动</string>
     <string name="frida_search_apps">搜索应用…</string>
     <string name="frida_no_apps">未找到应用</string>
+    <string name="frida_help">帮助</string>
+    <string name="frida_help_title">Frida 工作原理</string>
+    <string name="frida_help_server_title">Frida Server 模式</string>
+    <string name="frida_help_server_desc">在目标设备上运行 frida-server（需要 root 权限）。它监听 TCP 端口（默认 27042），允许你远程附加或启动任意进程。使用「远程进程」列表选择目标。</string>
+    <string name="frida_help_gadget_title">Frida Gadget 模式</string>
+    <string name="frida_help_gadget_desc">在安装前将 Frida Gadget 动态库注入到 APK 中（无需 root）。应用启动时会等待客户端连接。使用「快速连接 Gadget」进行连接。</string>
+    <string name="frida_help_releases">Frida 发布页</string>
+    <string name="frida_help_releases_desc">下载适用于你设备的 frida-server 二进制文件</string>
+    <string name="frida_help_gadgeter">Gadgeter</string>
+    <string name="frida_help_gadgeter_desc">手机上一键注入 Frida Gadget 的工具</string>
+    <string name="frida_show_all">展开全部 (%1$d)</string>
+    <string name="frida_collapse">收起</string>
+    <string name="frida_config">设置</string>
+    <string name="frida_config_title">r2frida 设置</string>
+    <string name="frida_reinstall">重新安装 r2frida</string>
+    <string name="frida_reinstall_desc">删除当前 r2frida 插件并重新下载</string>
+    <string name="frida_reinstall_confirm_title">重新安装 r2frida？</string>
+    <string name="frida_reinstall_confirm_message">这将删除当前的 r2frida 插件并重新下载。是否继续？</string>
 
     <!-- R2Frida Project Tab -->
     <string name="proj_category_r2frida">r2frida</string>

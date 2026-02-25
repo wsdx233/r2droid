@@ -615,6 +615,24 @@
     <string name="frida_spawn">Spawn</string>
     <string name="frida_search_apps">Search apps…</string>
     <string name="frida_no_apps">No apps found</string>
+    <string name="frida_help">Help</string>
+    <string name="frida_help_title">How Frida Works</string>
+    <string name="frida_help_server_title">Frida Server Mode</string>
+    <string name="frida_help_server_desc">Run frida-server on the target device (requires root). It listens on a TCP port (default 27042) and allows you to attach to or spawn any process remotely. Use the \"Remote Processes\" list to pick a target.</string>
+    <string name="frida_help_gadget_title">Frida Gadget Mode</string>
+    <string name="frida_help_gadget_desc">Inject the Frida Gadget shared library into an APK before installing it (no root required). The app will wait for a client connection on startup. Use \"Quick Connect Gadget\" to connect.</string>
+    <string name="frida_help_releases">Frida Releases</string>
+    <string name="frida_help_releases_desc">Download frida-server binaries for your device</string>
+    <string name="frida_help_gadgeter">Gadgeter</string>
+    <string name="frida_help_gadgeter_desc">One-tap Frida Gadget injection on Android</string>
+    <string name="frida_show_all">Show all (%1$d)</string>
+    <string name="frida_collapse">Collapse</string>
+    <string name="frida_config">Settings</string>
+    <string name="frida_config_title">r2frida Settings</string>
+    <string name="frida_reinstall">Reinstall r2frida</string>
+    <string name="frida_reinstall_desc">Remove and re-download the r2frida plugin</string>
+    <string name="frida_reinstall_confirm_title">Reinstall r2frida?</string>
+    <string name="frida_reinstall_confirm_message">This will delete the current r2frida plugin and re-download it. Continue?</string>
 
     <!-- R2Frida Project Tab -->
     <string name="proj_category_r2frida">r2frida</string>

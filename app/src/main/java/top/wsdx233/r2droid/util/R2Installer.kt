@@ -1,8 +1,10 @@
 package top.wsdx233.r2droid.util
 
 import android.content.Context
+import android.os.Build
 import android.system.Os
 import android.util.Log
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +42,7 @@ object R2Installer {
     /**
      * 检查并安装 Radare2
      */
+    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun checkAndInstall(context: Context) = withContext(Dispatchers.IO) {
         initialized = false
         val targetDir = File(context.filesDir, R2_DIR_NAME)
@@ -126,6 +129,7 @@ object R2Installer {
     /**
      * 运行已安装的 r2 -v 获取版本号
      */
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun getInstalledR2Version(context: Context): String? {
         return try {
             val workDir = File(context.filesDir, "radare2/bin")
