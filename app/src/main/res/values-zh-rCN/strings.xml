@@ -109,6 +109,11 @@
 
     <!-- Install Screen -->
     <string name="install_title">正在安装资源</string>
+    <string name="install_checking_version">正在检测 radare2 版本…</string>
+    <string name="install_updating_core">正在更新核心组件…</string>
+    <string name="install_updating_deps">正在更新依赖环境…</string>
+    <string name="install_updating_finish">正在完成更新…</string>
+    <string name="install_update_failed">更新失败: %1$s</string>
 
     <!-- Terminal Screen -->
     <string name="terminal_output_label">终端输出</string>

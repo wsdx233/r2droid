@@ -145,6 +145,11 @@
 
     <!-- Install Screen -->
     <string name="install_title">Installing resources</string>
+    <string name="install_checking_version">Checking radare2 version…</string>
+    <string name="install_updating_core">Updating core components…</string>
+    <string name="install_updating_deps">Updating dependencies…</string>
+    <string name="install_updating_finish">Finishing update…</string>
+    <string name="install_update_failed">Update failed: %1$s</string>
 
     <!-- Terminal Screen -->
     <string name="terminal_output_label">Terminal Output</string>
