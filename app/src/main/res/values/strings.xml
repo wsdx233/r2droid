@@ -587,6 +587,13 @@
     <string name="r2frida_source_gitee">Source: Gitee (China)</string>
     <!-- Keep Alive / Background -->
     <string name="settings_background">Background</string>
+
+    <!-- R2Pipe Mode -->
+    <string name="settings_r2pipe_mode">R2Pipe Mode</string>
+    <string name="settings_use_http_mode">Use HTTP Mode</string>
+    <string name="settings_use_http_mode_desc">Communicate with r2 via HTTP server instead of stdio pipe (takes effect on next session)</string>
+    <string name="settings_http_port">HTTP Port</string>
+    <string name="settings_http_port_desc">Port for r2 HTTP server (1024-65535)</string>
     <string name="settings_keep_alive">Persistent Notification</string>
     <string name="settings_keep_alive_desc">Keep app alive in background during analysis</string>
     <string name="settings_ignore_battery">Ignore Battery Optimization</string>

@@ -589,6 +589,13 @@
     <string name="r2frida_source_gitee">下载源：Gitee（国内）</string>
     <!-- Keep Alive / Background -->
     <string name="settings_background">后台保活</string>
+
+    <!-- R2Pipe Mode -->
+    <string name="settings_r2pipe_mode">R2Pipe 模式</string>
+    <string name="settings_use_http_mode">使用 HTTP 模式</string>
+    <string name="settings_use_http_mode_desc">(实验性) 通过 HTTP 服务与 r2 通信, 更快但是存在一些已知问题（下次打开会话时生效）</string>
+    <string name="settings_http_port">HTTP 端口</string>
+    <string name="settings_http_port_desc">(开启HTTP模式时) r2 HTTP 服务端口 (1024-65535)</string>
     <string name="settings_keep_alive">常驻通知</string>
     <string name="settings_keep_alive_desc">分析期间保持应用在后台运行</string>
     <string name="settings_ignore_battery">忽略电池优化</string>

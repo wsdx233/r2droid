@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import top.wsdx233.r2droid.data.SettingsManager
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,9 +27,15 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object R2PipeManager {
 
-    // 核心 R2Pipe 实例
+    // 核心 R2Pipe 实例（Stdio 模式）
     private var r2Pipe: R2pipe? = null
-    
+
+    // HTTP 模式的 R2Pipe 实例
+    private var r2PipeHttp: R2pipeHttp? = null
+
+    // 当前是否使用 HTTP 模式
+    private var isHttpMode = false
+
     // 互斥锁，保护 R2Pipe 的读写操作不被并发打断
     private val mutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -92,6 +99,31 @@ object R2PipeManager {
     // 公开的不可变状态流，UI 层应观察此属性
     val state: StateFlow<State> = _state.asStateFlow()
 
+    // ---- 内部委托方法，统一 Stdio / HTTP 两种模式 ----
+
+    private fun pipeCmd(command: String): String {
+        return if (isHttpMode) r2PipeHttp!!.cmd(command) else r2Pipe!!.cmd(command)
+    }
+
+    private fun pipeCmdStream(command: String): InputStream {
+        return if (isHttpMode) r2PipeHttp!!.cmdStream(command) else r2Pipe!!.cmdStream(command)
+    }
+
+    private fun pipeIsRunning(): Boolean {
+        return if (isHttpMode) r2PipeHttp?.isProcessRunning() == true else r2Pipe?.isProcessRunning() == true
+    }
+
+    private fun pipeIsActive(): Boolean {
+        return if (isHttpMode) r2PipeHttp != null else r2Pipe != null
+    }
+
+    private fun closeOldPipe() {
+        r2Pipe?.quit()
+        r2Pipe = null
+        r2PipeHttp?.quit()
+        r2PipeHttp = null
+    }
+
     /**
      * 初始化并打开 R2Pipe 会话
      * @param context Android 上下文 (将被转换为 Application Context 保存)
@@ -104,31 +136,35 @@ object R2PipeManager {
             withContext(Dispatchers.IO) {
                 try {
                     _state.value = State.Executing("Open R2Pipe session: ${filePath ?: "Empty"} with flags: $flags")
-                    
+
                     // 安全关闭旧实例
-                    r2Pipe?.quit()
-                    r2Pipe = null
-                    
-                    // 创建新实例，使用 Application Context 避免内存泄漏
-                    r2Pipe = R2pipe(context.applicationContext, filePath, flags)
-                    
-                    // 简单的存活检查（可选，取决于 R2pipe 的实现是否立即启动进程）
-                    // 给一点点时间让进程启动
-                    if (r2Pipe?.isProcessRunning() == true) {
-                         // 关键修复：发送一个初始化命令以同步管道
-                         // 这会消耗掉启动可能产生的无关输出，防止后续指令错位
+                    closeOldPipe()
+
+                    // 根据设置选择模式
+                    isHttpMode = SettingsManager.useHttpMode
+                    val appCtx = context.applicationContext
+
+                    if (isHttpMode) {
+                        val port = SettingsManager.httpPort
+                        r2PipeHttp = R2pipeHttp(appCtx, filePath, flags, port = port)
+                    } else {
+                        r2Pipe = R2pipe(appCtx, filePath, flags)
+                    }
+
+                    if (pipeIsRunning()) {
+                         // 初始化命令以同步管道 / 验证 HTTP 连通性
                          try {
-                              r2Pipe!!.cmd("e scr.color=false")
+                              pipeCmd("e scr.color=false")
                          } catch (e: Exception) {
                               e.printStackTrace()
                          }
 
                         _isConnected.set(true)
                         _sessionId.incrementAndGet()
-                        currentFilePath = filePath // 保存当前文件路径
-                        currentProjectId = pendingProjectId // 保存当前项目ID
-                        pendingProjectId = null // 清除pending
-                        isDirtyAfterSave = false // 新会话，无未保存变更
+                        currentFilePath = filePath
+                        currentProjectId = pendingProjectId
+                        pendingProjectId = null
+                        isDirtyAfterSave = false
                         _state.value = State.Success("Open R2Pipe session", "Session started successfully")
                         Result.success(Unit)
                     } else {
@@ -139,6 +175,7 @@ object R2PipeManager {
                 } catch (e: Exception) {
                     _isConnected.set(false)
                     r2Pipe = null
+                    r2PipeHttp = null
                     _state.value = State.Failure("Open R2Pipe session", e)
                     Result.failure(e)
                 }
@@ -154,11 +191,20 @@ object R2PipeManager {
             withContext(Dispatchers.IO) {
                 try {
                     _state.value = State.Executing("Open R2Pipe raw: $rawArgs")
-                    r2Pipe?.quit()
-                    r2Pipe = null
-                    r2Pipe = R2pipe(context.applicationContext, rawArgs = rawArgs)
-                    if (r2Pipe?.isProcessRunning() == true) {
-                        try { r2Pipe!!.cmd("e scr.color=false") } catch (_: Exception) {}
+                    closeOldPipe()
+
+                    isHttpMode = SettingsManager.useHttpMode
+                    val appCtx = context.applicationContext
+
+                    if (isHttpMode) {
+                        val port = SettingsManager.httpPort
+                        r2PipeHttp = R2pipeHttp(appCtx, rawArgs = rawArgs, port = port)
+                    } else {
+                        r2Pipe = R2pipe(appCtx, rawArgs = rawArgs)
+                    }
+
+                    if (pipeIsRunning()) {
+                        try { pipeCmd("e scr.color=false") } catch (_: Exception) {}
                         _isConnected.set(true)
                         _sessionId.incrementAndGet()
                         currentFilePath = rawArgs
@@ -176,6 +222,7 @@ object R2PipeManager {
                 } catch (e: Exception) {
                     _isConnected.set(false)
                     r2Pipe = null
+                    r2PipeHttp = null
                     _state.value = State.Failure("Open R2Pipe session", e)
                     Result.failure(e)
                 }
@@ -195,8 +242,7 @@ object R2PipeManager {
     suspend fun execute(cmd: String): Result<String> {
         return mutex.withLock {
             withContext(Dispatchers.IO) {
-                // 检查连接状态
-                if (r2Pipe == null || !_isConnected.get()) {
+                if (!pipeIsActive() || !_isConnected.get()) {
                     val e = IllegalStateException("R2Pipe is not connected or initialized.")
                     _state.value = State.Failure(cmd, e)
                     return@withContext Result.failure(e)
@@ -204,24 +250,16 @@ object R2PipeManager {
 
                 try {
                     _state.value = State.Executing(cmd)
-
-                    // 保存本地引用，防止 forceClose() 在执行期间将 r2Pipe 置空导致 NPE
-                    val pipe = r2Pipe!!
-
-                    // 执行命令 (R2pipe.cmd 是阻塞调用的)
-                    val output = pipe.cmd(cmd)
+                    val output = pipeCmd(cmd)
 
                     isDirtyAfterSave = true
                     _state.value = State.Success(cmd, output)
                     Result.success(output)
                 } catch (e: Exception) {
                     _state.value = State.Failure(cmd, e)
-
-                    // 如果检测到进程意外终止或管道破裂，更新连接状态
-                    if (r2Pipe?.isProcessRunning() != true) {
+                    if (!pipeIsRunning()) {
                         _isConnected.set(false)
                     }
-
                     Result.failure(e)
                 }
             }
@@ -235,20 +273,19 @@ object R2PipeManager {
     suspend fun <T> executeStream(cmd: String, block: suspend (InputStream) -> T): Result<T> {
         return mutex.withLock {
             withContext(Dispatchers.IO) {
-                if (r2Pipe == null || !_isConnected.get()) {
+                if (!pipeIsActive() || !_isConnected.get()) {
                     return@withContext Result.failure(IllegalStateException("R2Pipe is not connected."))
                 }
                 try {
                     _state.value = State.Executing(cmd)
-                    val pipe = r2Pipe!!
-                    val stream = pipe.cmdStream(cmd)
+                    val stream = pipeCmdStream(cmd)
                     val result = block(stream)
                     isDirtyAfterSave = true
                     _state.value = State.Success(cmd, "Stream completed")
                     Result.success(result)
                 } catch (e: Exception) {
                     _state.value = State.Failure(cmd, e)
-                    if (r2Pipe?.isProcessRunning() != true) {
+                    if (!pipeIsRunning()) {
                         _isConnected.set(false)
                     }
                     Result.failure(e)
@@ -271,7 +308,7 @@ object R2PipeManager {
      * 不需要获取 mutex，因为只是发送信号，不涉及管道读写。
      */
     fun interrupt() {
-        r2Pipe?.interrupt()
+        if (isHttpMode) r2PipeHttp?.interrupt() else r2Pipe?.interrupt()
     }
 
     /**
@@ -282,12 +319,12 @@ object R2PipeManager {
             withContext(Dispatchers.IO) {
                 try {
                     _state.value = State.Executing("Quit session")
-                    r2Pipe?.quit()
+                    if (isHttpMode) r2PipeHttp?.quit() else r2Pipe?.quit()
                 } catch (e: Exception) {
-                    // 忽略关闭时的错误，但记录状态
                     _state.value = State.Failure("Quit session", e)
                 } finally {
                     r2Pipe = null
+                    r2PipeHttp = null
                     _isConnected.set(false)
                     _state.value = State.Idle
                 }
@@ -316,8 +353,9 @@ object R2PipeManager {
         isR2FridaSession = false
         _state.value = State.Idle
         try {
-            r2Pipe?.forceQuit()
+            if (isHttpMode) r2PipeHttp?.forceQuit() else r2Pipe?.forceQuit()
         } catch (_: Exception) {}
         r2Pipe = null
+        r2PipeHttp = null
     }
 }

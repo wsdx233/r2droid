@@ -23,6 +23,8 @@ object SettingsManager {
     private const val KEY_MENU_AT_TOUCH = "menu_at_touch"
     private const val KEY_AI_ENABLED = "ai_enabled"
     private const val KEY_AI_OUTPUT_TRUNCATE_LIMIT = "ai_output_truncate_limit"
+    private const val KEY_USE_HTTP_MODE = "use_http_mode"
+    private const val KEY_HTTP_PORT = "http_port"
 
     private lateinit var prefs: SharedPreferences
 
@@ -139,4 +141,12 @@ object SettingsManager {
     var aiOutputTruncateLimit: Int
         get() = prefs.getInt(KEY_AI_OUTPUT_TRUNCATE_LIMIT, 100000)
         set(value) { prefs.edit().putInt(KEY_AI_OUTPUT_TRUNCATE_LIMIT, value).apply() }
+
+    var useHttpMode: Boolean
+        get() = prefs.getBoolean(KEY_USE_HTTP_MODE, false)
+        set(value) { prefs.edit().putBoolean(KEY_USE_HTTP_MODE, value).apply() }
+
+    var httpPort: Int
+        get() = prefs.getInt(KEY_HTTP_PORT, 9090)
+        set(value) { prefs.edit().putInt(KEY_HTTP_PORT, value).apply() }
 }

@@ -73,6 +73,12 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
     private val _aiOutputTruncateLimit = MutableStateFlow(SettingsManager.aiOutputTruncateLimit)
     val aiOutputTruncateLimit = _aiOutputTruncateLimit.asStateFlow()
 
+    private val _useHttpMode = MutableStateFlow(SettingsManager.useHttpMode)
+    val useHttpMode = _useHttpMode.asStateFlow()
+
+    private val _httpPort = MutableStateFlow(SettingsManager.httpPort)
+    val httpPort = _httpPort.asStateFlow()
+
     private val _decompilerShowLineNumbers = MutableStateFlow(SettingsManager.decompilerShowLineNumbers)
     val decompilerShowLineNumbers = _decompilerShowLineNumbers.asStateFlow()
 
@@ -173,6 +179,16 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         _aiOutputTruncateLimit.value = value
     }
 
+    fun setUseHttpMode(value: Boolean) {
+        SettingsManager.useHttpMode = value
+        _useHttpMode.value = value
+    }
+
+    fun setHttpPort(value: Int) {
+        SettingsManager.httpPort = value
+        _httpPort.value = value
+    }
+
     fun setDecompilerShowLineNumbers(value: Boolean) {
         SettingsManager.decompilerShowLineNumbers = value
         _decompilerShowLineNumbers.value = value
@@ -217,6 +233,8 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         SettingsManager.menuAtTouch = true
         SettingsManager.aiEnabled = true
         SettingsManager.aiOutputTruncateLimit = 100000
+        SettingsManager.useHttpMode = false
+        SettingsManager.httpPort = 9090
         _fontPath.value = null
         _language.value = "system"
         _projectHome.value = null
@@ -230,6 +248,8 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         _menuAtTouch.value = true
         _aiEnabled.value = true
         _aiOutputTruncateLimit.value = 100000
+        _useHttpMode.value = false
+        _httpPort.value = 9090
     }
 }
 
@@ -252,6 +272,8 @@ fun SettingsScreen(
     val menuAtTouch by viewModel.menuAtTouch.collectAsState()
     val aiEnabled by viewModel.aiEnabled.collectAsState()
     val aiOutputTruncateLimit by viewModel.aiOutputTruncateLimit.collectAsState()
+    val useHttpMode by viewModel.useHttpMode.collectAsState()
+    val httpPort by viewModel.httpPort.collectAsState()
 
     val context = LocalContext.current
     
@@ -271,6 +293,8 @@ fun SettingsScreen(
     var tempMaxLog by remember { mutableStateOf("") }
     var showAiTruncateDialog by remember { mutableStateOf(false) }
     var tempAiTruncateLimit by remember { mutableStateOf("") }
+    var showHttpPortDialog by remember { mutableStateOf(false) }
+    var tempHttpPort by remember { mutableStateOf("") }
     var pendingNewProjectHome by remember { mutableStateOf<String?>(null) }
     var oldProjectHome by remember { mutableStateOf<String?>(null) }
     
@@ -374,6 +398,32 @@ fun SettingsScreen(
                     onClick = {
                         tempAiTruncateLimit = aiOutputTruncateLimit.toString()
                         showAiTruncateDialog = true
+                    }
+                )
+            }
+
+            item {
+                HorizontalDivider()
+                SettingsSectionHeader(stringResource(R.string.settings_r2pipe_mode))
+            }
+
+            item {
+                SettingsToggleItem(
+                    title = stringResource(R.string.settings_use_http_mode),
+                    subtitle = stringResource(R.string.settings_use_http_mode_desc),
+                    checked = useHttpMode,
+                    onCheckedChange = { viewModel.setUseHttpMode(it) }
+                )
+            }
+
+            item {
+                SettingsItem(
+                    title = stringResource(R.string.settings_http_port),
+                    subtitle = httpPort.toString(),
+                    icon = Icons.Default.Settings,
+                    onClick = {
+                        tempHttpPort = httpPort.toString()
+                        showHttpPortDialog = true
                     }
                 )
             }
@@ -765,6 +815,39 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showAiTruncateDialog = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            }
+        )
+    }
+
+    if (showHttpPortDialog) {
+        AlertDialog(
+            onDismissRequest = { showHttpPortDialog = false },
+            title = { Text(stringResource(R.string.settings_http_port)) },
+            text = {
+                Column(modifier = Modifier.focusable()) {
+                    OutlinedTextField(
+                        value = tempHttpPort,
+                        onValueChange = { tempHttpPort = it.filter { c -> c.isDigit() } },
+                        label = { Text(stringResource(R.string.settings_http_port_desc)) },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = tempHttpPort.toIntOrNull()
+                    if (value != null && value in 1024..65535) {
+                        viewModel.setHttpPort(value)
+                    }
+                    showHttpPortDialog = false
+                }) {
+                    Text(stringResource(R.string.settings_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHttpPortDialog = false }) {
                     Text(stringResource(R.string.settings_cancel))
                 }
             }
