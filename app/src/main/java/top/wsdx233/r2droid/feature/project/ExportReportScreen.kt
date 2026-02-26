@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.project
 
+import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -56,6 +57,7 @@ import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.R2PipeManager
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportReportScreen(onDismiss: () -> Unit) {

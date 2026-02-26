@@ -71,6 +71,10 @@ fun TerminalScreen() {
     // Hold session and view references
     var terminalSession by remember { mutableStateOf<TerminalSession?>(null) }
     var terminalView by remember { mutableStateOf<TerminalView?>(null) }
+
+    // Extra keys modifier state
+    var ctrlPressed by remember { mutableStateOf(false) }
+    var altPressed by remember { mutableStateOf(false) }
     
     // Cleanup on disposal
     DisposableEffect(Unit) {
@@ -79,7 +83,7 @@ fun TerminalScreen() {
         }
     }
     
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color.Black)
@@ -119,8 +123,12 @@ fun TerminalScreen() {
 
                         override fun onLongPress(event: MotionEvent?): Boolean = false
                         
-                        override fun readControlKey(): Boolean = false
-                        override fun readAltKey(): Boolean = false
+                        override fun readControlKey(): Boolean {
+                            val v = ctrlPressed; ctrlPressed = false; return v
+                        }
+                        override fun readAltKey(): Boolean {
+                            val v = altPressed; altPressed = false; return v
+                        }
                         override fun readShiftKey(): Boolean = false
                         override fun readFnKey(): Boolean = false
 
@@ -212,7 +220,16 @@ fun TerminalScreen() {
                     terminalView = this
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.weight(1f).fillMaxSize()
+        )
+
+        // Extra keys bar
+        ExtraKeysBar(
+            onSendKey = { seq -> terminalSession?.write(seq) },
+            ctrlActive = ctrlPressed,
+            altActive = altPressed,
+            onCtrlToggle = { ctrlPressed = !ctrlPressed },
+            onAltToggle = { altPressed = !altPressed }
         )
     }
 }

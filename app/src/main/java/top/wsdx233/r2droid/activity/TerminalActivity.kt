@@ -3,10 +3,16 @@ package top.wsdx233.r2droid.activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -19,6 +25,12 @@ class TerminalActivity : ComponentActivity() {
 
     private var terminalSession: TerminalSession? = null
     private lateinit var terminalView: TerminalView
+
+    // Extra keys modifier state
+    private var ctrlPressed = false
+    private var altPressed = false
+    private var ctrlButton: TextView? = null
+    private var altButton: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,10 +79,13 @@ class TerminalActivity : ComponentActivity() {
 
             override fun onLongPress(event: MotionEvent?): Boolean = false
 
-            // 下面这些键位读取用于处理 Ctrl/Alt 组合键
-            // 如果有做虚拟按键栏（ExtraKeys），需要在这里返回虚拟按键的状态
-            override fun readControlKey(): Boolean = false
-            override fun readAltKey(): Boolean = false
+            // 虚拟按键栏的修饰键状态
+            override fun readControlKey(): Boolean {
+                val v = ctrlPressed; ctrlPressed = false; updateModifierButtons(); return v
+            }
+            override fun readAltKey(): Boolean {
+                val v = altPressed; altPressed = false; updateModifierButtons(); return v
+            }
             override fun readShiftKey(): Boolean = false
             override fun readFnKey(): Boolean = false
 
@@ -172,5 +187,118 @@ class TerminalActivity : ComponentActivity() {
 
         // 启动时尝试获取焦点，方便物理键盘直接输入
         terminalView.requestFocus()
+
+        // 设置快捷键栏
+        setupExtraKeys()
     }
+
+    private fun setupExtraKeys() {
+        val container = findViewById<LinearLayout>(R.id.extra_keys_container)
+
+        val row1 = listOf(
+            ExtraKeyDef("ESC", "\u001b"),
+            ExtraKeyDef("/", "/"),
+            ExtraKeyDef("—", "-"),
+            ExtraKeyDef("HOME", "\u001b[H"),
+            ExtraKeyDef("↑", "\u001b[A"),
+            ExtraKeyDef("END", "\u001b[F"),
+            ExtraKeyDef("PGUP", "\u001b[5~"),
+        )
+        val row2 = listOf(
+            ExtraKeyDef("⇥", "\t"),
+            ExtraKeyDef("CTRL", isCtrl = true),
+            ExtraKeyDef("ALT", isAlt = true),
+            ExtraKeyDef("←", "\u001b[D"),
+            ExtraKeyDef("↓", "\u001b[B"),
+            ExtraKeyDef("→", "\u001b[C"),
+            ExtraKeyDef("PGDN", "\u001b[6~"),
+        )
+
+        container.addView(createKeyRow(row1))
+        val spacer = android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(3))
+        }
+        container.addView(spacer)
+        container.addView(createKeyRow(row2))
+    }
+
+    private fun createKeyRow(keys: List<ExtraKeyDef>): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        for (key in keys) {
+            val btn = createKeyButton(key.label)
+            btn.layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                marginStart = dp(1)
+                marginEnd = dp(1)
+            }
+
+            when {
+                key.isCtrl -> {
+                    ctrlButton = btn
+                    btn.setOnClickListener {
+                        ctrlPressed = !ctrlPressed
+                        updateModifierButtons()
+                        terminalView.requestFocus()
+                    }
+                }
+                key.isAlt -> {
+                    altButton = btn
+                    btn.setOnClickListener {
+                        altPressed = !altPressed
+                        updateModifierButtons()
+                        terminalView.requestFocus()
+                    }
+                }
+                else -> {
+                    btn.setOnClickListener {
+                        terminalSession?.write(key.sequence)
+                        terminalView.requestFocus()
+                    }
+                }
+            }
+
+            row.addView(btn)
+        }
+        return row
+    }
+
+    private fun createKeyButton(label: String): TextView {
+        return TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(0xFF424242.toInt())
+                cornerRadius = dp(4).toFloat()
+            }
+        }
+    }
+
+    private fun updateModifierButtons() {
+        val activeColor = 0xFF5C6BC0.toInt()
+        val normalColor = 0xFF424242.toInt()
+        (ctrlButton?.background as? GradientDrawable)?.setColor(if (ctrlPressed) activeColor else normalColor)
+        (altButton?.background as? GradientDrawable)?.setColor(if (altPressed) activeColor else normalColor)
+    }
+
+    private fun dp(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics
+        ).toInt()
+    }
+
+    private data class ExtraKeyDef(
+        val label: String,
+        val sequence: String = "",
+        val isCtrl: Boolean = false,
+        val isAlt: Boolean = false
+    )
 }
