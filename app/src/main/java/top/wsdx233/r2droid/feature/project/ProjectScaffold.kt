@@ -156,6 +156,15 @@ fun ProjectScaffold(
     val isAiEnabled = top.wsdx233.r2droid.data.SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
 
+    // Hoisted R2Frida list scroll states (survive category switches)
+    val fridaLibrariesListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaMappingsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaEntriesListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaExportsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaStringsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaSymbolsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaSectionsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     // Decompiler export state
     var exportDecompCode by remember { mutableStateOf<String?>(null) }
 
@@ -799,6 +808,15 @@ fun ProjectScaffold(
                             val fridaScriptLogs by r2fridaViewModel.scriptLogs.collectAsState()
                             val fridaScriptRunning by r2fridaViewModel.scriptRunning.collectAsState()
 
+                            // Hoisted search queries (survive category switches via ViewModel)
+                            val fridaLibrariesQuery by r2fridaViewModel.librariesSearchQuery.collectAsState()
+                            val fridaMappingsQuery by r2fridaViewModel.mappingsSearchQuery.collectAsState()
+                            val fridaEntriesQuery by r2fridaViewModel.entriesSearchQuery.collectAsState()
+                            val fridaExportsQuery by r2fridaViewModel.exportsSearchQuery.collectAsState()
+                            val fridaStringsQuery by r2fridaViewModel.stringsSearchQuery.collectAsState()
+                            val fridaSymbolsQuery by r2fridaViewModel.symbolsSearchQuery.collectAsState()
+                            val fridaSectionsQuery by r2fridaViewModel.sectionsSearchQuery.collectAsState()
+
                             androidx.compose.runtime.LaunchedEffect(selectedR2FridaTabIndex) {
                                 when (selectedR2FridaTabIndex) {
                                     0 -> r2fridaViewModel.loadOverview()
@@ -821,28 +839,49 @@ fun ProjectScaffold(
                                         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
                                         r2fridaViewModel.clearNonLibraryCache()
                                     },
-                                    onRefresh = { r2fridaViewModel.loadLibraries(true) })
+                                    onRefresh = { r2fridaViewModel.loadLibraries(true) },
+                                    searchQuery = fridaLibrariesQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateLibrariesSearchQuery,
+                                    listState = fridaLibrariesListState)
                                 2 -> FridaMappingList(fridaMappings, fridaActions,
                                     cursorAddress = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L,
                                     onSeek = { addr ->
                                         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
                                     },
-                                    onRefresh = { r2fridaViewModel.loadMappings(true) })
+                                    onRefresh = { r2fridaViewModel.loadMappings(true) },
+                                    searchQuery = fridaMappingsQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateMappingsSearchQuery,
+                                    listState = fridaMappingsListState)
                                 3 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
                                     onRun = { r2fridaViewModel.runScript(it) })
                                 4 -> FridaEntryList(fridaEntries, fridaActions,
-                                    onRefresh = { r2fridaViewModel.loadEntries(true) })
+                                    onRefresh = { r2fridaViewModel.loadEntries(true) },
+                                    searchQuery = fridaEntriesQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateEntriesSearchQuery,
+                                    listState = fridaEntriesListState)
                                 5 -> FridaExportList(fridaExports, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadExports(true) },
-                                    searchHint = stringResource(R.string.r2frida_search_exports))
+                                    searchHint = stringResource(R.string.r2frida_search_exports),
+                                    searchQuery = fridaExportsQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateExportsSearchQuery,
+                                    listState = fridaExportsListState)
                                 6 -> FridaStringList(fridaStrings, fridaActions,
-                                    onRefresh = { r2fridaViewModel.loadStrings(true) })
+                                    onRefresh = { r2fridaViewModel.loadStrings(true) },
+                                    searchQuery = fridaStringsQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateStringsSearchQuery,
+                                    listState = fridaStringsListState)
                                 7 -> FridaExportList(fridaSymbols, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadSymbols(true) },
-                                    searchHint = stringResource(R.string.r2frida_search_symbols))
+                                    searchHint = stringResource(R.string.r2frida_search_symbols),
+                                    searchQuery = fridaSymbolsQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateSymbolsSearchQuery,
+                                    listState = fridaSymbolsListState)
                                 8 -> FridaExportList(fridaSections, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadSections(true) },
-                                    searchHint = stringResource(R.string.r2frida_search_sections))
+                                    searchHint = stringResource(R.string.r2frida_search_sections),
+                                    searchQuery = fridaSectionsQuery,
+                                    onSearchQueryChange = r2fridaViewModel::updateSectionsSearchQuery,
+                                    listState = fridaSectionsListState)
                             }
                         }
                     }

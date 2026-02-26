@@ -38,14 +38,19 @@ private fun parseHexAddr(addr: String): Long? = try {
 @Composable
 fun FridaLibraryList(
     items: List<FridaLibrary>?, actions: ListItemActions,
-    cursorAddress: Long, onSeek: (Long) -> Unit, onRefresh: () -> Unit
+    cursorAddress: Long, onSeek: (Long) -> Unit, onRefresh: () -> Unit,
+    searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
+    listState: androidx.compose.foundation.lazy.LazyListState? = null
 ) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
         items = items,
         filterPredicate = { item, q -> item.name.contains(q, true) || item.path.contains(q, true) },
         placeholder = stringResource(R.string.r2frida_search_libraries),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { lib ->
         val base = parseHexAddr(lib.base)
         val isCurrent = base != null && cursorAddress >= base && cursorAddress < base + lib.size
@@ -65,13 +70,20 @@ fun FridaLibraryList(
 // ── Entry List ──
 
 @Composable
-fun FridaEntryList(items: List<FridaEntry>?, actions: ListItemActions, onRefresh: () -> Unit) {
+fun FridaEntryList(
+    items: List<FridaEntry>?, actions: ListItemActions, onRefresh: () -> Unit,
+    searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
+    listState: androidx.compose.foundation.lazy.LazyListState? = null
+) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
         items = items,
         filterPredicate = { item, q -> item.name.contains(q, true) },
         placeholder = stringResource(R.string.r2frida_search_entries),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { entry ->
         val addr = parseHexAddr(entry.address)
         FridaItemWrapper(entry.name, addr, "Entry: ${entry.name}, Addr: ${entry.address}, Module: ${entry.moduleName}", actions) {
@@ -84,13 +96,20 @@ fun FridaEntryList(items: List<FridaEntry>?, actions: ListItemActions, onRefresh
 // ── Export List (reused for exports, symbols, sections) ──
 
 @Composable
-fun FridaExportList(items: List<FridaExport>?, actions: ListItemActions, onRefresh: () -> Unit, searchHint: String) {
+fun FridaExportList(
+    items: List<FridaExport>?, actions: ListItemActions, onRefresh: () -> Unit, searchHint: String,
+    searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
+    listState: androidx.compose.foundation.lazy.LazyListState? = null
+) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
         items = items,
         filterPredicate = { item, q -> item.name.contains(q, true) },
         placeholder = searchHint,
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { export ->
         val addr = parseHexAddr(export.address)
         FridaItemWrapper(export.name, addr, "${export.type}: ${export.name}, Addr: ${export.address}", actions) {
@@ -103,13 +122,20 @@ fun FridaExportList(items: List<FridaExport>?, actions: ListItemActions, onRefre
 // ── String List ──
 
 @Composable
-fun FridaStringList(items: List<FridaString>?, actions: ListItemActions, onRefresh: () -> Unit) {
+fun FridaStringList(
+    items: List<FridaString>?, actions: ListItemActions, onRefresh: () -> Unit,
+    searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
+    listState: androidx.compose.foundation.lazy.LazyListState? = null
+) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
         items = items,
         filterPredicate = { item, q -> item.text.contains(q, true) },
         placeholder = stringResource(R.string.r2frida_search_strings),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { str ->
         val addr = parseHexAddr(str.base)
         FridaItemWrapper(str.text, addr, "String: ${str.text}, Base: ${str.base}", actions) {
@@ -125,7 +151,9 @@ fun FridaStringList(items: List<FridaString>?, actions: ListItemActions, onRefre
 @Composable
 fun FridaMappingList(
     items: List<FridaMapping>?, actions: ListItemActions,
-    cursorAddress: Long, onSeek: (Long) -> Unit, onRefresh: () -> Unit
+    cursorAddress: Long, onSeek: (Long) -> Unit, onRefresh: () -> Unit,
+    searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
+    listState: androidx.compose.foundation.lazy.LazyListState? = null
 ) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
@@ -136,7 +164,10 @@ fun FridaMappingList(
             (item.filePath?.contains(q, true) == true)
         },
         placeholder = stringResource(R.string.r2frida_search_mappings),
-        onRefresh = onRefresh
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
     ) { mapping ->
         val base = parseHexAddr(mapping.base)
         val isCurrent = base != null && cursorAddress >= base && cursorAddress < base + mapping.size

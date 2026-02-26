@@ -49,6 +49,36 @@ class R2FridaViewModel @Inject constructor(
     private val _scriptRunning = MutableStateFlow(false)
     val scriptRunning: StateFlow<Boolean> = _scriptRunning.asStateFlow()
 
+    // Search query state for each sub-tab (survives recomposition)
+    private val _librariesSearchQuery = MutableStateFlow("")
+    val librariesSearchQuery: StateFlow<String> = _librariesSearchQuery.asStateFlow()
+
+    private val _mappingsSearchQuery = MutableStateFlow("")
+    val mappingsSearchQuery: StateFlow<String> = _mappingsSearchQuery.asStateFlow()
+
+    private val _entriesSearchQuery = MutableStateFlow("")
+    val entriesSearchQuery: StateFlow<String> = _entriesSearchQuery.asStateFlow()
+
+    private val _exportsSearchQuery = MutableStateFlow("")
+    val exportsSearchQuery: StateFlow<String> = _exportsSearchQuery.asStateFlow()
+
+    private val _stringsSearchQuery = MutableStateFlow("")
+    val stringsSearchQuery: StateFlow<String> = _stringsSearchQuery.asStateFlow()
+
+    private val _symbolsSearchQuery = MutableStateFlow("")
+    val symbolsSearchQuery: StateFlow<String> = _symbolsSearchQuery.asStateFlow()
+
+    private val _sectionsSearchQuery = MutableStateFlow("")
+    val sectionsSearchQuery: StateFlow<String> = _sectionsSearchQuery.asStateFlow()
+
+    fun updateLibrariesSearchQuery(q: String) { _librariesSearchQuery.value = q }
+    fun updateMappingsSearchQuery(q: String) { _mappingsSearchQuery.value = q }
+    fun updateEntriesSearchQuery(q: String) { _entriesSearchQuery.value = q }
+    fun updateExportsSearchQuery(q: String) { _exportsSearchQuery.value = q }
+    fun updateStringsSearchQuery(q: String) { _stringsSearchQuery.value = q }
+    fun updateSymbolsSearchQuery(q: String) { _symbolsSearchQuery.value = q }
+    fun updateSectionsSearchQuery(q: String) { _sectionsSearchQuery.value = q }
+
     fun loadOverview() {
         viewModelScope.launch {
             repo.getOverview().onSuccess { _overview.value = it }
