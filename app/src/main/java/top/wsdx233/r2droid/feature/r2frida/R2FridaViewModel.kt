@@ -5,12 +5,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.util.LogManager
+import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
@@ -48,6 +50,81 @@ class R2FridaViewModel @Inject constructor(
 
     private val _scriptRunning = MutableStateFlow(false)
     val scriptRunning: StateFlow<Boolean> = _scriptRunning.asStateFlow()
+
+    // Script content persistence (survives tab switches)
+    private val _scriptContent = MutableStateFlow("")
+    val scriptContent: StateFlow<String> = _scriptContent.asStateFlow()
+
+    // Current script file name (null = unsaved)
+    private val _currentScriptName = MutableStateFlow<String?>(null)
+    val currentScriptName: StateFlow<String?> = _currentScriptName.asStateFlow()
+
+    // Script file list
+    private val _scriptFiles = MutableStateFlow<List<String>>(emptyList())
+    val scriptFiles: StateFlow<List<String>> = _scriptFiles.asStateFlow()
+
+    fun updateScriptContent(content: String) {
+        _scriptContent.value = content
+    }
+
+    private fun getScriptsDir(): File {
+        val dir = File(context.filesDir, "frida_scripts")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    fun refreshScriptFiles() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dir = getScriptsDir()
+            val files = dir.listFiles()
+                ?.filter { it.isFile && it.extension == "js" }
+                ?.sortedByDescending { it.lastModified() }
+                ?.map { it.name }
+                ?: emptyList()
+            _scriptFiles.value = files
+        }
+    }
+
+    fun newScript() {
+        _scriptContent.value = ""
+        _currentScriptName.value = null
+    }
+
+    fun saveScript(name: String, content: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val file = File(getScriptsDir(), if (name.endsWith(".js")) name else "$name.js")
+            file.writeText(content)
+            _currentScriptName.value = file.name
+            _scriptContent.value = content
+            refreshScriptFiles()
+        }
+    }
+
+    fun openScript(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val file = File(getScriptsDir(), name)
+            if (file.exists()) {
+                val content = file.readText()
+                _scriptContent.value = content
+                _currentScriptName.value = name
+            }
+        }
+    }
+
+    fun deleteScript(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val file = File(getScriptsDir(), name)
+            file.delete()
+            if (_currentScriptName.value == name) {
+                _currentScriptName.value = null
+            }
+            refreshScriptFiles()
+        }
+    }
+
+    init {
+        refreshScriptFiles()
+    }
 
     // Search query state for each sub-tab (survives recomposition)
     private val _librariesSearchQuery = MutableStateFlow("")
@@ -153,6 +230,7 @@ class R2FridaViewModel @Inject constructor(
     fun clearScriptLogs() = LogManager.clear()
 
     fun runScript(script: String) {
+        _scriptContent.value = script
         viewModelScope.launch {
             _scriptRunning.value = true
             LogManager.clear()

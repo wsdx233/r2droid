@@ -667,6 +667,11 @@
     <string name="r2frida_script_output">输出</string>
     <string name="r2frida_script_no_output">无输出</string>
     <string name="r2frida_script_running">运行中…</string>
+    <string name="frida_script_untitled">未命名</string>
+    <string name="frida_script_no_files">暂无保存的脚本</string>
+    <string name="frida_script_save_title">保存脚本</string>
+    <string name="frida_script_file_name">文件名</string>
+    <string name="frida_script_save">保存</string>
     <string name="r2frida_loading">加载中…</string>
     <string name="r2frida_no_data">无数据</string>
     <string name="r2frida_no_overview">r2frida 模式下无标准概览信息。\n请切换到「r2frida」标签查看会话信息。</string>

@@ -665,6 +665,11 @@
     <string name="r2frida_script_output">Output</string>
     <string name="r2frida_script_no_output">No output</string>
     <string name="r2frida_script_running">Running…</string>
+    <string name="frida_script_untitled">Untitled</string>
+    <string name="frida_script_no_files">No saved scripts</string>
+    <string name="frida_script_save_title">Save Script</string>
+    <string name="frida_script_file_name">File name</string>
+    <string name="frida_script_save">Save</string>
     <string name="r2frida_loading">Loading…</string>
     <string name="r2frida_no_data">No data</string>
     <string name="r2frida_no_overview">No standard overview in r2frida mode.\nSwitch to the \"r2frida\" tab for session info.</string>

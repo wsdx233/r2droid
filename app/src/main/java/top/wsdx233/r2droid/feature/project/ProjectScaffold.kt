@@ -9,11 +9,14 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +49,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.isImeVisible
 import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
 import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
 import androidx.compose.material3.Scaffold
@@ -115,7 +119,9 @@ enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
     AI(R.string.proj_category_ai, Icons.Filled.SmartToy)
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
 fun ProjectScaffold(
     viewModel: ProjectViewModel,
@@ -638,7 +644,9 @@ fun ProjectScaffold(
             }
         },
         bottomBar = {
-            if (!isWide) {
+            val isFridaScriptScreen = selectedCategory == MainCategory.R2Frida && selectedR2FridaTabIndex == 3
+            val hideBottomBar = isFridaScriptScreen && WindowInsets.isImeVisible
+            if (!isWide && !hideBottomBar) {
                 ProjectBottomBar(
                     selectedCategory = selectedCategory,
                     onCategorySelected = { selectedCategory = it },
@@ -663,7 +671,7 @@ fun ProjectScaffold(
             }
         }
     ) { paddingValues ->
-        Row(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+        Row(modifier = Modifier.padding(paddingValues).consumeWindowInsets(paddingValues).fillMaxSize()) {
             // NavigationRail for wide screens
             if (isWide) {
                 NavigationRail(
@@ -807,6 +815,9 @@ fun ProjectScaffold(
                             val fridaSections by r2fridaViewModel.sections.collectAsState()
                             val fridaScriptLogs by r2fridaViewModel.scriptLogs.collectAsState()
                             val fridaScriptRunning by r2fridaViewModel.scriptRunning.collectAsState()
+                            val fridaScriptContent by r2fridaViewModel.scriptContent.collectAsState()
+                            val fridaCurrentScriptName by r2fridaViewModel.currentScriptName.collectAsState()
+                            val fridaScriptFiles by r2fridaViewModel.scriptFiles.collectAsState()
 
                             // Hoisted search queries (survive category switches via ViewModel)
                             val fridaLibrariesQuery by r2fridaViewModel.librariesSearchQuery.collectAsState()
@@ -822,7 +833,7 @@ fun ProjectScaffold(
                                     0 -> r2fridaViewModel.loadOverview()
                                     1 -> r2fridaViewModel.loadLibraries()
                                     2 -> r2fridaViewModel.loadMappings()
-                                    3 -> r2fridaViewModel.clearScriptLogs()
+                                    // 3 -> script tab: no auto-clear, persist state
                                     4 -> r2fridaViewModel.loadEntries()
                                     5 -> r2fridaViewModel.loadExports()
                                     6 -> r2fridaViewModel.loadStrings()
@@ -852,8 +863,20 @@ fun ProjectScaffold(
                                     searchQuery = fridaMappingsQuery,
                                     onSearchQueryChange = r2fridaViewModel::updateMappingsSearchQuery,
                                     listState = fridaMappingsListState)
-                                3 -> FridaScriptScreen(fridaScriptLogs, fridaScriptRunning,
-                                    onRun = { r2fridaViewModel.runScript(it) })
+                                3 -> FridaScriptScreen(
+                                    logs = fridaScriptLogs,
+                                    running = fridaScriptRunning,
+                                    scriptContent = fridaScriptContent,
+                                    currentScriptName = fridaCurrentScriptName,
+                                    scriptFiles = fridaScriptFiles,
+                                    onRun = { r2fridaViewModel.runScript(it) },
+                                    onContentChange = { r2fridaViewModel.updateScriptContent(it) },
+                                    onNewScript = { r2fridaViewModel.newScript() },
+                                    onSaveScript = { name, content -> r2fridaViewModel.saveScript(name, content) },
+                                    onOpenScript = { r2fridaViewModel.openScript(it) },
+                                    onDeleteScript = { r2fridaViewModel.deleteScript(it) },
+                                    onRefreshFiles = { r2fridaViewModel.refreshScriptFiles() }
+                                )
                                 4 -> FridaEntryList(fridaEntries, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadEntries(true) },
                                     searchQuery = fridaEntriesQuery,

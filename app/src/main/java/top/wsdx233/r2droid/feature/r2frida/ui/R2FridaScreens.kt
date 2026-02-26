@@ -3,7 +3,14 @@ package top.wsdx233.r2droid.feature.r2frida.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -14,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -139,79 +147,174 @@ private fun OverviewInfoCard(
 fun FridaScriptScreen(
     logs: List<LogEntry>,
     running: Boolean,
-    onRun: (String) -> Unit
+    scriptContent: String,
+    currentScriptName: String?,
+    scriptFiles: List<String>,
+    onRun: (String) -> Unit,
+    onContentChange: (String) -> Unit,
+    onNewScript: () -> Unit,
+    onSaveScript: (String, String) -> Unit,
+    onOpenScript: (String) -> Unit,
+    onDeleteScript: (String) -> Unit,
+    onRefreshFiles: () -> Unit
 ) {
     var editorRef by remember { mutableStateOf<CodeEditor?>(null) }
     var logPanelVisible by remember { mutableStateOf(false) }
+    var filePanelVisible by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+
+    // Restore content when editor is ready
+    var editorInitialized by remember { mutableStateOf(false) }
+    LaunchedEffect(editorRef, scriptContent) {
+        val editor = editorRef ?: return@LaunchedEffect
+        if (!editorInitialized && scriptContent.isNotEmpty()) {
+            editor.setText(scriptContent)
+            editorInitialized = true
+        }
+    }
 
     // Auto-open log panel when script starts running
     LaunchedEffect(running) {
         if (running) logPanelVisible = true
     }
 
-    Box(Modifier.fillMaxSize()) {
-        // Full-screen Sora editor
-        SoraCodeEditor(
-            modifier = Modifier.fillMaxSize(),
-            scopeName = "source.js",
-            onEditorReady = { editorRef = it }
+    // Refresh file list when panel becomes visible
+    LaunchedEffect(filePanelVisible) {
+        if (filePanelVisible) onRefreshFiles()
+    }
+
+    // Save editor content when leaving composition (tab switch)
+    DisposableEffect(Unit) {
+        onDispose {
+            editorRef?.let { onContentChange(it.text.toString()) }
+        }
+    }
+
+    Column(Modifier.fillMaxSize().imePadding()) {
+        // File management toolbar
+        FridaScriptToolbar(
+            currentName = currentScriptName,
+            filePanelVisible = filePanelVisible,
+            onToggleFilePanel = { filePanelVisible = !filePanelVisible },
+            onNew = {
+                onNewScript()
+                editorRef?.setText("")
+                editorInitialized = true
+            },
+            onSave = {
+                val editor = editorRef ?: return@FridaScriptToolbar
+                val content = editor.text.toString()
+                onContentChange(content)
+                if (currentScriptName != null) {
+                    onSaveScript(currentScriptName, content)
+                } else {
+                    showSaveDialog = true
+                }
+            },
+            onOpen = { filePanelVisible = !filePanelVisible }
         )
 
-        // Floating action buttons (top-right)
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Log toggle button
-            FloatingActionButton(
-                onClick = { logPanelVisible = !logPanelVisible },
-                modifier = Modifier.size(40.dp),
-                containerColor = if (logPanelVisible)
-                    MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceContainerHigh
+        // File list panel
+        AnimatedVisibility(visible = filePanelVisible) {
+            FridaFileListPanel(
+                files = scriptFiles,
+                currentName = currentScriptName,
+                onOpen = { name ->
+                    onOpenScript(name)
+                    editorInitialized = false
+                    filePanelVisible = false
+                },
+                onDelete = onDeleteScript
+            )
+        }
+
+        // Editor + overlays
+        Box(Modifier.weight(1f)) {
+            SoraCodeEditor(
+                modifier = Modifier.fillMaxSize(),
+                scopeName = "source.js",
+                onEditorReady = { editorRef = it }
+            )
+
+            // Floating action buttons (top-right)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                BadgedBox(badge = {
-                    if (logs.isNotEmpty()) Badge { Text("${logs.size}") }
-                }) {
-                    Icon(Icons.Default.Terminal, null, modifier = Modifier.size(20.dp))
+                // Log toggle button
+                FloatingActionButton(
+                    onClick = { logPanelVisible = !logPanelVisible },
+                    modifier = Modifier.size(40.dp),
+                    containerColor = if (logPanelVisible)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    BadgedBox(badge = {
+                        if (logs.isNotEmpty()) {
+                            Badge {
+                                Text(if (logs.size > 99) "99+" else "${logs.size}")
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Default.Terminal, null, modifier = Modifier.size(20.dp))
+                    }
+                }
+                // Run button
+                FloatingActionButton(
+                    onClick = {
+                        editorRef?.let {
+                            val text = it.text.toString()
+                            onContentChange(text)
+                            onRun(text)
+                        }
+                    },
+                    modifier = Modifier.size(40.dp),
+                    containerColor = if (running)
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    else MaterialTheme.colorScheme.primary
+                ) {
+                    if (running) {
+                        CircularProgressIndicator(
+                            Modifier.size(20.dp), strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.PlayArrow, null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
-            // Run button
-            FloatingActionButton(
-                onClick = {
-                    editorRef?.let { onRun(it.text.toString()) }
-                },
-                modifier = Modifier.size(40.dp),
-                containerColor = if (running)
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                else MaterialTheme.colorScheme.primary
+
+            // Log panel (bottom)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = logPanelVisible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it }
             ) {
-                if (running) {
-                    CircularProgressIndicator(
-                        Modifier.size(20.dp), strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.PlayArrow, null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
+                FridaLogPanel(logs, onClose = { logPanelVisible = false })
             }
         }
 
-        // Log panel (bottom)
-        AnimatedVisibility(
-            visible = logPanelVisible,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it }
-        ) {
-            FridaLogPanel(logs, onClose = { logPanelVisible = false })
-        }
+        // Extra keys bar at bottom
+        FridaExtraKeysBar(editorRef)
+    }
+
+    // Save dialog
+    if (showSaveDialog) {
+        FridaSaveDialog(
+            onDismiss = { showSaveDialog = false },
+            onSave = { name ->
+                val content = editorRef?.text?.toString() ?: ""
+                onSaveScript(name, content)
+                showSaveDialog = false
+            }
+        )
     }
 }
 
@@ -278,4 +381,238 @@ private fun FridaLogPanel(logs: List<LogEntry>, onClose: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun FridaScriptToolbar(
+    currentName: String?,
+    filePanelVisible: Boolean,
+    onToggleFilePanel: () -> Unit,
+    onNew: () -> Unit,
+    onSave: () -> Unit,
+    onOpen: () -> Unit
+) {
+    Surface(
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onToggleFilePanel, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (filePanelVisible) Icons.Default.FolderOpen
+                    else Icons.Default.Folder,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Text(
+                currentName ?: stringResource(R.string.frida_script_untitled),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            )
+            IconButton(onClick = onNew, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.NoteAdd, null, Modifier.size(20.dp))
+            }
+            IconButton(onClick = onOpen, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.FileOpen, null, Modifier.size(20.dp))
+            }
+            IconButton(onClick = onSave, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Save, null, Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FridaFileListPanel(
+    files: List<String>,
+    currentName: String?,
+    onOpen: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 160.dp)
+        ) {
+            HorizontalDivider()
+            if (files.isEmpty()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        stringResource(R.string.frida_script_no_files),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    items(files) { name ->
+                        val isCurrent = name == currentName
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpen(name) }
+                                .background(
+                                    if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    else Color.Transparent
+                                )
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Javascript,
+                                null,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isCurrent) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { onDelete(name) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun FridaExtraKeysBar(editor: CodeEditor?) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(38.dp)
+            .background(Color(0xFF2D2D2D))
+    ) {
+        FlatKeyCell("←", Modifier.weight(1f)) {
+            editor?.let {
+                val c = it.cursor
+                if (c.leftColumn > 0) it.setSelection(c.leftLine, c.leftColumn - 1)
+                else if (c.leftLine > 0) it.setSelection(c.leftLine - 1, it.text.getColumnCount(c.leftLine - 1))
+            }
+        }
+        FlatKeyCell("→", Modifier.weight(1f)) {
+            editor?.let {
+                val c = it.cursor
+                val len = it.text.getColumnCount(c.leftLine)
+                if (c.leftColumn < len) it.setSelection(c.leftLine, c.leftColumn + 1)
+                else if (c.leftLine < it.text.lineCount - 1) it.setSelection(c.leftLine + 1, 0)
+            }
+        }
+        FlatKeyCell("fun", Modifier.weight(1f)) { editor?.insertText("function ", 9) }
+        FlatKeyCell("(", Modifier.weight(1f)) { editor?.insertText("()", 1) }
+        FlatKeyCell("[", Modifier.weight(1f)) { editor?.insertText("[]", 1) }
+        FlatKeyCell("{", Modifier.weight(1f)) { editor?.insertText("{}", 1) }
+        FlatKeyCell("\"", Modifier.weight(1f)) { editor?.insertText("\"\"", 1) }
+        FlatKeyCell("=", Modifier.weight(1f)) { editor?.insertText("=", 1) }
+        FlatKeyCell("+", Modifier.weight(1f)) { editor?.insertText("+", 1) }
+        FlatKeyCell("-", Modifier.weight(1f)) { editor?.insertText("-", 1) }
+        FlatKeyCell(".", Modifier.weight(1f)) { editor?.insertText(".", 1) }
+    }
+}
+
+@Composable
+private fun FlatKeyCell(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(if (isPressed) Color(0xFF5C6BC0) else Color.Transparent)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun FridaSaveDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Save, contentDescription = null) },
+        title = { Text(stringResource(R.string.frida_script_save_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.frida_script_file_name)) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onSave(name) },
+                enabled = name.isNotBlank()
+            ) {
+                Text(stringResource(R.string.frida_script_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dialog_cancel))
+            }
+        }
+    )
 }
