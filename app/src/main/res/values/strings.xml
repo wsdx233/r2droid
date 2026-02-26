@@ -652,6 +652,9 @@
     <string name="r2frida_tab_symbols">Symbols</string>
     <string name="r2frida_tab_sections">Sections</string>
     <string name="r2frida_tab_mappings">Mappings</string>
+    <string name="r2frida_tab_functions">Functions</string>
+    <string name="r2frida_tab_search">Search</string>
+    <string name="r2frida_tab_monitor">Monitor</string>
     <string name="r2frida_search_libraries">Search libraries…</string>
     <string name="r2frida_search_entries">Search entries…</string>
     <string name="r2frida_search_exports">Search exports…</string>

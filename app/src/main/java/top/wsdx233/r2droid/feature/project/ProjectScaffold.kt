@@ -170,6 +170,7 @@ fun ProjectScaffold(
     val fridaStringsListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val fridaSymbolsListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val fridaSectionsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val fridaCustomFunctionsListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // Decompiler export state
     var exportDecompCode by remember { mutableStateOf<String?>(null) }
@@ -219,7 +220,8 @@ fun ProjectScaffold(
         R.string.r2frida_tab_overview, R.string.r2frida_tab_libraries, R.string.r2frida_tab_mappings,
         R.string.r2frida_tab_scripts,
         R.string.r2frida_tab_entries, R.string.r2frida_tab_exports, R.string.r2frida_tab_strings,
-        R.string.r2frida_tab_symbols, R.string.r2frida_tab_sections
+        R.string.r2frida_tab_symbols, R.string.r2frida_tab_sections,
+        R.string.r2frida_tab_functions, R.string.r2frida_tab_search, R.string.r2frida_tab_monitor
     )
 
     Scaffold(
@@ -828,6 +830,15 @@ fun ProjectScaffold(
                             val fridaSymbolsQuery by r2fridaViewModel.symbolsSearchQuery.collectAsState()
                             val fridaSectionsQuery by r2fridaViewModel.sectionsSearchQuery.collectAsState()
 
+                            val fridaCustomFunctions by r2fridaViewModel.customFunctions.collectAsState()
+                            val fridaCustomFunctionsQuery by r2fridaViewModel.customFunctionsSearchQuery.collectAsState()
+                            
+                            val fridaSearchResults by r2fridaViewModel.searchResults.collectAsState()
+                            val fridaIsSearching by r2fridaViewModel.isSearching.collectAsState()
+                            
+                            val fridaMonitorEvents by r2fridaViewModel.monitorEvents.collectAsState()
+                            val fridaIsMonitoring by r2fridaViewModel.isMonitoring.collectAsState()
+
                             androidx.compose.runtime.LaunchedEffect(selectedR2FridaTabIndex) {
                                 when (selectedR2FridaTabIndex) {
                                     0 -> r2fridaViewModel.loadOverview()
@@ -839,6 +850,7 @@ fun ProjectScaffold(
                                     6 -> r2fridaViewModel.loadStrings()
                                     7 -> r2fridaViewModel.loadSymbols()
                                     8 -> r2fridaViewModel.loadSections()
+                                    9 -> r2fridaViewModel.loadCustomFunctions()
                                 }
                             }
 
@@ -905,6 +917,26 @@ fun ProjectScaffold(
                                     searchQuery = fridaSectionsQuery,
                                     onSearchQueryChange = r2fridaViewModel::updateSectionsSearchQuery,
                                     listState = fridaSectionsListState)
+                                9 -> FridaCustomFunctionsScreen(fridaCustomFunctions, fridaActions,
+                                    onRefresh = { r2fridaViewModel.loadCustomFunctions(true) },
+                                    searchQuery = fridaCustomFunctionsQuery,
+                                    onSearchChange = r2fridaViewModel::updateCustomFunctionsSearchQuery,
+                                    listState = fridaCustomFunctionsListState)
+                                10 -> FridaSearchScreen(
+                                    results = fridaSearchResults,
+                                    isSearching = fridaIsSearching,
+                                    onSearch = { p, v -> r2fridaViewModel.performSearch(p, v) },
+                                    onRefine = { t, v -> r2fridaViewModel.refineSearch(t, v) },
+                                    onClear = { r2fridaViewModel.clearSearchResults() },
+                                    actions = fridaActions
+                                )
+                                11 -> FridaMonitorScreen(
+                                    events = fridaMonitorEvents,
+                                    isMonitoring = fridaIsMonitoring,
+                                    onStart = { addr, size -> r2fridaViewModel.startMonitor(addr, size) },
+                                    onStop = { r2fridaViewModel.stopMonitor() },
+                                    actions = fridaActions
+                                )
                             }
                         }
                     }

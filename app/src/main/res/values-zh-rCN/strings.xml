@@ -654,6 +654,9 @@
     <string name="r2frida_tab_symbols">符号</string>
     <string name="r2frida_tab_sections">段</string>
     <string name="r2frida_tab_mappings">映射</string>
+    <string name="r2frida_tab_functions">函数</string>
+    <string name="r2frida_tab_search">搜索</string>
+    <string name="r2frida_tab_monitor">监控</string>
     <string name="r2frida_search_libraries">搜索库…</string>
     <string name="r2frida_search_entries">搜索入口…</string>
     <string name="r2frida_search_exports">搜索导出…</string>

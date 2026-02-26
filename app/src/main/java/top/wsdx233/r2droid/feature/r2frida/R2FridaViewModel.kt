@@ -63,6 +63,27 @@ class R2FridaViewModel @Inject constructor(
     private val _scriptFiles = MutableStateFlow<List<String>>(emptyList())
     val scriptFiles: StateFlow<List<String>> = _scriptFiles.asStateFlow()
 
+    // --- Custom Functions ---
+    private val _customFunctions = MutableStateFlow<List<FridaFunction>?>(null)
+    val customFunctions: StateFlow<List<FridaFunction>?> = _customFunctions.asStateFlow()
+    private val _customFunctionsSearchQuery = MutableStateFlow("")
+    val customFunctionsSearchQuery: StateFlow<String> = _customFunctionsSearchQuery.asStateFlow()
+    fun updateCustomFunctionsSearchQuery(q: String) { _customFunctionsSearchQuery.value = q }
+
+    // --- Search ---
+    private val _searchResults = MutableStateFlow<List<FridaSearchResult>?>(null)
+    val searchResults: StateFlow<List<FridaSearchResult>?> = _searchResults.asStateFlow()
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    // --- Monitor ---
+    private val _monitorEvents = MutableStateFlow<List<FridaMonitorEvent>>(emptyList())
+    val monitorEvents: StateFlow<List<FridaMonitorEvent>> = _monitorEvents.asStateFlow()
+    private val _isMonitoring = MutableStateFlow(false)
+    val isMonitoring: StateFlow<Boolean> = _isMonitoring.asStateFlow()
+    private var monitorJob: kotlinx.coroutines.Job? = null
+    private var monitorFile: java.io.File? = null
+
     fun updateScriptContent(content: String) {
         _scriptContent.value = content
     }
@@ -225,6 +246,97 @@ class R2FridaViewModel @Inject constructor(
         _symbols.value = null
         _sections.value = null
         _mappings.value = null
+        _customFunctions.value = null
+        _searchResults.value = null
+    }
+
+    private fun getPublicExchangeDir(): String {
+        val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "R2Droid_Frida")
+        if (!dir.exists()) dir.mkdirs()
+        return dir.absolutePath
+    }
+
+    fun loadCustomFunctions(force: Boolean = false) {
+        if (!force && _customFunctions.value != null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.getCustomFunctions(context.cacheDir.absolutePath, getPublicExchangeDir()).onSuccess { _customFunctions.value = it }
+                .onFailure { _customFunctions.value = emptyList() }
+        }
+    }
+
+    fun performSearch(pattern: String, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSearching.value = true
+            repo.searchMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), pattern, value).onSuccess {
+                _searchResults.value = it
+            }.onFailure { _searchResults.value = emptyList() }
+            _isSearching.value = false
+        }
+    }
+
+    fun refineSearch(type: String, value: String) {
+        val currentAddrs = _searchResults.value?.map { it.address } ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSearching.value = true
+            repo.filterMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), currentAddrs, type, value).onSuccess {
+                _searchResults.value = it
+            }.onFailure { _searchResults.value = emptyList() }
+            _isSearching.value = false
+        }
+    }
+
+    fun clearSearchResults() {
+        _searchResults.value = null
+    }
+
+    fun startMonitor(address: String, size: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = repo.startMonitor(context.cacheDir.absolutePath, getPublicExchangeDir(), address, size)
+            monitorFile = java.io.File(path)
+            _isMonitoring.value = true
+            _monitorEvents.value = emptyList() // clear previous events
+            
+            monitorJob?.cancel()
+            monitorJob = launch(Dispatchers.IO) {
+                var lastPos = 0L
+                while (_isMonitoring.value) {
+                    val file = monitorFile
+                    if (file != null && file.exists()) {
+                        val len = file.length()
+                        if (len > lastPos) {
+                            java.io.RandomAccessFile(file, "r").use { raf ->
+                                raf.seek(lastPos)
+                                val newLines = mutableListOf<String>()
+                                var line = raf.readLine()
+                                while (line != null) {
+                                    newLines.add(line)
+                                    line = raf.readLine()
+                                }
+                                lastPos = raf.filePointer
+                                
+                                val newEvents = newLines.mapNotNull { 
+                                    try { FridaMonitorEvent.fromJson(org.json.JSONObject(it)) } 
+                                    catch(e: Exception) { null } 
+                                }
+                                if (newEvents.isNotEmpty()) {
+                                    _monitorEvents.value = (_monitorEvents.value + newEvents).takeLast(1000)
+                                }
+                            }
+                        }
+                    }
+                    kotlinx.coroutines.delay(1000)
+                }
+            }
+        }
+    }
+
+    fun stopMonitor() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isMonitoring.value = false
+            repo.stopMonitor()
+            monitorJob?.cancel()
+            monitorJob = null
+        }
     }
 
     fun clearScriptLogs() = LogManager.clear()
