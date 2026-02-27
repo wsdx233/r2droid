@@ -680,6 +680,56 @@
     <string name="r2frida_no_overview">r2frida 模式下无标准概览信息。\n请切换到「r2frida」标签查看会话信息。</string>
     <string name="r2frida_lib_version">版本: %1$s</string>
 
+    <!-- Frida Search -->
+    <string name="fsearch_new_search">新搜索</string>
+    <string name="fsearch_refine">精确搜索</string>
+    <string name="fsearch_reset">重置</string>
+    <string name="fsearch_value_hint">数值 (;联合搜索, *模糊搜索)</string>
+    <string name="fsearch_searching">搜索中…</string>
+    <string name="fsearch_result_count">%1$d 个结果</string>
+    <string name="fsearch_no_results">无结果</string>
+    <string name="fsearch_advanced">高级选项</string>
+    <string name="fsearch_type">类型</string>
+    <string name="fsearch_compare">比较</string>
+    <string name="fsearch_range_min">最小值</string>
+    <string name="fsearch_range_max">最大值</string>
+    <string name="fsearch_range_search">范围搜索</string>
+    <string name="fsearch_expression">表达式</string>
+    <string name="fsearch_expression_hint">JS表达式: v > 100 &amp;&amp; v &lt; 999</string>
+    <string name="fsearch_fuzzy_increased">增大</string>
+    <string name="fsearch_fuzzy_decreased">减小</string>
+    <string name="fsearch_fuzzy_unchanged">未变</string>
+    <string name="fsearch_edit_value">编辑数值</string>
+    <string name="fsearch_edit_title">修改 %1$d 个地址</string>
+    <string name="fsearch_edit_single_title">修改数值</string>
+    <string name="fsearch_new_value_hint">新数值</string>
+    <string name="fsearch_freeze">冻结</string>
+    <string name="fsearch_unfreeze">解冻</string>
+    <string name="fsearch_freeze_normal">正常</string>
+    <string name="fsearch_batch_write">全部写入</string>
+    <string name="fsearch_batch_write_title">写入全部 %1$d 个结果</string>
+    <string name="fsearch_select_regions">内存范围</string>
+    <string name="fsearch_select_regions_title">选择内存范围</string>
+    <string name="fsearch_mem_all">全部内存</string>
+    <string name="fsearch_mem_java_heap">Jh: Java 堆</string>
+    <string name="fsearch_mem_c_alloc">Ca: C++ 分配</string>
+    <string name="fsearch_mem_c_bss">Cb: C++ BSS</string>
+    <string name="fsearch_mem_c_data">Cd: C++ 数据</string>
+    <string name="fsearch_mem_stack">S: 栈</string>
+    <string name="fsearch_mem_code_app">Xa: 代码 (应用)</string>
+    <string name="fsearch_mem_code_sys">Xs: 代码 (系统)</string>
+    <string name="fsearch_mem_video">V: 视频</string>
+    <string name="fsearch_mem_other">O: 其他</string>
+    <string name="fsearch_mem_bad">B: 危险</string>
+    <string name="fsearch_confirm">确定</string>
+    <string name="fsearch_cancel">取消</string>
+    <string name="fsearch_save">保存</string>
+    <string name="fsearch_add_to_value">加到值内</string>
+    <string name="fsearch_increment">增量</string>
+    <string name="fsearch_limit">数量</string>
+    <string name="fsearch_limit_custom">自定义…</string>
+    <string name="fsearch_limit_custom_title">自定义结果数量</string>
+
     <!-- Export Report -->
     <string name="export_report_title">导出分析报告</string>
     <string name="export_report_desc">导出包含函数、相关字符串、引用以及代码特征的完整报告</string>

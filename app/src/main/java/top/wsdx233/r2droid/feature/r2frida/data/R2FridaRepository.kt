@@ -59,25 +59,101 @@ class R2FridaRepository {
         (0 until arr.length()).map { FridaFunction.fromJson(arr.getJSONObject(it)) }
     }
 
-    suspend fun searchMemory(scriptDir: String, resultDir: String, pattern: String, value: String): Result<List<FridaSearchResult>> = runCatching {
+    /**
+     * Unified memory search supporting all types, comparisons, ranges, union values.
+     */
+    suspend fun searchMemory(
+        scriptDir: String, resultDir: String,
+        searchType: String, values: List<String>, compare: String,
+        rangeMin: String, rangeMax: String,
+        protection: String, regionsJson: String,
+        maxResults: Int = 50000
+    ): Result<List<FridaSearchResult>> = runCatching {
+        val valuesJson = values.joinToString(",") { "\"${escapeJs(it)}\"" }
         val script = FridaCustomScripts.SEARCH_SCRIPT
-            .replace("__PATTERN__", pattern)
-            .replace("__VALUE__", value)
+            .replace("__SEARCH_TYPE__", searchType)
+            .replace("__SEARCH_VALUES__", "[$valuesJson]")
+            .replace("__COMPARE__", compare)
+            .replace("__RANGE_MIN__", rangeMin)
+            .replace("__RANGE_MAX__", rangeMax)
+            .replace("__PROTECTION__", protection)
+            .replace("__REGIONS_JSON__", regionsJson)
+            .replace("__MAX_RESULTS__", maxResults.toString())
         val json = runCustomScript(script, scriptDir, resultDir)
-        val arr = JSONArray(json)
-        (0 until arr.length()).map { FridaSearchResult.fromJson(arr.getJSONObject(it)) }
+        parseSearchResults(json)
     }
 
-    suspend fun filterMemory(scriptDir: String, resultDir: String, addrs: List<String>, type: String, value: String): Result<List<FridaSearchResult>> = runCatching {
-        val addrStr = addrs.joinToString(prefix = "['", postfix = "']", separator = "','")
+    /**
+     * Refine existing results with fuzzy/exact/range/expression filter.
+     */
+    suspend fun filterMemory(
+        scriptDir: String, resultDir: String,
+        addrs: List<String>, oldValues: List<String>,
+        searchType: String, filterMode: String, targetVal: String,
+        rangeMin: String, rangeMax: String, expression: String
+    ): Result<List<FridaSearchResult>> = runCatching {
+        val addrJson = addrs.joinToString(",") { "\"$it\"" }
+        val oldValJson = oldValues.joinToString(",") { "\"${escapeJs(it)}\"" }
         val script = FridaCustomScripts.FILTER_SEARCH_SCRIPT
-            .replace("__ADDRESS_LIST__", addrStr)
-            .replace("__TYPE__", type)
-            .replace("__TARGET_VAL__", value)
+            .replace("__ADDRESS_LIST__", "[$addrJson]")
+            .replace("__OLD_VALUES__", "[$oldValJson]")
+            .replace("__SEARCH_TYPE__", searchType)
+            .replace("__FILTER_MODE__", filterMode)
+            .replace("__TARGET_VAL__", escapeJs(targetVal))
+            .replace("__RANGE_MIN__", rangeMin)
+            .replace("__RANGE_MAX__", rangeMax)
+            .replace("__EXPRESSION__", escapeJs(expression))
         val json = runCustomScript(script, scriptDir, resultDir)
-        val arr = JSONArray(json)
-        (0 until arr.length()).map { FridaSearchResult.fromJson(arr.getJSONObject(it)) }
+        parseSearchResults(json)
     }
+
+    /** Write a value to a single address. */
+    suspend fun writeMemoryValue(
+        cacheDir: String, address: String, type: String, value: String
+    ): Result<Unit> = runCatching {
+        val script = FridaCustomScripts.WRITE_VALUE_SCRIPT
+            .replace("__ADDRESS__", address)
+            .replace("__WRITE_TYPE__", type)
+            .replace("__WRITE_VALUE__", escapeJs(value))
+        val file = java.io.File(cacheDir, "frida_write.js")
+        file.writeText(script)
+        R2PipeManager.execute(":. ${file.absolutePath}").getOrThrow()
+    }
+
+    /** Batch write the same value to multiple addresses. */
+    suspend fun batchWriteMemory(
+        cacheDir: String, addresses: List<String>, type: String, value: String
+    ): Result<Unit> = runCatching {
+        val addrJson = addresses.joinToString(",") { "\"$it\"" }
+        val script = FridaCustomScripts.BATCH_WRITE_SCRIPT
+            .replace("__ADDRESS_LIST__", "[$addrJson]")
+            .replace("__WRITE_TYPE__", type)
+            .replace("__WRITE_VALUE__", escapeJs(value))
+        val file = java.io.File(cacheDir, "frida_batch_write.js")
+        file.writeText(script)
+        R2PipeManager.execute(":. ${file.absolutePath}").getOrThrow()
+    }
+
+    /** Re-read current values at all result addresses. */
+    suspend fun refreshValues(
+        scriptDir: String, resultDir: String,
+        addrs: List<String>, searchType: String
+    ): Result<List<FridaSearchResult>> = runCatching {
+        val addrJson = addrs.joinToString(",") { "\"$it\"" }
+        val script = FridaCustomScripts.REFRESH_VALUES_SCRIPT
+            .replace("__ADDRESS_LIST__", "[$addrJson]")
+            .replace("__SEARCH_TYPE__", searchType)
+        val json = runCustomScript(script, scriptDir, resultDir)
+        parseSearchResults(json)
+    }
+
+    private fun parseSearchResults(json: String): List<FridaSearchResult> {
+        val arr = JSONArray(json)
+        return (0 until arr.length()).map { FridaSearchResult.fromJson(arr.getJSONObject(it)) }
+    }
+
+    private fun escapeJs(s: String): String =
+        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
     suspend fun startMonitor(scriptDir: String, resultDir: String, address: String, size: Int): String {
         val ts = System.currentTimeMillis()

@@ -105,6 +105,7 @@ import top.wsdx233.r2droid.core.ui.components.CommandSuggestionPanel
 import kotlinx.coroutines.delay
 import top.wsdx233.r2droid.util.R2PipeManager
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
+import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.feature.r2frida.ui.*
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ContentCopy
@@ -835,7 +836,13 @@ fun ProjectScaffold(
                             
                             val fridaSearchResults by r2fridaViewModel.searchResults.collectAsState()
                             val fridaIsSearching by r2fridaViewModel.isSearching.collectAsState()
-                            
+                            val fridaSearchValueType by r2fridaViewModel.searchValueType.collectAsState()
+                            val fridaSearchCompare by r2fridaViewModel.searchCompare.collectAsState()
+                            val fridaSelectedRegions by r2fridaViewModel.selectedRegions.collectAsState()
+                            val fridaSearchError by r2fridaViewModel.searchError.collectAsState()
+                            val fridaFrozenAddresses by r2fridaViewModel.frozenAddresses.collectAsState()
+                            val fridaMaxResults by r2fridaViewModel.maxResults.collectAsState()
+
                             val fridaMonitorEvents by r2fridaViewModel.monitorEvents.collectAsState()
                             val fridaIsMonitoring by r2fridaViewModel.isMonitoring.collectAsState()
 
@@ -925,9 +932,24 @@ fun ProjectScaffold(
                                 10 -> FridaSearchScreen(
                                     results = fridaSearchResults,
                                     isSearching = fridaIsSearching,
-                                    onSearch = { p, v -> r2fridaViewModel.performSearch(p, v) },
-                                    onRefine = { t, v -> r2fridaViewModel.refineSearch(t, v) },
+                                    searchValueType = fridaSearchValueType,
+                                    searchCompare = fridaSearchCompare,
+                                    selectedRegions = fridaSelectedRegions,
+                                    frozenAddresses = fridaFrozenAddresses,
+                                    searchError = fridaSearchError,
+                                    onSearch = { input, rMin, rMax -> r2fridaViewModel.performSearch(input, rMin, rMax) },
+                                    onRefine = { mode, target, rMin, rMax, expr -> r2fridaViewModel.refineSearch(mode, target, rMin, rMax, expr) },
                                     onClear = { r2fridaViewModel.clearSearchResults() },
+                                    onWriteValue = { addr, v -> r2fridaViewModel.writeValue(addr, v) },
+                                    onBatchWrite = { v -> r2fridaViewModel.batchWriteAll(v) },
+                                    onToggleFreeze = { addr, v -> r2fridaViewModel.toggleFreeze(addr, v) },
+                                    onValueTypeChange = { r2fridaViewModel.updateSearchValueType(it) },
+                                    onCompareChange = { r2fridaViewModel.updateSearchCompare(it) },
+                                    onRegionsChange = { r2fridaViewModel.updateSelectedRegions(it) },
+                                    onClearError = { r2fridaViewModel.clearSearchError() },
+                                    onRefreshValues = { r2fridaViewModel.refreshSearchValues() },
+                                    maxResults = fridaMaxResults,
+                                    onMaxResultsChange = { r2fridaViewModel.updateMaxResults(it) },
                                     actions = fridaActions
                                 )
                                 11 -> FridaMonitorScreen(

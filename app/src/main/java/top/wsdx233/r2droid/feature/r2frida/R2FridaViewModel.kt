@@ -76,6 +76,29 @@ class R2FridaViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    // Search config state (persists across tab switches)
+    private val _searchValueType = MutableStateFlow(SearchValueType.DWORD)
+    val searchValueType: StateFlow<SearchValueType> = _searchValueType.asStateFlow()
+    private val _searchCompare = MutableStateFlow(SearchCompare.EQUAL)
+    val searchCompare: StateFlow<SearchCompare> = _searchCompare.asStateFlow()
+    private val _selectedRegions = MutableStateFlow(setOf(MemoryRegion.ALL))
+    val selectedRegions: StateFlow<Set<MemoryRegion>> = _selectedRegions.asStateFlow()
+    private val _searchError = MutableStateFlow<String?>(null)
+    val searchError: StateFlow<String?> = _searchError.asStateFlow()
+    // Max results limit
+    private val _maxResults = MutableStateFlow(50000)
+    val maxResults: StateFlow<Int> = _maxResults.asStateFlow()
+    // Frozen addresses: address -> value
+    private val _frozenAddresses = MutableStateFlow<Map<String, String>>(emptyMap())
+    val frozenAddresses: StateFlow<Map<String, String>> = _frozenAddresses.asStateFlow()
+    private var freezeJob: kotlinx.coroutines.Job? = null
+
+    fun updateSearchValueType(t: SearchValueType) { _searchValueType.value = t }
+    fun updateSearchCompare(c: SearchCompare) { _searchCompare.value = c }
+    fun updateSelectedRegions(r: Set<MemoryRegion>) { _selectedRegions.value = r }
+    fun clearSearchError() { _searchError.value = null }
+    fun updateMaxResults(n: Int) { _maxResults.value = n }
+
     // --- Monitor ---
     private val _monitorEvents = MutableStateFlow<List<FridaMonitorEvent>>(emptyList())
     val monitorEvents: StateFlow<List<FridaMonitorEvent>> = _monitorEvents.asStateFlow()
@@ -264,23 +287,211 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
-    fun performSearch(pattern: String, value: String) {
+    /**
+     * Unified search: supports exact, range, union (semicolon-separated), all types.
+     * @param input raw user input (may contain semicolons for union search)
+     * @param rangeMin min value for range mode (empty = not range)
+     * @param rangeMax max value for range mode (empty = not range)
+     */
+    fun performSearch(input: String, rangeMin: String = "", rangeMax: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isSearching.value = true
-            repo.searchMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), pattern, value).onSuccess {
+            _searchError.value = null
+            val type = _searchValueType.value
+            val compare = _searchCompare.value
+            val typeStr = when (type) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "hex"
+            }
+            val compareStr = when (compare) {
+                SearchCompare.EQUAL -> "eq"
+                SearchCompare.NOT_EQUAL -> "neq"
+                SearchCompare.GREATER -> "gt"
+                SearchCompare.LESS -> "lt"
+                SearchCompare.GREATER_EQ -> "gte"
+                SearchCompare.LESS_EQ -> "lte"
+            }
+            // Split by semicolon for union search
+            val values = input.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            val protection = buildProtectionString()
+            repo.searchMemory(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                typeStr, values, compareStr, rangeMin, rangeMax, protection, "[]",
+                _maxResults.value
+            ).onSuccess {
                 _searchResults.value = it
-            }.onFailure { _searchResults.value = emptyList() }
+            }.onFailure {
+                _searchResults.value = emptyList()
+                _searchError.value = it.message
+            }
             _isSearching.value = false
         }
     }
 
-    fun refineSearch(type: String, value: String) {
-        val currentAddrs = _searchResults.value?.map { it.address } ?: return
+    /**
+     * Refine existing results: exact, fuzzy (increased/decreased/unchanged), range, expression.
+     */
+    fun refineSearch(
+        filterMode: String, targetVal: String = "",
+        rangeMin: String = "", rangeMax: String = "",
+        expression: String = ""
+    ) {
+        val current = _searchResults.value ?: return
+        val addrs = current.map { it.address }
+        val oldValues = current.map { it.value }
         viewModelScope.launch(Dispatchers.IO) {
             _isSearching.value = true
-            repo.filterMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), currentAddrs, type, value).onSuccess {
+            _searchError.value = null
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "hex"
+            }
+            repo.filterMemory(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                addrs, oldValues, typeStr, filterMode, targetVal,
+                rangeMin, rangeMax, expression
+            ).onSuccess {
                 _searchResults.value = it
-            }.onFailure { _searchResults.value = emptyList() }
+            }.onFailure {
+                _searchResults.value = emptyList()
+                _searchError.value = it.message
+            }
+            _isSearching.value = false
+        }
+    }
+
+    /** Write a new value to a single address. */
+    fun writeValue(address: String, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.writeMemoryValue(context.cacheDir.absolutePath, address, typeStr, value)
+            // Update the result list with new value
+            _searchResults.value = _searchResults.value?.map {
+                if (it.address == address) it.copy(value = value) else it
+            }
+        }
+    }
+
+    /** Batch write the same value to all current results. */
+    fun batchWriteAll(value: String) {
+        val addrs = _searchResults.value?.map { it.address } ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.batchWriteMemory(context.cacheDir.absolutePath, addrs, typeStr, value)
+            _searchResults.value = _searchResults.value?.map { it.copy(value = value) }
+        }
+    }
+
+    /** Toggle freeze for an address. Frozen addresses are periodically re-written. */
+    fun toggleFreeze(address: String, value: String) {
+        val current = _frozenAddresses.value.toMutableMap()
+        if (current.containsKey(address)) {
+            current.remove(address)
+        } else {
+            current[address] = value
+        }
+        _frozenAddresses.value = current
+        if (current.isNotEmpty() && freezeJob == null) {
+            startFreezeLoop()
+        } else if (current.isEmpty()) {
+            freezeJob?.cancel()
+            freezeJob = null
+        }
+    }
+
+    fun clearAllFreezes() {
+        _frozenAddresses.value = emptyMap()
+        freezeJob?.cancel()
+        freezeJob = null
+    }
+
+    private fun startFreezeLoop() {
+        freezeJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val frozen = _frozenAddresses.value
+                if (frozen.isEmpty()) break
+                for ((addr, value) in frozen) {
+                    writeValue(addr, value)
+                }
+                kotlinx.coroutines.delay(100)
+            }
+        }
+    }
+
+    private fun buildProtectionString(): String {
+        val regions = _selectedRegions.value
+        if (regions.contains(MemoryRegion.ALL)) return "r--"
+        // Use the most permissive protection that covers selected regions
+        val hasExec = regions.any { it.protection.contains('x') }
+        val hasWrite = regions.any { it.protection.contains('w') }
+        return when {
+            hasExec && hasWrite -> "r--"
+            hasExec -> "r-x"
+            hasWrite -> "rw-"
+            else -> "r--"
+        }
+    }
+
+    /** Re-read current values at all result addresses. */
+    fun refreshSearchValues() {
+        val current = _searchResults.value ?: return
+        if (current.isEmpty()) return
+        val addrs = current.map { it.address }
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSearching.value = true
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.refreshValues(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                addrs, typeStr
+            ).onSuccess {
+                _searchResults.value = it
+            }.onFailure {
+                _searchError.value = it.message
+            }
             _isSearching.value = false
         }
     }
