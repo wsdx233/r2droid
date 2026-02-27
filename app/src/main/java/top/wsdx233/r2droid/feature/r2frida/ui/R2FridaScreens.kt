@@ -1,6 +1,8 @@
 package top.wsdx233.r2droid.feature.r2frida.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -161,6 +163,7 @@ fun FridaScriptScreen(
     var editorRef by remember { mutableStateOf<CodeEditor?>(null) }
     var logPanelVisible by remember { mutableStateOf(false) }
     var filePanelVisible by remember { mutableStateOf(false) }
+    var fabsExpanded by remember { mutableStateOf(true) }
     var showSaveDialog by remember { mutableStateOf(false) }
 
     // Restore content when editor is ready
@@ -195,7 +198,9 @@ fun FridaScriptScreen(
         FridaScriptToolbar(
             currentName = currentScriptName,
             filePanelVisible = filePanelVisible,
+            fabsExpanded = fabsExpanded,
             onToggleFilePanel = { filePanelVisible = !filePanelVisible },
+            onToggleFabs = { fabsExpanded = !fabsExpanded },
             onNew = {
                 onNewScript()
                 editorRef?.setText("")
@@ -237,55 +242,78 @@ fun FridaScriptScreen(
             )
 
             // Floating action buttons (top-right)
-            Row(
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(12.dp)
             ) {
-                // Log toggle button
-                FloatingActionButton(
-                    onClick = { logPanelVisible = !logPanelVisible },
-                    modifier = Modifier.size(40.dp),
-                    containerColor = if (logPanelVisible)
-                        MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = fabsExpanded,
+                    enter = slideInVertically { -it } + fadeIn(),
+                    exit = slideOutVertically { -it } + fadeOut()
                 ) {
-                    BadgedBox(badge = {
-                        if (logs.isNotEmpty()) {
-                            Badge {
-                                Text(if (logs.size > 99) "99+" else "${logs.size}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Undo button
+                        FloatingActionButton(
+                            onClick = { editorRef?.undo() },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Icon(Icons.Default.Undo, null, modifier = Modifier.size(20.dp))
+                        }
+                        // Redo button
+                        FloatingActionButton(
+                            onClick = { editorRef?.redo() },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Icon(Icons.Default.Redo, null, modifier = Modifier.size(20.dp))
+                        }
+                        // Log toggle button
+                        FloatingActionButton(
+                            onClick = { logPanelVisible = !logPanelVisible },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = if (logPanelVisible)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            BadgedBox(badge = {
+                                if (logs.isNotEmpty()) {
+                                    Badge {
+                                        Text(if (logs.size > 99) "99+" else "${logs.size}")
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Terminal, null, modifier = Modifier.size(20.dp))
                             }
                         }
-                    }) {
-                        Icon(Icons.Default.Terminal, null, modifier = Modifier.size(20.dp))
-                    }
-                }
-                // Run button
-                FloatingActionButton(
-                    onClick = {
-                        editorRef?.let {
-                            val text = it.text.toString()
-                            onContentChange(text)
-                            onRun(text)
+                        // Run button
+                        FloatingActionButton(
+                            onClick = {
+                                editorRef?.let {
+                                    val text = it.text.toString()
+                                    onContentChange(text)
+                                    onRun(text)
+                                }
+                            },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = if (running)
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            else MaterialTheme.colorScheme.primary
+                        ) {
+                            if (running) {
+                                CircularProgressIndicator(
+                                    Modifier.size(20.dp), strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.PlayArrow, null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
                         }
-                    },
-                    modifier = Modifier.size(40.dp),
-                    containerColor = if (running)
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    else MaterialTheme.colorScheme.primary
-                ) {
-                    if (running) {
-                        CircularProgressIndicator(
-                            Modifier.size(20.dp), strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.PlayArrow, null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
                     }
                 }
             }
@@ -387,7 +415,9 @@ private fun FridaLogPanel(logs: List<LogEntry>, onClose: () -> Unit) {
 private fun FridaScriptToolbar(
     currentName: String?,
     filePanelVisible: Boolean,
+    fabsExpanded: Boolean,
     onToggleFilePanel: () -> Unit,
+    onToggleFabs: () -> Unit,
     onNew: () -> Unit,
     onSave: () -> Unit,
     onOpen: () -> Unit
@@ -418,6 +448,15 @@ private fun FridaScriptToolbar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
             )
+            // Collapse/expand FABs toggle button
+            IconButton(onClick = onToggleFabs, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (fabsExpanded) Icons.Default.KeyboardArrowUp
+                    else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             IconButton(onClick = onNew, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.AutoMirrored.Filled.NoteAdd, null, Modifier.size(20.dp))
             }

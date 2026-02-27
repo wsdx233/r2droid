@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
 import top.wsdx233.r2droid.util.LogEntry
 import top.wsdx233.r2droid.util.LogType
 
@@ -99,15 +100,23 @@ fun LogList(logs: List<LogEntry>, onClearLogs: () -> Unit = {}) {
         color = Color(0xFF1E1E1E) // Dark background for logs
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(logs) { entry ->
-                    LogItem(entry)
+            SelectionContainer(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(logs) { entry ->
+                        LogItem(entry)
+                    }
                 }
             }
+            
+            AutoHideScrollbar(
+                listState = listState,
+                totalItems = logs.size,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
             
             // Clear button in top-right corner
             FilledTonalIconButton(
@@ -143,20 +152,18 @@ fun LogItem(entry: LogEntry) {
         else -> ""
     }
 
-    SelectionContainer {
-        Text(
-            text = run {
-                val content = "$prefix${entry.message}"
-                if (content.length > 2000) {
-                     content.take(2000) + "... (truncated ${content.length - 2000} chars)"
-                } else {
-                     content
-                }
-            },
-            color = color,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-        )
-    }
+    Text(
+        text = run {
+            val content = "$prefix${entry.message}"
+            if (content.length > 2000) {
+                 content.take(2000) + "... (truncated ${content.length - 2000} chars)"
+            } else {
+                 content
+            }
+        },
+        color = color,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+    )
 }
 
 

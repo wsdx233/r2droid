@@ -108,6 +108,7 @@ import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
+import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.feature.r2frida.ui.*
 import top.wsdx233.r2droid.feature.terminal.ui.CommandScreen
 import top.wsdx233.r2droid.util.R2PipeManager
@@ -804,6 +805,13 @@ fun ProjectScaffold(
                                     },
                                     onShowXrefs = { addr ->
                                         disasmViewModel.onEvent(top.wsdx233.r2droid.feature.disasm.DisasmEvent.FetchXrefs(addr))
+                                    },
+                                    onFridaMonitor = { addrHex ->
+                                        r2fridaViewModel.setMonitorPrefillAddress(addrHex)
+                                        selectedR2FridaTabIndex = 11
+                                    },
+                                    onFridaCopyCode = { code ->
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(code))
                                     }
                                 )
                             }
@@ -836,9 +844,15 @@ fun ProjectScaffold(
                             
                             val fridaSearchResults by r2fridaViewModel.searchResults.collectAsState()
                             val fridaIsSearching by r2fridaViewModel.isSearching.collectAsState()
-                            
-                            val fridaMonitorEvents by r2fridaViewModel.monitorEvents.collectAsState()
-                            val fridaIsMonitoring by r2fridaViewModel.isMonitoring.collectAsState()
+                            val fridaSearchValueType by r2fridaViewModel.searchValueType.collectAsState()
+                            val fridaSearchCompare by r2fridaViewModel.searchCompare.collectAsState()
+                            val fridaSelectedRegions by r2fridaViewModel.selectedRegions.collectAsState()
+                            val fridaSearchError by r2fridaViewModel.searchError.collectAsState()
+                            val fridaFrozenAddresses by r2fridaViewModel.frozenAddresses.collectAsState()
+                            val fridaMaxResults by r2fridaViewModel.maxResults.collectAsState()
+
+                            val fridaMonitors by r2fridaViewModel.monitors.collectAsState()
+                            val fridaMonitorPrefill by r2fridaViewModel.monitorPrefillAddress.collectAsState()
 
                             androidx.compose.runtime.LaunchedEffect(selectedR2FridaTabIndex) {
                                 when (selectedR2FridaTabIndex) {
@@ -926,17 +940,37 @@ fun ProjectScaffold(
                                 10 -> FridaSearchScreen(
                                     results = fridaSearchResults,
                                     isSearching = fridaIsSearching,
-                                    onSearch = { p, v -> r2fridaViewModel.performSearch(p, v) },
-                                    onRefine = { t, v -> r2fridaViewModel.refineSearch(t, v) },
+                                    searchValueType = fridaSearchValueType,
+                                    searchCompare = fridaSearchCompare,
+                                    selectedRegions = fridaSelectedRegions,
+                                    frozenAddresses = fridaFrozenAddresses,
+                                    searchError = fridaSearchError,
+                                    onSearch = { input, rMin, rMax -> r2fridaViewModel.performSearch(input, rMin, rMax) },
+                                    onRefine = { mode, target, rMin, rMax, expr -> r2fridaViewModel.refineSearch(mode, target, rMin, rMax, expr) },
                                     onClear = { r2fridaViewModel.clearSearchResults() },
+                                    onWriteValue = { addr, v -> r2fridaViewModel.writeValue(addr, v) },
+                                    onBatchWrite = { v -> r2fridaViewModel.batchWriteAll(v) },
+                                    onToggleFreeze = { addr, v -> r2fridaViewModel.toggleFreeze(addr, v) },
+                                    onValueTypeChange = { r2fridaViewModel.updateSearchValueType(it) },
+                                    onCompareChange = { r2fridaViewModel.updateSearchCompare(it) },
+                                    onRegionsChange = { r2fridaViewModel.updateSelectedRegions(it) },
+                                    onClearError = { r2fridaViewModel.clearSearchError() },
+                                    onRefreshValues = { r2fridaViewModel.refreshSearchValues() },
+                                    maxResults = fridaMaxResults,
+                                    onMaxResultsChange = { r2fridaViewModel.updateMaxResults(it) },
                                     actions = fridaActions
                                 )
                                 11 -> FridaMonitorScreen(
-                                    events = fridaMonitorEvents,
-                                    isMonitoring = fridaIsMonitoring,
-                                    onStart = { addr, size -> r2fridaViewModel.startMonitor(addr, size) },
-                                    onStop = { r2fridaViewModel.stopMonitor() },
-                                    actions = fridaActions
+                                    monitors = fridaMonitors,
+                                    onAddMonitor = { addr, size -> r2fridaViewModel.addMonitor(addr, size) },
+                                    onRemoveMonitor = { r2fridaViewModel.removeMonitor(it) },
+                                    onStartMonitor = { r2fridaViewModel.startMonitor(it) },
+                                    onStopMonitor = { r2fridaViewModel.stopMonitor(it) },
+                                    onFilterChange = { id, f -> r2fridaViewModel.updateMonitorFilter(id, f) },
+                                    onClearEvents = { r2fridaViewModel.clearMonitorEvents(it) },
+                                    actions = fridaActions,
+                                    prefillAddress = fridaMonitorPrefill,
+                                    onPrefillConsumed = { r2fridaViewModel.consumeMonitorPrefillAddress() }
                                 )
                             }
                         }

@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 
@@ -39,8 +40,75 @@ data class ListItemActions(
     val onAnalyzeFunction: ((Long) -> Unit)? = null,
     val onFunctionInfo: ((Long) -> Unit)? = null,
     val onFunctionXrefs: ((Long) -> Unit)? = null,
-    val onFunctionVariables: ((Long) -> Unit)? = null
+    val onFunctionVariables: ((Long) -> Unit)? = null,
+    /** Navigate to Frida monitor tab and pre-fill the address */
+    val onFridaMonitor: ((String) -> Unit)? = null,
+    /** Copy generated Frida code snippet to clipboard */
+    val onFridaCopyCode: ((String) -> Unit)? = null
 )
+
+enum class FridaCodeTemplates(@StringRes val labelRes: Int, private val template: String) {
+    HOOK_FUNCTION(R.string.menu_frida_code_hook, """
+Interceptor.attach(ptr("__ADDR__"), {
+    onEnter: function(args) {
+        console.log("[+] __ADDR__ called");
+        console.log("  arg0:", args[0]);
+        console.log("  arg1:", args[1]);
+    },
+    onLeave: function(retval) {
+        console.log("  retval:", retval);
+    }
+});""".trimIndent()),
+
+    HOOK_REPLACE(R.string.menu_frida_code_replace, """
+Interceptor.replace(ptr("__ADDR__"), new NativeCallback(function() {
+    console.log("[+] __ADDR__ replaced");
+    return 0;
+}, 'int', []));""".trimIndent()),
+
+    NATIVE_FUNCTION(R.string.menu_frida_code_native_func, """
+var func = new NativeFunction(ptr("__ADDR__"), 'int', ['pointer', 'int']);
+var result = func(ptr(0), 0);
+console.log("[+] __ADDR__ returned:", result);""".trimIndent()),
+
+    READ_MEMORY(R.string.menu_frida_code_read_mem, """
+var addr = ptr("__ADDR__");
+console.log(hexdump(addr, { length: 64, header: true, ansi: false }));""".trimIndent()),
+
+    WRITE_MEMORY(R.string.menu_frida_code_write_mem, """
+var addr = ptr("__ADDR__");
+addr.writeU32(0);
+console.log("[+] Written to __ADDR__");""".trimIndent()),
+
+    WATCH_ADDRESS(R.string.menu_frida_code_watch, """
+var addr = ptr("__ADDR__");
+var size = Process.pointerSize;
+MemoryAccessMonitor.enable([{ base: addr, size: size }], {
+    onAccess: function(details) {
+        console.log("[*] " + details.operation + " @ " + details.address + " from " + details.from);
+    }
+});""".trimIndent()),
+
+    STALKER_TRACE(R.string.menu_frida_code_stalker, """
+Interceptor.attach(ptr("__ADDR__"), {
+    onEnter: function(args) {
+        this.tid = Process.getCurrentThreadId();
+        Stalker.follow(this.tid, {
+            events: { call: true },
+            onCallSummary: function(summary) {
+                for (var addr in summary) {
+                    console.log(addr + ": " + summary[addr] + " calls");
+                }
+            }
+        });
+    },
+    onLeave: function(retval) {
+        Stalker.unfollow(this.tid);
+    }
+});""".trimIndent());
+
+    fun generate(address: String): String = template.replace("__ADDR__", address)
+}
 
 @Composable
 fun UnifiedListItemWrapper(
@@ -124,6 +192,18 @@ fun UnifiedListItemWrapper(
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.menu_function_submenu)) },
                                 onClick = { menuScreen = "Function" },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                        }
+                        if (actions.onFridaMonitor != null || actions.onFridaCopyCode != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.menu_frida)) },
+                                onClick = { menuScreen = "Frida" },
                                 trailingIcon = {
                                     Icon(
                                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -231,6 +311,53 @@ fun UnifiedListItemWrapper(
                             menuScreen = "Main"
                         }
                     )
+                }
+                "Frida" -> {
+                    val addrHex = if (address != null) "0x%X".format(address) else "0x0"
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_back)) },
+                        onClick = { menuScreen = "Main" },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+                    )
+                    HorizontalDivider()
+                    if (actions.onFridaMonitor != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_frida_monitor)) },
+                            onClick = {
+                                actions.onFridaMonitor.invoke(addrHex)
+                                expanded = false
+                                menuScreen = "Main"
+                            }
+                        )
+                    }
+                    if (actions.onFridaCopyCode != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_frida_code)) },
+                            onClick = { menuScreen = "FridaCode" },
+                            trailingIcon = {
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                            }
+                        )
+                    }
+                }
+                "FridaCode" -> {
+                    val addrHex = if (address != null) "0x%X".format(address) else "0x0"
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_back)) },
+                        onClick = { menuScreen = "Frida" },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+                    )
+                    HorizontalDivider()
+                    FridaCodeTemplates.entries.forEach { tpl ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(tpl.labelRes)) },
+                            onClick = {
+                                actions.onFridaCopyCode?.invoke(tpl.generate(addrHex))
+                                expanded = false
+                                menuScreen = "Main"
+                            }
+                        )
+                    }
                 }
             }
         }

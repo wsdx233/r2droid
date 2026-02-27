@@ -1,20 +1,20 @@
 package top.wsdx233.r2droid.feature.r2frida.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Refresh 
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -38,12 +38,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
+import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
 import top.wsdx233.r2droid.core.ui.components.UnifiedListItemWrapper
-import top.wsdx233.r2droid.feature.r2frida.data.FridaFunction
-import top.wsdx233.r2droid.feature.r2frida.data.FridaMonitorEvent
-import top.wsdx233.r2droid.feature.r2frida.data.FridaSearchResult
+import top.wsdx233.r2droid.feature.r2frida.data.*
 
 @Composable
 private fun CustomLoadingBox() {
@@ -55,6 +59,8 @@ private fun CustomEmptyBox() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Empty") }
 }
 
+// ── Functions Screen (unchanged) ──
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FridaCustomFunctionsScreen(
@@ -65,46 +71,33 @@ fun FridaCustomFunctionsScreen(
     onSearchChange: (String) -> Unit,
     listState: LazyListState = rememberLazyListState()
 ) {
-    if (functions == null) {
-        CustomLoadingBox()
-        return
-    }
-
+    if (functions == null) { CustomLoadingBox(); return }
     val filtered = remember(functions, searchQuery) {
-        if (searchQuery.isBlank()) functions else functions.filter {
-            it.name.contains(searchQuery, true)
-        }
+        if (searchQuery.isBlank()) functions else functions.filter { it.name.contains(searchQuery, true) }
     }
-
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
+            value = searchQuery, onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             placeholder = { Text("Search") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
             singleLine = true
         )
-
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("${filtered.size} items", style = MaterialTheme.typography.labelMedium)
             IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, null) }
         }
-
-        if (filtered.isEmpty()) {
-            CustomEmptyBox()
-        } else {
+        if (filtered.isEmpty()) { CustomEmptyBox() }
+        else {
             LazyColumn(modifier = Modifier.weight(1f), state = listState) {
                 items(filtered) { f ->
                     UnifiedListItemWrapper(
-                        title = f.name,
-                        fullText = "${f.name} ${f.address}",
-                        actions = actions,
-                        address = f.address.toLongOrNull(16) ?: 0L
+                        title = f.name, fullText = "${f.name} ${f.address}",
+                        actions = actions, address = f.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
                     ) {
                         ListItem(
                             headlineContent = { Text(f.name, style = MaterialTheme.typography.bodyMedium) },
@@ -117,94 +110,846 @@ fun FridaCustomFunctionsScreen(
     }
 }
 
+// ── Toolbar Row 1: Type + Compare + Region ──
+
+@Composable
+private fun SearchToolbarRow1(
+    searchValueType: SearchValueType,
+    searchCompare: SearchCompare,
+    onValueTypeChange: (SearchValueType) -> Unit,
+    onCompareChange: (SearchCompare) -> Unit,
+    onRegionClick: () -> Unit,
+    hasResults: Boolean,
+    onRefreshValues: () -> Unit,
+    maxResults: Int,
+    onMaxResultsChange: (Int) -> Unit
+) {
+    var typeExpanded by remember { mutableStateOf(false) }
+    var compareExpanded by remember { mutableStateOf(false) }
+    var limitExpanded by remember { mutableStateOf(false) }
+    var showCustomLimitDialog by remember { mutableStateOf(false) }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Type dropdown
+        Box {
+            FilterChip(
+                selected = true,
+                onClick = { typeExpanded = true },
+                label = { Text(searchValueType.shortLabel, fontSize = 12.sp) },
+                leadingIcon = { Text(stringResource(R.string.fsearch_type) + ":", fontSize = 10.sp) }
+            )
+            DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
+                SearchValueType.entries.forEach { t ->
+                    DropdownMenuItem(
+                        text = { Text("${t.shortLabel}: ${t.label}") },
+                        onClick = { onValueTypeChange(t); typeExpanded = false },
+                        leadingIcon = if (t == searchValueType) {{ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }} else null
+                    )
+                }
+            }
+        }
+
+        // Compare dropdown
+        Box {
+            FilterChip(
+                selected = true,
+                onClick = { compareExpanded = true },
+                label = { Text(searchCompare.symbol, fontSize = 14.sp) }
+            )
+            DropdownMenu(expanded = compareExpanded, onDismissRequest = { compareExpanded = false }) {
+                SearchCompare.entries.forEach { c ->
+                    DropdownMenuItem(
+                        text = { Text("${c.symbol}  ${c.name}") },
+                        onClick = { onCompareChange(c); compareExpanded = false },
+                        leadingIcon = if (c == searchCompare) {{ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }} else null
+                    )
+                }
+            }
+        }
+
+        // Region button
+        FilterChip(
+            selected = false,
+            onClick = onRegionClick,
+            label = { Text(stringResource(R.string.fsearch_select_regions), fontSize = 12.sp) },
+            leadingIcon = { Icon(Icons.Filled.Memory, null, Modifier.size(16.dp)) }
+        )
+
+        // Max results limit button
+        Box {
+            FilterChip(
+                selected = true,
+                onClick = { limitExpanded = true },
+                label = {
+                    val label = if (maxResults >= 1000000) "${maxResults / 1000}K" else maxResults.toString()
+                    Text(label, fontSize = 12.sp)
+                },
+                leadingIcon = { Text(stringResource(R.string.fsearch_limit) + ":", fontSize = 10.sp) }
+            )
+            DropdownMenu(expanded = limitExpanded, onDismissRequest = { limitExpanded = false }) {
+                listOf(1000, 5000, 10000, 50000, 100000).forEach { n ->
+                    DropdownMenuItem(
+                        text = { Text(n.toString()) },
+                        onClick = { onMaxResultsChange(n); limitExpanded = false },
+                        leadingIcon = if (n == maxResults) {{ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }} else null
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.fsearch_limit_custom)) },
+                    onClick = { limitExpanded = false; showCustomLimitDialog = true }
+                )
+            }
+        }
+
+        // Refresh values button
+        if (hasResults) {
+            IconButton(
+                onClick = onRefreshValues,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp))
+            }
+        }
+    }
+
+    if (showCustomLimitDialog) {
+        var customValue by remember { mutableStateOf(maxResults.toString()) }
+        AlertDialog(
+            onDismissRequest = { showCustomLimitDialog = false },
+            title = { Text(stringResource(R.string.fsearch_limit_custom_title)) },
+            text = {
+                OutlinedTextField(
+                    value = customValue,
+                    onValueChange = { customValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("50000") }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val n = customValue.toIntOrNull()
+                        if (n != null && n > 0) onMaxResultsChange(n)
+                        showCustomLimitDialog = false
+                    },
+                    enabled = customValue.toIntOrNull()?.let { it > 0 } == true
+                ) { Text(stringResource(R.string.fsearch_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomLimitDialog = false }) {
+                    Text(stringResource(R.string.fsearch_cancel))
+                }
+            }
+        )
+    }
+}
+
+// ── GG-Style Memory Search Screen ──
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FridaSearchScreen(
     results: List<FridaSearchResult>?,
     isSearching: Boolean,
-    onSearch: (pattern: String, value: String) -> Unit,
-    onRefine: (type: String, value: String) -> Unit,
+    searchValueType: SearchValueType,
+    searchCompare: SearchCompare,
+    selectedRegions: Set<MemoryRegion>,
+    frozenAddresses: Map<String, String>,
+    searchError: String?,
+    onSearch: (input: String, rangeMin: String, rangeMax: String) -> Unit,
+    onRefine: (filterMode: String, targetVal: String, rangeMin: String, rangeMax: String, expression: String) -> Unit,
     onClear: () -> Unit,
+    onWriteValue: (address: String, value: String) -> Unit,
+    onBatchWrite: (value: String) -> Unit,
+    onToggleFreeze: (address: String, value: String) -> Unit,
+    onValueTypeChange: (SearchValueType) -> Unit,
+    onCompareChange: (SearchCompare) -> Unit,
+    onRegionsChange: (Set<MemoryRegion>) -> Unit,
+    onClearError: () -> Unit,
+    onRefreshValues: () -> Unit,
+    maxResults: Int,
+    onMaxResultsChange: (Int) -> Unit,
     actions: ListItemActions
 ) {
-    var searchVal by remember { mutableStateOf("") }
-    var searchType by remember { mutableStateOf("u32") } // u8, u16, u32, u64
-    
-    val types = listOf("u8", "u16", "u32", "u64")
+    var searchInput by remember { mutableStateOf("") }
+    var advancedExpanded by remember { mutableStateOf(false) }
+    var rangeMin by remember { mutableStateOf("") }
+    var rangeMax by remember { mutableStateOf("") }
+    var expression by remember { mutableStateOf("") }
+    var showRegionDialog by remember { mutableStateOf(false) }
+    var showBatchWriteDialog by remember { mutableStateOf(false) }
+    var editingResult by remember { mutableStateOf<FridaSearchResult?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        Card(Modifier.padding(8.dp)) {
-            Column(Modifier.padding(16.dp)) {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    types.forEachIndexed { index, type ->
-                        SegmentedButton(
-                            selected = searchType == type,
-                            onClick = { searchType = type },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = types.size)
-                        ) {
-                            Text(type)
-                        }
-                    }
+        // ── Row 1: Type selector + Compare + Region button ──
+        SearchToolbarRow1(
+            searchValueType = searchValueType,
+            searchCompare = searchCompare,
+            onValueTypeChange = onValueTypeChange,
+            onCompareChange = onCompareChange,
+            onRegionClick = { showRegionDialog = true },
+            hasResults = results != null && results.isNotEmpty(),
+            onRefreshValues = onRefreshValues,
+            maxResults = maxResults,
+            onMaxResultsChange = onMaxResultsChange
+        )
+
+        // ── Row 2: Action buttons ──
+        SearchToolbarRow2(
+            hasResults = results != null && results.isNotEmpty(),
+            isSearching = isSearching,
+            onNewSearch = {
+                if (rangeMin.isNotBlank() && rangeMax.isNotBlank()) {
+                    onSearch(searchInput, rangeMin, rangeMax)
+                } else {
+                    onSearch(searchInput, "", "")
                 }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = searchVal,
-                    onValueChange = { searchVal = it },
-                    label = { Text("Value to Search/Refine") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = { 
-                            val v = searchVal.toLongOrNull() ?: 0L
-                            val pattern = when (searchType) {
-                                "u8" -> String.format("%02x", v.toByte())
-                                "u16" -> String.format("%02x %02x", (v and 0xff).toByte(), ((v shr 8) and 0xff).toByte())
-                                "u32" -> String.format("%02x %02x %02x %02x", (v and 0xff).toByte(), ((v shr 8) and 0xff).toByte(), ((v shr 16) and 0xff).toByte(), ((v shr 24) and 0xff).toByte())
-                                else -> String.format("%02x", v.toByte()) // placeholder
-                            }
-                            onSearch(pattern, searchVal) 
-                        },
-                        enabled = !isSearching && searchVal.isNotBlank()
-                    ) { Text("Search") }
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = { onRefine(searchType, searchVal) },
-                        enabled = !isSearching && searchVal.isNotBlank() && results != null
-                    ) { Text("Refine") }
-                }
-                if (results != null) {
-                    TextButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
-                        Text("Clear Results")
-                    }
+            },
+            onRefineExact = { onRefine("exact", searchInput, "", "", "") },
+            onRefineIncreased = { onRefine("increased", "", "", "", "") },
+            onRefineDecreased = { onRefine("decreased", "", "", "", "") },
+            onRefineUnchanged = { onRefine("unchanged", "", "", "", "") },
+            onRefineRange = { onRefine("range", "", rangeMin, rangeMax, "") },
+            onRefineExpression = { onRefine("expression", "", "", "", expression) },
+            onBatchWrite = { showBatchWriteDialog = true },
+            onClear = onClear,
+            searchInput = searchInput,
+            rangeMin = rangeMin,
+            rangeMax = rangeMax,
+            expression = expression
+        )
+
+        // ── Search input ──
+        OutlinedTextField(
+            value = searchInput,
+            onValueChange = { searchInput = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            placeholder = { Text(stringResource(R.string.fsearch_value_hint)) },
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
+        )
+
+        // ── Collapsible advanced options ──
+        AdvancedOptionsSection(
+            expanded = advancedExpanded,
+            onToggle = { advancedExpanded = !advancedExpanded },
+            rangeMin = rangeMin,
+            rangeMax = rangeMax,
+            expression = expression,
+            onRangeMinChange = { rangeMin = it },
+            onRangeMaxChange = { rangeMax = it },
+            onExpressionChange = { expression = it }
+        )
+
+        // ── Error banner ──
+        if (searchError != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(searchError, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    IconButton(onClick = onClearError) { Icon(Icons.Filled.Close, null, tint = MaterialTheme.colorScheme.onErrorContainer) }
                 }
             }
         }
 
+        // ── Results ──
         if (isSearching) {
             CustomLoadingBox()
         } else if (results != null) {
-            Text("${results.size} matches", Modifier.padding(8.dp), style = MaterialTheme.typography.labelMedium)
+            Text(
+                stringResource(R.string.fsearch_result_count, results.size),
+                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelMedium
+            )
             if (results.isEmpty()) {
                 CustomEmptyBox()
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(results) { r ->
-                        UnifiedListItemWrapper(
-                            title = r.address,
-                            fullText = "${r.address} = ${r.value}",
-                            actions = actions,
-                            address = r.address.toLongOrNull(16) ?: 0L
-                        ) {
-                            ListItem(
-                                headlineContent = { Text(r.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) },
-                                supportingContent = { Text("Value: ${r.value}", style = MaterialTheme.typography.bodySmall) }
-                            )
+                SearchResultList(
+                    results = results,
+                    frozenAddresses = frozenAddresses,
+                    actions = actions,
+                    onEdit = { editingResult = it },
+                    onToggleFreeze = onToggleFreeze,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+
+    // ── Dialogs ──
+    if (showRegionDialog) {
+        MemoryRegionDialog(
+            selected = selectedRegions,
+            onDismiss = { showRegionDialog = false },
+            onConfirm = { onRegionsChange(it); showRegionDialog = false }
+        )
+    }
+    if (showBatchWriteDialog) {
+        BatchWriteDialog(
+            count = results?.size ?: 0,
+            onDismiss = { showBatchWriteDialog = false },
+            onConfirm = { onBatchWrite(it); showBatchWriteDialog = false }
+        )
+    }
+    editingResult?.let { result ->
+        EditValueDialog(
+            result = result,
+            searchValueType = searchValueType,
+            isFrozen = frozenAddresses.containsKey(result.address),
+            onDismiss = { editingResult = null },
+            onSave = { newVal, freeze ->
+                onWriteValue(result.address, newVal)
+                if (freeze) onToggleFreeze(result.address, newVal)
+                editingResult = null
+            }
+        )
+    }
+}
+
+// ── Toolbar Row 2: Action buttons (scrollable) ──
+
+@Composable
+private fun SearchToolbarRow2(
+    hasResults: Boolean,
+    isSearching: Boolean,
+    onNewSearch: () -> Unit,
+    onRefineExact: () -> Unit,
+    onRefineIncreased: () -> Unit,
+    onRefineDecreased: () -> Unit,
+    onRefineUnchanged: () -> Unit,
+    onRefineRange: () -> Unit,
+    onRefineExpression: () -> Unit,
+    onBatchWrite: () -> Unit,
+    onClear: () -> Unit,
+    searchInput: String,
+    rangeMin: String,
+    rangeMax: String,
+    expression: String
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // New Search
+        FilledTonalButton(
+            onClick = onNewSearch,
+            enabled = !isSearching && searchInput.isNotBlank(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Icon(Icons.Filled.Search, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(stringResource(R.string.fsearch_new_search), fontSize = 12.sp)
+        }
+
+        // Refine (exact)
+        FilledTonalButton(
+            onClick = onRefineExact,
+            enabled = !isSearching && hasResults && searchInput.isNotBlank(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Icon(Icons.Filled.FilterAlt, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(stringResource(R.string.fsearch_refine), fontSize = 12.sp)
+        }
+
+        // Fuzzy: Increased
+        OutlinedButton(
+            onClick = onRefineIncreased,
+            enabled = !isSearching && hasResults,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+        ) { Text(stringResource(R.string.fsearch_fuzzy_increased), fontSize = 11.sp) }
+
+        // Fuzzy: Decreased
+        OutlinedButton(
+            onClick = onRefineDecreased,
+            enabled = !isSearching && hasResults,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+        ) { Text(stringResource(R.string.fsearch_fuzzy_decreased), fontSize = 11.sp) }
+
+        // Fuzzy: Unchanged
+        OutlinedButton(
+            onClick = onRefineUnchanged,
+            enabled = !isSearching && hasResults,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+        ) { Text(stringResource(R.string.fsearch_fuzzy_unchanged), fontSize = 11.sp) }
+
+        // Range refine
+        if (rangeMin.isNotBlank() && rangeMax.isNotBlank()) {
+            OutlinedButton(
+                onClick = onRefineRange,
+                enabled = !isSearching && hasResults,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            ) { Text(stringResource(R.string.fsearch_range_search), fontSize = 11.sp) }
+        }
+
+        // Expression refine
+        if (expression.isNotBlank()) {
+            OutlinedButton(
+                onClick = onRefineExpression,
+                enabled = !isSearching && hasResults,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            ) { Text("fx", fontSize = 11.sp) }
+        }
+
+        // Batch write
+        if (hasResults) {
+            FilledTonalButton(
+                onClick = onBatchWrite,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Icon(Icons.Filled.Edit, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.fsearch_batch_write), fontSize = 12.sp)
+            }
+        }
+
+        // Reset
+        if (hasResults) {
+            OutlinedButton(
+                onClick = onClear,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Icon(Icons.Filled.Clear, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.fsearch_reset), fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+// ── Collapsible Advanced Options ──
+
+@Composable
+private fun AdvancedOptionsSection(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    rangeMin: String,
+    rangeMax: String,
+    expression: String,
+    onRangeMinChange: (String) -> Unit,
+    onRangeMaxChange: (String) -> Unit,
+    onExpressionChange: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+        tonalElevation = 1.dp,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.fsearch_advanced),
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    null, Modifier.size(20.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    // Range search
+                    Text(
+                        stringResource(R.string.fsearch_range_search),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = rangeMin,
+                            onValueChange = onRangeMinChange,
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text(stringResource(R.string.fsearch_range_min)) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                        )
+                        OutlinedTextField(
+                            value = rangeMax,
+                            onValueChange = onRangeMaxChange,
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text(stringResource(R.string.fsearch_range_max)) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // Custom expression
+                    Text(
+                        stringResource(R.string.fsearch_expression),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    OutlinedTextField(
+                        value = expression,
+                        onValueChange = onExpressionChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text(stringResource(R.string.fsearch_expression_hint)) },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+// ── Search Result List ──
+
+@Composable
+private fun SearchResultList(
+    results: List<FridaSearchResult>,
+    frozenAddresses: Map<String, String>,
+    actions: ListItemActions,
+    onEdit: (FridaSearchResult) -> Unit,
+    onToggleFreeze: (address: String, value: String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    Box(modifier = modifier) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
+        items(results) { r ->
+            val isFrozen = frozenAddresses.containsKey(r.address)
+            UnifiedListItemWrapper(
+                title = r.address,
+                fullText = "${r.address} = ${r.value}",
+                actions = actions,
+                address = r.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
+            ) {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            r.address,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            r.value,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Freeze toggle
+                            IconButton(
+                                onClick = { onToggleFreeze(r.address, r.value) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    if (isFrozen) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = if (isFrozen) MaterialTheme.colorScheme.error
+                                           else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            // Edit button
+                            IconButton(
+                                onClick = { onEdit(r) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
+                )
+            }
+        }
+    }
+        AutoHideScrollbar(
+            listState = listState,
+            totalItems = results.size,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+    }
+}
+
+// ── Memory Region Selection Dialog ──
+
+@Composable
+private fun MemoryRegionDialog(
+    selected: Set<MemoryRegion>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<MemoryRegion>) -> Unit
+) {
+    var current by remember { mutableStateOf(selected) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.fsearch_select_regions_title)) },
+        text = {
+            Column {
+                MemoryRegion.entries.forEach { region ->
+                    val label = when (region) {
+                        MemoryRegion.ALL -> stringResource(R.string.fsearch_mem_all)
+                        MemoryRegion.JAVA_HEAP -> stringResource(R.string.fsearch_mem_java_heap)
+                        MemoryRegion.C_ALLOC -> stringResource(R.string.fsearch_mem_c_alloc)
+                        MemoryRegion.C_BSS -> stringResource(R.string.fsearch_mem_c_bss)
+                        MemoryRegion.C_DATA -> stringResource(R.string.fsearch_mem_c_data)
+                        MemoryRegion.STACK -> stringResource(R.string.fsearch_mem_stack)
+                        MemoryRegion.CODE_APP -> stringResource(R.string.fsearch_mem_code_app)
+                        MemoryRegion.CODE_SYS -> stringResource(R.string.fsearch_mem_code_sys)
+                        MemoryRegion.VIDEO -> stringResource(R.string.fsearch_mem_video)
+                        MemoryRegion.OTHER -> stringResource(R.string.fsearch_mem_other)
+                        MemoryRegion.BAD -> stringResource(R.string.fsearch_mem_bad)
+                    }
+                    val checked = current.contains(region)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                current = if (region == MemoryRegion.ALL) {
+                                    setOf(MemoryRegion.ALL)
+                                } else {
+                                    val next = current.toMutableSet()
+                                    next.remove(MemoryRegion.ALL)
+                                    if (checked) next.remove(region) else next.add(region)
+                                    if (next.isEmpty()) setOf(MemoryRegion.ALL) else next
+                                }
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = checked, onCheckedChange = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(current) }) {
+                Text(stringResource(R.string.fsearch_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.fsearch_cancel))
+            }
+        }
+    )
+}
+
+// ── Batch Write Dialog ──
+
+@Composable
+private fun BatchWriteDialog(
+    count: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var value by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.fsearch_batch_write_title, count)) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.fsearch_new_value_hint)) },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(value) },
+                enabled = value.isNotBlank()
+            ) { Text(stringResource(R.string.fsearch_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.fsearch_cancel))
+            }
+        }
+    )
+}
+
+// ── Edit Value Dialog (GG-style) ──
+
+@Composable
+private fun EditValueDialog(
+    result: FridaSearchResult,
+    searchValueType: SearchValueType,
+    isFrozen: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (newValue: String, freeze: Boolean) -> Unit
+) {
+    var value by remember { mutableStateOf(result.value) }
+    var freeze by remember { mutableStateOf(isFrozen) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.fsearch_edit_single_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    result.address,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "${stringResource(R.string.fsearch_type)}: ${searchValueType.shortLabel}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.fsearch_new_value_hint)) },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
+                )
+                Row(
+                    Modifier.fillMaxWidth().clickable { freeze = !freeze }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = freeze, onCheckedChange = { freeze = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (freeze) stringResource(R.string.fsearch_freeze)
+                        else stringResource(R.string.fsearch_freeze_normal),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(value, freeze) },
+                enabled = value.isNotBlank()
+            ) { Text(stringResource(R.string.fsearch_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.fsearch_cancel))
+            }
+        }
+    )
+}
+
+// ── Monitor Screen ──
+
+@Composable
+fun FridaMonitorScreen(
+    monitors: List<MonitorInstance>,
+    onAddMonitor: (address: String, size: Int) -> Unit,
+    onRemoveMonitor: (String) -> Unit,
+    onStartMonitor: (String) -> Unit,
+    onStopMonitor: (String) -> Unit,
+    onFilterChange: (String, MonitorFilter) -> Unit,
+    onClearEvents: (String) -> Unit,
+    actions: ListItemActions,
+    prefillAddress: String? = null,
+    onPrefillConsumed: () -> Unit = {}
+) {
+    var address by remember { mutableStateOf("") }
+    var size by remember { mutableStateOf("4096") }
+
+    LaunchedEffect(prefillAddress) {
+        if (!prefillAddress.isNullOrBlank()) {
+            address = prefillAddress
+            onPrefillConsumed()
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // Add monitor row
+        Row(
+            Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = address,
+                onValueChange = { address = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("0x...") },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            )
+            OutlinedTextField(
+                value = size,
+                onValueChange = { size = it },
+                modifier = Modifier.width(80.dp),
+                placeholder = { Text("Size") },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+            )
+            FilledTonalButton(
+                onClick = {
+                    if (address.isNotBlank()) {
+                        onAddMonitor(address, size.toIntOrNull() ?: 4096)
+                        address = ""
+                    }
+                },
+                enabled = address.isNotBlank()
+            ) { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) }
+        }
+
+        if (monitors.isEmpty()) {
+            CustomEmptyBox()
+        } else {
+            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                items(monitors, key = { it.id }) { mon ->
+                    MonitorCard(
+                        monitor = mon,
+                        onStart = { onStartMonitor(mon.id) },
+                        onStop = { onStopMonitor(mon.id) },
+                        onRemove = { onRemoveMonitor(mon.id) },
+                        onFilterChange = { onFilterChange(mon.id, it) },
+                        onClear = { onClearEvents(mon.id) },
+                        actions = actions
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -212,79 +957,185 @@ fun FridaSearchScreen(
 }
 
 @Composable
-fun FridaMonitorScreen(
-    events: List<FridaMonitorEvent>,
-    isMonitoring: Boolean,
-    onStart: (address: String, size: Int) -> Unit,
+private fun MonitorCard(
+    monitor: MonitorInstance,
+    onStart: () -> Unit,
     onStop: () -> Unit,
+    onRemove: () -> Unit,
+    onFilterChange: (MonitorFilter) -> Unit,
+    onClear: () -> Unit,
     actions: ListItemActions
 ) {
-    var monitorAddr by remember { mutableStateOf("") }
-    var monitorSize by remember { mutableStateOf("4") }
+    var expanded by remember { mutableStateOf(true) }
+    val merged = monitor.mergedEvents
 
-    Column(Modifier.fillMaxSize()) {
-        Card(Modifier.padding(8.dp)) {
-            Column(Modifier.padding(16.dp)) {
-                OutlinedTextField(
-                    value = monitorAddr,
-                    onValueChange = { monitorAddr = it },
-                    label = { Text("Target Address (e.g. 0x1234)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isMonitoring,
-                    singleLine = true
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = monitorSize,
-                    onValueChange = { monitorSize = it },
-                    label = { Text("Size (bytes)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isMonitoring,
-                    singleLine = true
-                )
-                Spacer(Modifier.height(8.dp))
-                if (isMonitoring) {
-                    Button(onClick = onStop, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                        Text("Stop Monitoring")
-                    }
-                } else {
-                    Button(
-                        onClick = { onStart(monitorAddr, monitorSize.toIntOrNull() ?: 4) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = monitorAddr.isNotBlank()
-                    ) {
-                        Text("Start Monitoring")
-                    }
-                }
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        // Header
+        MonitorCardHeader(
+            monitor = monitor,
+            expanded = expanded,
+            onToggleExpand = { expanded = !expanded },
+            onStart = onStart,
+            onStop = onStop,
+            onClear = onClear,
+            onRemove = onRemove
+        )
+        // Expandable body
+        AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
+            MonitorCardBody(monitor = monitor, merged = merged, onFilterChange = onFilterChange, actions = actions)
+        }
+    }
+}
+
+@Composable
+private fun MonitorCardHeader(
+    monitor: MonitorInstance,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onClear: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggleExpand).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Status dot
+        Box(
+            Modifier.size(8.dp).background(
+                if (monitor.isActive) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
+                RoundedCornerShape(50)
+            )
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                monitor.address,
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                "size: ${monitor.size}  events: ${monitor.events.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (monitor.isActive) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            IconButton(onClick = onStop, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Stop, contentDescription = "Stop", tint = MaterialTheme.colorScheme.error)
             }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("${events.size} events", style = MaterialTheme.typography.labelMedium)
-        }
-
-        if (events.isEmpty()) {
-            CustomEmptyBox()
         } else {
-            LazyColumn(modifier = Modifier.weight(1f), reverseLayout = true) {
-                items(events) { e ->
-                    UnifiedListItemWrapper(
-                        title = e.address,
-                        fullText = "Op: ${e.operation} From: ${e.from} at ${e.address}",
-                        actions = actions,
-                        address = e.address.toLongOrNull(16) ?: 0L
-                    ) {
-                        ListItem(
-                            headlineContent = { Text(e.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) },
-                            supportingContent = { Text("Op: ${e.operation} From: ${e.from} Time: ${e.time}", style = MaterialTheme.typography.bodySmall) }
-                        )
-                    }
+            IconButton(onClick = onStart, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "Start")
+            }
+        }
+        IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.ClearAll, contentDescription = "Clear")
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp), enabled = !monitor.isActive) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete")
+        }
+        Icon(
+            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null, modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun MonitorCardBody(
+    monitor: MonitorInstance,
+    merged: List<MergedMonitorEvent>,
+    onFilterChange: (MonitorFilter) -> Unit,
+    actions: ListItemActions
+) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        // Filter chips
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MonitorFilter.entries.forEach { f ->
+                FilterChip(
+                    selected = monitor.filter == f,
+                    onClick = { onFilterChange(f) },
+                    label = { Text(f.name, fontSize = 12.sp) }
+                )
+            }
+        }
+
+        if (merged.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                Text("No events", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Column {
+                merged.forEach { e ->
+                    MonitorEventRow(event = e, actions = actions)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MonitorEventRow(
+    event: MergedMonitorEvent,
+    actions: ListItemActions
+) {
+    val isWrite = event.operation.equals("write", true)
+    val opColor = if (isWrite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    val fromAddr = event.from.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
+    UnifiedListItemWrapper(
+        title = event.from,
+        fullText = "${event.address} ${event.operation} from ${event.from}",
+        actions = actions,
+        address = fromAddr
+    ) {
+        ListItem(
+            headlineContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        event.operation.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = opColor
+                    )
+                    Text(
+                        "@ ${event.address}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    // Count badge
+                    if (event.count > 1) {
+                        CountBadge(event.count)
+                    }
+                }
+            },
+            supportingContent = {
+                Text(
+                    "from: ${event.from}  size: ${event.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun CountBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "×$count",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
     }
 }

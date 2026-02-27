@@ -76,13 +76,40 @@ class R2FridaViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    // Search config state (persists across tab switches)
+    private val _searchValueType = MutableStateFlow(SearchValueType.DWORD)
+    val searchValueType: StateFlow<SearchValueType> = _searchValueType.asStateFlow()
+    private val _searchCompare = MutableStateFlow(SearchCompare.EQUAL)
+    val searchCompare: StateFlow<SearchCompare> = _searchCompare.asStateFlow()
+    private val _selectedRegions = MutableStateFlow(setOf(MemoryRegion.ALL))
+    val selectedRegions: StateFlow<Set<MemoryRegion>> = _selectedRegions.asStateFlow()
+    private val _searchError = MutableStateFlow<String?>(null)
+    val searchError: StateFlow<String?> = _searchError.asStateFlow()
+    // Max results limit
+    private val _maxResults = MutableStateFlow(50000)
+    val maxResults: StateFlow<Int> = _maxResults.asStateFlow()
+    // Frozen addresses: address -> value
+    private val _frozenAddresses = MutableStateFlow<Map<String, String>>(emptyMap())
+    val frozenAddresses: StateFlow<Map<String, String>> = _frozenAddresses.asStateFlow()
+    private var freezeJob: kotlinx.coroutines.Job? = null
+
+    fun updateSearchValueType(t: SearchValueType) { _searchValueType.value = t }
+    fun updateSearchCompare(c: SearchCompare) { _searchCompare.value = c }
+    fun updateSelectedRegions(r: Set<MemoryRegion>) { _selectedRegions.value = r }
+    fun clearSearchError() { _searchError.value = null }
+    fun updateMaxResults(n: Int) { _maxResults.value = n }
+
     // --- Monitor ---
-    private val _monitorEvents = MutableStateFlow<List<FridaMonitorEvent>>(emptyList())
-    val monitorEvents: StateFlow<List<FridaMonitorEvent>> = _monitorEvents.asStateFlow()
-    private val _isMonitoring = MutableStateFlow(false)
-    val isMonitoring: StateFlow<Boolean> = _isMonitoring.asStateFlow()
-    private var monitorJob: kotlinx.coroutines.Job? = null
-    private var monitorFile: java.io.File? = null
+    private val _monitors = MutableStateFlow<List<MonitorInstance>>(emptyList())
+    val monitors: StateFlow<List<MonitorInstance>> = _monitors.asStateFlow()
+    private val monitorJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private val monitorFiles = mutableMapOf<String, java.io.File>()
+
+    /** Pre-fill address for the monitor input field, consumed once by the UI. */
+    private val _monitorPrefillAddress = MutableStateFlow<String?>(null)
+    val monitorPrefillAddress: StateFlow<String?> = _monitorPrefillAddress.asStateFlow()
+    fun setMonitorPrefillAddress(addr: String) { _monitorPrefillAddress.value = addr }
+    fun consumeMonitorPrefillAddress() { _monitorPrefillAddress.value = null }
 
     fun updateScriptContent(content: String) {
         _scriptContent.value = content
@@ -264,23 +291,211 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
-    fun performSearch(pattern: String, value: String) {
+    /**
+     * Unified search: supports exact, range, union (semicolon-separated), all types.
+     * @param input raw user input (may contain semicolons for union search)
+     * @param rangeMin min value for range mode (empty = not range)
+     * @param rangeMax max value for range mode (empty = not range)
+     */
+    fun performSearch(input: String, rangeMin: String = "", rangeMax: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isSearching.value = true
-            repo.searchMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), pattern, value).onSuccess {
+            _searchError.value = null
+            val type = _searchValueType.value
+            val compare = _searchCompare.value
+            val typeStr = when (type) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "hex"
+            }
+            val compareStr = when (compare) {
+                SearchCompare.EQUAL -> "eq"
+                SearchCompare.NOT_EQUAL -> "neq"
+                SearchCompare.GREATER -> "gt"
+                SearchCompare.LESS -> "lt"
+                SearchCompare.GREATER_EQ -> "gte"
+                SearchCompare.LESS_EQ -> "lte"
+            }
+            // Split by semicolon for union search
+            val values = input.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            val protection = buildProtectionString()
+            repo.searchMemory(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                typeStr, values, compareStr, rangeMin, rangeMax, protection, "[]",
+                _maxResults.value
+            ).onSuccess {
                 _searchResults.value = it
-            }.onFailure { _searchResults.value = emptyList() }
+            }.onFailure {
+                _searchResults.value = emptyList()
+                _searchError.value = it.message
+            }
             _isSearching.value = false
         }
     }
 
-    fun refineSearch(type: String, value: String) {
-        val currentAddrs = _searchResults.value?.map { it.address } ?: return
+    /**
+     * Refine existing results: exact, fuzzy (increased/decreased/unchanged), range, expression.
+     */
+    fun refineSearch(
+        filterMode: String, targetVal: String = "",
+        rangeMin: String = "", rangeMax: String = "",
+        expression: String = ""
+    ) {
+        val current = _searchResults.value ?: return
+        val addrs = current.map { it.address }
+        val oldValues = current.map { it.value }
         viewModelScope.launch(Dispatchers.IO) {
             _isSearching.value = true
-            repo.filterMemory(context.cacheDir.absolutePath, getPublicExchangeDir(), currentAddrs, type, value).onSuccess {
+            _searchError.value = null
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "hex"
+            }
+            repo.filterMemory(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                addrs, oldValues, typeStr, filterMode, targetVal,
+                rangeMin, rangeMax, expression
+            ).onSuccess {
                 _searchResults.value = it
-            }.onFailure { _searchResults.value = emptyList() }
+            }.onFailure {
+                _searchResults.value = emptyList()
+                _searchError.value = it.message
+            }
+            _isSearching.value = false
+        }
+    }
+
+    /** Write a new value to a single address. */
+    fun writeValue(address: String, value: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.writeMemoryValue(context.cacheDir.absolutePath, address, typeStr, value)
+            // Update the result list with new value
+            _searchResults.value = _searchResults.value?.map {
+                if (it.address == address) it.copy(value = value) else it
+            }
+        }
+    }
+
+    /** Batch write the same value to all current results. */
+    fun batchWriteAll(value: String) {
+        val addrs = _searchResults.value?.map { it.address } ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.batchWriteMemory(context.cacheDir.absolutePath, addrs, typeStr, value)
+            _searchResults.value = _searchResults.value?.map { it.copy(value = value) }
+        }
+    }
+
+    /** Toggle freeze for an address. Frozen addresses are periodically re-written. */
+    fun toggleFreeze(address: String, value: String) {
+        val current = _frozenAddresses.value.toMutableMap()
+        if (current.containsKey(address)) {
+            current.remove(address)
+        } else {
+            current[address] = value
+        }
+        _frozenAddresses.value = current
+        if (current.isNotEmpty() && freezeJob == null) {
+            startFreezeLoop()
+        } else if (current.isEmpty()) {
+            freezeJob?.cancel()
+            freezeJob = null
+        }
+    }
+
+    fun clearAllFreezes() {
+        _frozenAddresses.value = emptyMap()
+        freezeJob?.cancel()
+        freezeJob = null
+    }
+
+    private fun startFreezeLoop() {
+        freezeJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val frozen = _frozenAddresses.value
+                if (frozen.isEmpty()) break
+                for ((addr, value) in frozen) {
+                    writeValue(addr, value)
+                }
+                kotlinx.coroutines.delay(100)
+            }
+        }
+    }
+
+    private fun buildProtectionString(): String {
+        val regions = _selectedRegions.value
+        if (regions.contains(MemoryRegion.ALL)) return "r--"
+        // Use the most permissive protection that covers selected regions
+        val hasExec = regions.any { it.protection.contains('x') }
+        val hasWrite = regions.any { it.protection.contains('w') }
+        return when {
+            hasExec && hasWrite -> "r--"
+            hasExec -> "r-x"
+            hasWrite -> "rw-"
+            else -> "r--"
+        }
+    }
+
+    /** Re-read current values at all result addresses. */
+    fun refreshSearchValues() {
+        val current = _searchResults.value ?: return
+        if (current.isEmpty()) return
+        val addrs = current.map { it.address }
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSearching.value = true
+            val typeStr = when (_searchValueType.value) {
+                SearchValueType.BYTE -> "u8"
+                SearchValueType.SHORT -> "u16"
+                SearchValueType.DWORD -> "u32"
+                SearchValueType.QWORD -> "u64"
+                SearchValueType.FLOAT -> "float"
+                SearchValueType.DOUBLE -> "double"
+                SearchValueType.UTF8 -> "utf8"
+                SearchValueType.UTF16 -> "utf16"
+                SearchValueType.HEX -> "u32"
+            }
+            repo.refreshValues(
+                context.cacheDir.absolutePath, getPublicExchangeDir(),
+                addrs, typeStr
+            ).onSuccess {
+                _searchResults.value = it
+            }.onFailure {
+                _searchError.value = it.message
+            }
             _isSearching.value = false
         }
     }
@@ -289,53 +504,89 @@ class R2FridaViewModel @Inject constructor(
         _searchResults.value = null
     }
 
-    fun startMonitor(address: String, size: Int) {
+    fun addMonitor(address: String, size: Int) {
+        val id = "mon_${System.currentTimeMillis()}"
+        val instance = MonitorInstance(id = id, address = address, size = size)
+        _monitors.value = _monitors.value + instance
+    }
+
+    fun removeMonitor(monitorId: String) {
+        stopMonitor(monitorId)
+        _monitors.value = _monitors.value.filter { it.id != monitorId }
+    }
+
+    fun updateMonitorFilter(monitorId: String, filter: MonitorFilter) {
+        _monitors.value = _monitors.value.map {
+            if (it.id == monitorId) it.copy(filter = filter) else it
+        }
+    }
+
+    fun clearMonitorEvents(monitorId: String) {
+        _monitors.value = _monitors.value.map {
+            if (it.id == monitorId) it.copy(events = emptyList()) else it
+        }
+    }
+
+    fun startMonitor(monitorId: String) {
+        val mon = _monitors.value.find { it.id == monitorId } ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val path = repo.startMonitor(context.cacheDir.absolutePath, getPublicExchangeDir(), address, size)
-            monitorFile = java.io.File(path)
-            _isMonitoring.value = true
-            _monitorEvents.value = emptyList() // clear previous events
-            
-            monitorJob?.cancel()
-            monitorJob = launch(Dispatchers.IO) {
-                var lastPos = 0L
-                while (_isMonitoring.value) {
-                    val file = monitorFile
-                    if (file != null && file.exists()) {
-                        val len = file.length()
-                        if (len > lastPos) {
-                            java.io.RandomAccessFile(file, "r").use { raf ->
+            try {
+                val path = repo.startMonitor(
+                    context.cacheDir.absolutePath, getPublicExchangeDir(),
+                    mon.address, mon.size, monitorId
+                )
+                val file = java.io.File(path)
+                monitorFiles[monitorId] = file
+                _monitors.value = _monitors.value.map {
+                    if (it.id == monitorId) it.copy(isActive = true, events = emptyList()) else it
+                }
+
+                monitorJobs[monitorId]?.cancel()
+                monitorJobs[monitorId] = launch(Dispatchers.IO) {
+                    var lastPos = 0L
+                    while (_monitors.value.any { it.id == monitorId && it.isActive }) {
+                        val f = monitorFiles[monitorId]
+                        if (f != null && f.exists() && f.length() > lastPos) {
+                            java.io.RandomAccessFile(f, "r").use { raf ->
                                 raf.seek(lastPos)
                                 val newLines = mutableListOf<String>()
                                 var line = raf.readLine()
-                                while (line != null) {
-                                    newLines.add(line)
-                                    line = raf.readLine()
-                                }
+                                while (line != null) { newLines.add(line); line = raf.readLine() }
                                 lastPos = raf.filePointer
-                                
-                                val newEvents = newLines.mapNotNull { 
-                                    try { FridaMonitorEvent.fromJson(org.json.JSONObject(it)) } 
-                                    catch(e: Exception) { null } 
+
+                                val newEvents = newLines.mapNotNull {
+                                    try { FridaMonitorEvent.fromJson(org.json.JSONObject(it)) }
+                                    catch (_: Exception) { null }
                                 }
                                 if (newEvents.isNotEmpty()) {
-                                    _monitorEvents.value = (_monitorEvents.value + newEvents).takeLast(1000)
+                                    _monitors.value = _monitors.value.map { m ->
+                                        if (m.id == monitorId) m.copy(
+                                            events = (m.events + newEvents).takeLast(1000)
+                                        ) else m
+                                    }
                                 }
                             }
                         }
+                        kotlinx.coroutines.delay(1000)
                     }
-                    kotlinx.coroutines.delay(1000)
+                }
+            } catch (_: Exception) {
+                _monitors.value = _monitors.value.map {
+                    if (it.id == monitorId) it.copy(isActive = false) else it
                 }
             }
         }
     }
 
-    fun stopMonitor() {
+    fun stopMonitor(monitorId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _isMonitoring.value = false
-            repo.stopMonitor()
-            monitorJob?.cancel()
-            monitorJob = null
+            _monitors.value = _monitors.value.map {
+                if (it.id == monitorId) it.copy(isActive = false) else it
+            }
+            try { repo.stopMonitor(monitorId) } catch (_: Exception) {}
+            monitorJobs[monitorId]?.cancel()
+            monitorJobs.remove(monitorId)
+            monitorFiles.remove(monitorId)
         }
     }
 

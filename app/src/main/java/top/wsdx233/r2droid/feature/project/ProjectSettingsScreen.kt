@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Architecture
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,12 +50,16 @@ fun ProjectSettingsScreen(viewModel: ProjectViewModel) {
     var showManual by remember { mutableStateOf(false) }
     var showExportReport by remember { mutableStateOf(false) }
     var showAnalysis by remember { mutableStateOf(false) }
+    var showSwitchArch by remember { mutableStateOf(false) }
 
     if (showExportReport) {
         ExportReportScreen(onDismiss = { showExportReport = false })
     }
     if (showAnalysis) {
         AnalysisBottomSheet(onDismiss = { showAnalysis = false })
+    }
+    if (showSwitchArch) {
+        SwitchArchBottomSheet(onDismiss = { showSwitchArch = false })
     }
 
     // Manual dialog
@@ -340,6 +345,42 @@ fun ProjectSettingsScreen(viewModel: ProjectViewModel) {
                         text = stringResource(R.string.export_report_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+        
+        // Switch Arch Section
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showSwitchArch = true },
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Filled.Architecture,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.switch_arch_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(R.string.switch_arch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             }

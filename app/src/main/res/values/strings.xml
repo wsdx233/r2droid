@@ -83,11 +83,11 @@
     <string name="about_back_desc">Back</string>
     <string name="about_author_name">Wsdx233</string>
     <string name="about_author_comment">// The Creator</string>
-    <string name="about_contact_value">QQ(1284321744)\nGroup(1014171868)</string>
+    <string name="about_contact_value">QQ(1284321744)\nQQGroup(1014171868)</string>
     <string name="about_contact_comment">// Reach out</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// Source Code</string>
-    <string name="about_core_value">radare2 @ 6.0.8</string>
+    <string name="about_core_value">radare2 @ 6.1.0</string>
     <string name="about_core_comment">// Powering the engine</string>
     <string name="about_footer">Build with ❤️ &amp; Kotlin</string>
     <string name="about_logo_desc">App Logo</string>
@@ -132,7 +132,7 @@
     <string name="decompiler_r2ghidra">r2ghidra</string>
     <string name="decompiler_native">native</string>
     <string name="decompiler_r2dec">r2dec</string>
-    <string name="decompiler_aipdg">AIPdg</string>
+    <string name="decompiler_aipdg">AIBeautify</string>
     <string name="decompiler_switch">Switch Decompiler</string>
     <string name="decompiler_section_decompiler">Decompiler</string>
     <string name="decompiler_section_display">Display</string>
@@ -366,6 +366,18 @@
     <string name="menu_function_info">Function Info</string>
     <string name="menu_function_xrefs">Function References</string>
     <string name="menu_function_variables">Function Variables</string>
+
+    <!-- Frida Context Menu -->
+    <string name="menu_frida">Frida</string>
+    <string name="menu_frida_monitor">Monitor</string>
+    <string name="menu_frida_code">Code...</string>
+    <string name="menu_frida_code_hook">Hook Function</string>
+    <string name="menu_frida_code_replace">Replace Function</string>
+    <string name="menu_frida_code_native_func">NativeFunction Call</string>
+    <string name="menu_frida_code_read_mem">Read Memory</string>
+    <string name="menu_frida_code_write_mem">Write Memory</string>
+    <string name="menu_frida_code_watch">Watch Memory Access</string>
+    <string name="menu_frida_code_stalker">Stalker Trace</string>
 
     <!-- Function Info Dialog -->
     <string name="func_info_title">Function Info</string>
@@ -678,6 +690,56 @@
     <string name="r2frida_no_overview">No standard overview in r2frida mode.\nSwitch to the \"r2frida\" tab for session info.</string>
     <string name="r2frida_lib_version">ver: %1$s</string>
 
+    <!-- Frida Search -->
+    <string name="fsearch_new_search">New Search</string>
+    <string name="fsearch_refine">Refine</string>
+    <string name="fsearch_reset">Reset</string>
+    <string name="fsearch_value_hint">Value (use ; for union, * for all)</string>
+    <string name="fsearch_searching">Searching…</string>
+    <string name="fsearch_result_count">%1$d results</string>
+    <string name="fsearch_no_results">No results</string>
+    <string name="fsearch_advanced">Advanced Options</string>
+    <string name="fsearch_type">Type</string>
+    <string name="fsearch_compare">Compare</string>
+    <string name="fsearch_range_min">Min</string>
+    <string name="fsearch_range_max">Max</string>
+    <string name="fsearch_range_search">Range Search</string>
+    <string name="fsearch_expression">Expression</string>
+    <string name="fsearch_expression_hint">JS expr: v > 100 &amp;&amp; v &lt; 999</string>
+    <string name="fsearch_fuzzy_increased">Increased</string>
+    <string name="fsearch_fuzzy_decreased">Decreased</string>
+    <string name="fsearch_fuzzy_unchanged">Unchanged</string>
+    <string name="fsearch_edit_value">Edit Value</string>
+    <string name="fsearch_edit_title">Modify %1$d addresses</string>
+    <string name="fsearch_edit_single_title">Modify value</string>
+    <string name="fsearch_new_value_hint">New value</string>
+    <string name="fsearch_freeze">Freeze</string>
+    <string name="fsearch_unfreeze">Unfreeze</string>
+    <string name="fsearch_freeze_normal">Normal</string>
+    <string name="fsearch_batch_write">Write All</string>
+    <string name="fsearch_batch_write_title">Write to all %1$d results</string>
+    <string name="fsearch_select_regions">Memory Regions</string>
+    <string name="fsearch_select_regions_title">Select Memory Regions</string>
+    <string name="fsearch_mem_all">All Memory</string>
+    <string name="fsearch_mem_java_heap">Jh: Java Heap</string>
+    <string name="fsearch_mem_c_alloc">Ca: C++ Alloc</string>
+    <string name="fsearch_mem_c_bss">Cb: C++ BSS</string>
+    <string name="fsearch_mem_c_data">Cd: C++ Data</string>
+    <string name="fsearch_mem_stack">S: Stack</string>
+    <string name="fsearch_mem_code_app">Xa: Code App</string>
+    <string name="fsearch_mem_code_sys">Xs: Code Sys</string>
+    <string name="fsearch_mem_video">V: Video</string>
+    <string name="fsearch_mem_other">O: Other</string>
+    <string name="fsearch_mem_bad">B: Bad</string>
+    <string name="fsearch_confirm">OK</string>
+    <string name="fsearch_cancel">Cancel</string>
+    <string name="fsearch_save">Save</string>
+    <string name="fsearch_add_to_value">Add to value</string>
+    <string name="fsearch_increment">Increment</string>
+    <string name="fsearch_limit">Limit</string>
+    <string name="fsearch_limit_custom">Custom…</string>
+    <string name="fsearch_limit_custom_title">Custom Result Limit</string>
+
     <!-- Export Report -->
     <string name="export_report_title">Export Analysis Report</string>
     <string name="export_report_desc">Export a complete report with functions, strings, references and code features</string>
@@ -732,4 +794,12 @@
     <string name="multiselect_extend">Extend</string>
     <string name="multiselect_close">Close</string>
     <string name="multiselect_count">%d selected</string>
+
+    <!-- Switch Arch -->
+    <string name="switch_arch_title">Switch Architecture</string>
+    <string name="switch_arch_desc">Quickly switch the current analysis architecture</string>
+    <string name="switch_arch_default">Restore Default</string>
+    <string name="switch_arch_default_desc">Restore architecture settings to their initial state</string>
+    <string name="switch_arch_manual_desc">Execute custom commands in the terminal for setup</string>
+    <string name="switch_arch_toast">Architecture switched</string>
 </resources>
