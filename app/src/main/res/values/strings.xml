@@ -800,7 +800,6 @@
     <string name="switch_arch_desc">Quickly switch the current analysis architecture</string>
     <string name="switch_arch_default">Restore Default</string>
     <string name="switch_arch_default_desc">Restore architecture settings to their initial state</string>
-    <string name="switch_arch_manual">Manual Setup (Terminal)</string>
     <string name="switch_arch_manual_desc">Execute custom commands in the terminal for setup</string>
     <string name="switch_arch_toast">Architecture switched</string>
 </resources>

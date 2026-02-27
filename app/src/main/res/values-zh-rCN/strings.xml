@@ -802,7 +802,6 @@
     <string name="switch_arch_desc">快速切换当前分析架构</string>
     <string name="switch_arch_default">恢复默认</string>
     <string name="switch_arch_default_desc">将架构设置恢复为初始状态</string>
-    <string name="switch_arch_manual">手动设置 (终端)</string>
     <string name="switch_arch_manual_desc">在终端中执行自定义命令进行设置</string>
     <string name="switch_arch_toast">架构已切换</string>
 </resources>
