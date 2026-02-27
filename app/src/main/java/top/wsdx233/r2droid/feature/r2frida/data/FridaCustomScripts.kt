@@ -403,31 +403,37 @@ $WRITE_RESULT_FN
         try {
             var targetAddress = ptr("__ADDRESS__");
             var size = __SIZE__;
-            MemoryAccessMonitor.enable({ base: targetAddress, size: size }, {
-                onAccess: function (details) {
-                    try {
-                        var file = new File("__RESULT_FILE__", "a");
-                        var event = {
-                            id: Math.random().toString(),
-                            operation: details.operation,
-                            from: details.from.toString(),
-                            address: details.address.toString(),
-                            context: "...",
-                            size: __SIZE__,
-                            time: new Date().getTime()
-                        };
-                        file.write(JSON.stringify(event) + "\n");
-                        file.flush();
-                        file.close();
-                    } catch(e) {}
-                }
-            });
+            var range = [{ base: targetAddress, size: size }];
+            var stopKey = "__STOP_KEY__";
+            Java[stopKey] = 0;
+            function startMonitor() {
+                if (Java[stopKey]) return;
+                MemoryAccessMonitor.enable(range, {
+                    onAccess: function (details) {
+                        if (Java[stopKey]) return;
+                        try {
+                            var file = new File("__RESULT_FILE__", "a");
+                            var event = {
+                                id: Math.random().toString(),
+                                operation: details.operation,
+                                from: details.from.toString(),
+                                address: details.address.toString(),
+                                context: "...",
+                                size: __SIZE__,
+                                time: new Date().getTime()
+                            };
+                            file.write(JSON.stringify(event) + "\n");
+                            file.flush();
+                            file.close();
+                        } catch(e) {}
+                        setTimeout(function() { startMonitor(); }, 0);
+                    }
+                });
+            }
+            startMonitor();
         } catch(e) {}
     """.trimIndent()
 
-    val STOP_MONITOR_SCRIPT = """
-        try {
-            MemoryAccessMonitor.disable();
-        } catch(e) {}
-    """.trimIndent()
+    const val STOP_MONITOR_SET_FLAG = """Java["__STOP_KEY__"] = 1"""
+    const val STOP_MONITOR_DISABLE = """MemoryAccessMonitor.disable()"""
 }

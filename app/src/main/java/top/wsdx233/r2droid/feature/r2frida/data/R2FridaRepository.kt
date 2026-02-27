@@ -155,25 +155,29 @@ class R2FridaRepository {
     private fun escapeJs(s: String): String =
         s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
-    suspend fun startMonitor(scriptDir: String, resultDir: String, address: String, size: Int): String {
+    suspend fun startMonitor(scriptDir: String, resultDir: String, address: String, size: Int, monitorId: String): String {
         val ts = System.currentTimeMillis()
-        val resultFile = java.io.File(resultDir, "frida_monitor_${ts}.jsonl")
+        val stopKey = "__mon_stop_${monitorId}__"
+        val resultFile = java.io.File(resultDir, "frida_monitor_${monitorId}_${ts}.jsonl")
         resultFile.delete()
-        
+
         val scriptContent = FridaCustomScripts.START_MONITOR_SCRIPT
+            .replace("__STOP_KEY__", stopKey)
             .replace("__ADDRESS__", address)
             .replace("__SIZE__", size.toString())
             .replace("__RESULT_FILE__", resultFile.absolutePath.replace("\\", "/"))
-            
-        val scriptFile = java.io.File(scriptDir, "frida_script_monitor_${ts}.js")
+
+        val scriptFile = java.io.File(scriptDir, "frida_script_monitor_${monitorId}_${ts}.js")
         scriptFile.writeText(scriptContent)
         R2PipeManager.execute(":. ${scriptFile.absolutePath}").getOrThrow()
-        
+
         return resultFile.absolutePath
     }
-    
-    suspend fun stopMonitor() {
-        R2PipeManager.execute("\\ try { MemoryAccessMonitor.disable(); } catch(e){}")
+
+    suspend fun stopMonitor(monitorId: String) {
+        val stopKey = "__mon_stop_${monitorId}__"
+        R2PipeManager.execute(":eval ${FridaCustomScripts.STOP_MONITOR_SET_FLAG.replace("__STOP_KEY__", stopKey)}")
+        R2PipeManager.execute(":eval ${FridaCustomScripts.STOP_MONITOR_DISABLE}")
     }
 
     private suspend fun runCustomScript(scriptTpl: String, scriptDir: String, resultDir: String): String {

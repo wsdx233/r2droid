@@ -6,6 +6,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -110,7 +111,10 @@ private fun SearchToolbarRow1(
     var showCustomLimitDialog by remember { mutableStateOf(false) }
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -857,17 +861,20 @@ private fun EditValueDialog(
 
 @Composable
 fun FridaMonitorScreen(
-    events: List<FridaMonitorEvent>,
-    isMonitoring: Boolean,
-    onStart: (address: String, size: Int) -> Unit,
-    onStop: () -> Unit,
+    monitors: List<MonitorInstance>,
+    onAddMonitor: (address: String, size: Int) -> Unit,
+    onRemoveMonitor: (String) -> Unit,
+    onStartMonitor: (String) -> Unit,
+    onStopMonitor: (String) -> Unit,
+    onFilterChange: (String, MonitorFilter) -> Unit,
+    onClearEvents: (String) -> Unit,
     actions: ListItemActions
 ) {
     var address by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("4096") }
 
     Column(Modifier.fillMaxSize()) {
-        // Config row
+        // Add monitor row
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -889,69 +896,217 @@ fun FridaMonitorScreen(
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
             )
-            if (isMonitoring) {
-                FilledTonalButton(
-                    onClick = onStop,
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) { Text("Stop") }
-            } else {
-                FilledTonalButton(
-                    onClick = {
-                        if (address.isNotBlank()) {
-                            onStart(address, size.toIntOrNull() ?: 4096)
-                        }
-                    },
-                    enabled = address.isNotBlank()
-                ) { Text("Start") }
-            }
+            FilledTonalButton(
+                onClick = {
+                    if (address.isNotBlank()) {
+                        onAddMonitor(address, size.toIntOrNull() ?: 4096)
+                        address = ""
+                    }
+                },
+                enabled = address.isNotBlank()
+            ) { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) }
         }
 
-        // Status
-        if (isMonitoring) {
-            Row(
-                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                Text("Monitoring... ${events.size} events", style = MaterialTheme.typography.labelMedium)
-            }
-        }
-
-        // Events list
-        if (events.isEmpty()) {
+        if (monitors.isEmpty()) {
             CustomEmptyBox()
         } else {
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(events) { e ->
-                    UnifiedListItemWrapper(
-                        title = e.address,
-                        fullText = "${e.address} ${e.operation} from ${e.from}",
-                        actions = actions,
-                        address = e.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
-                    ) {
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    "${e.operation.uppercase()} @ ${e.address}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    "from: ${e.from}  size: ${e.size}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        )
-                    }
+            LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                items(monitors, key = { it.id }) { mon ->
+                    MonitorCard(
+                        monitor = mon,
+                        onStart = { onStartMonitor(mon.id) },
+                        onStop = { onStopMonitor(mon.id) },
+                        onRemove = { onRemoveMonitor(mon.id) },
+                        onFilterChange = { onFilterChange(mon.id, it) },
+                        onClear = { onClearEvents(mon.id) },
+                        actions = actions
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MonitorCard(
+    monitor: MonitorInstance,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRemove: () -> Unit,
+    onFilterChange: (MonitorFilter) -> Unit,
+    onClear: () -> Unit,
+    actions: ListItemActions
+) {
+    var expanded by remember { mutableStateOf(true) }
+    val merged = monitor.mergedEvents
+
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        // Header
+        MonitorCardHeader(
+            monitor = monitor,
+            expanded = expanded,
+            onToggleExpand = { expanded = !expanded },
+            onStart = onStart,
+            onStop = onStop,
+            onClear = onClear,
+            onRemove = onRemove
+        )
+        // Expandable body
+        AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
+            MonitorCardBody(monitor = monitor, merged = merged, onFilterChange = onFilterChange, actions = actions)
+        }
+    }
+}
+
+@Composable
+private fun MonitorCardHeader(
+    monitor: MonitorInstance,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onClear: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggleExpand).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Status dot
+        Box(
+            Modifier.size(8.dp).background(
+                if (monitor.isActive) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
+                RoundedCornerShape(50)
+            )
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                monitor.address,
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                "size: ${monitor.size}  events: ${monitor.events.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (monitor.isActive) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            IconButton(onClick = onStop, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Stop, contentDescription = "Stop", tint = MaterialTheme.colorScheme.error)
+            }
+        } else {
+            IconButton(onClick = onStart, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "Start")
+            }
+        }
+        IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.ClearAll, contentDescription = "Clear")
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp), enabled = !monitor.isActive) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete")
+        }
+        Icon(
+            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null, modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun MonitorCardBody(
+    monitor: MonitorInstance,
+    merged: List<MergedMonitorEvent>,
+    onFilterChange: (MonitorFilter) -> Unit,
+    actions: ListItemActions
+) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        // Filter chips
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MonitorFilter.entries.forEach { f ->
+                FilterChip(
+                    selected = monitor.filter == f,
+                    onClick = { onFilterChange(f) },
+                    label = { Text(f.name, fontSize = 12.sp) }
+                )
+            }
+        }
+
+        if (merged.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                Text("No events", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Column {
+                merged.forEach { e ->
+                    MonitorEventRow(event = e, actions = actions)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonitorEventRow(
+    event: MergedMonitorEvent,
+    actions: ListItemActions
+) {
+    val isWrite = event.operation.equals("write", true)
+    val opColor = if (isWrite) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    UnifiedListItemWrapper(
+        title = event.address,
+        fullText = "${event.address} ${event.operation} from ${event.from}",
+        actions = actions,
+        address = event.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
+    ) {
+        ListItem(
+            headlineContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        event.operation.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = opColor
+                    )
+                    Text(
+                        "@ ${event.address}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    // Count badge
+                    if (event.count > 1) {
+                        CountBadge(event.count)
+                    }
+                }
+            },
+            supportingContent = {
+                Text(
+                    "from: ${event.from}  size: ${event.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun CountBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "×$count",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
     }
 }

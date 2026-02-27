@@ -843,8 +843,7 @@ fun ProjectScaffold(
                             val fridaFrozenAddresses by r2fridaViewModel.frozenAddresses.collectAsState()
                             val fridaMaxResults by r2fridaViewModel.maxResults.collectAsState()
 
-                            val fridaMonitorEvents by r2fridaViewModel.monitorEvents.collectAsState()
-                            val fridaIsMonitoring by r2fridaViewModel.isMonitoring.collectAsState()
+                            val fridaMonitors by r2fridaViewModel.monitors.collectAsState()
 
                             androidx.compose.runtime.LaunchedEffect(selectedR2FridaTabIndex) {
                                 when (selectedR2FridaTabIndex) {
@@ -953,10 +952,13 @@ fun ProjectScaffold(
                                     actions = fridaActions
                                 )
                                 11 -> FridaMonitorScreen(
-                                    events = fridaMonitorEvents,
-                                    isMonitoring = fridaIsMonitoring,
-                                    onStart = { addr, size -> r2fridaViewModel.startMonitor(addr, size) },
-                                    onStop = { r2fridaViewModel.stopMonitor() },
+                                    monitors = fridaMonitors,
+                                    onAddMonitor = { addr, size -> r2fridaViewModel.addMonitor(addr, size) },
+                                    onRemoveMonitor = { r2fridaViewModel.removeMonitor(it) },
+                                    onStartMonitor = { r2fridaViewModel.startMonitor(it) },
+                                    onStopMonitor = { r2fridaViewModel.stopMonitor(it) },
+                                    onFilterChange = { id, f -> r2fridaViewModel.updateMonitorFilter(id, f) },
+                                    onClearEvents = { r2fridaViewModel.clearMonitorEvents(it) },
                                     actions = fridaActions
                                 )
                             }

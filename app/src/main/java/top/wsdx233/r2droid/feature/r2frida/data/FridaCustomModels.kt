@@ -108,3 +108,46 @@ data class FridaMonitorConfig(
     val read: Boolean,
     val write: Boolean
 )
+
+enum class MonitorFilter { ALL, READ, WRITE }
+
+data class MonitorInstance(
+    val id: String,
+    val address: String,
+    val size: Int,
+    val isActive: Boolean = false,
+    val events: List<FridaMonitorEvent> = emptyList(),
+    val filter: MonitorFilter = MonitorFilter.ALL
+) {
+    /** Events grouped by (operation, address, from) with a hit count. */
+    val mergedEvents: List<MergedMonitorEvent>
+        get() {
+            val filtered = when (filter) {
+                MonitorFilter.ALL -> events
+                MonitorFilter.READ -> events.filter { it.operation.equals("read", true) }
+                MonitorFilter.WRITE -> events.filter { it.operation.equals("write", true) }
+            }
+            return filtered
+                .groupBy { Triple(it.operation, it.address, it.from) }
+                .map { (key, list) ->
+                    MergedMonitorEvent(
+                        operation = key.first,
+                        address = key.second,
+                        from = key.third,
+                        size = list.first().size,
+                        count = list.size,
+                        lastTime = list.maxOf { it.time }
+                    )
+                }
+                .sortedByDescending { it.lastTime }
+        }
+}
+
+data class MergedMonitorEvent(
+    val operation: String,
+    val address: String,
+    val from: String,
+    val size: Int,
+    val count: Int,
+    val lastTime: Long
+)

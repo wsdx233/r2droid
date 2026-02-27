@@ -100,12 +100,10 @@ class R2FridaViewModel @Inject constructor(
     fun updateMaxResults(n: Int) { _maxResults.value = n }
 
     // --- Monitor ---
-    private val _monitorEvents = MutableStateFlow<List<FridaMonitorEvent>>(emptyList())
-    val monitorEvents: StateFlow<List<FridaMonitorEvent>> = _monitorEvents.asStateFlow()
-    private val _isMonitoring = MutableStateFlow(false)
-    val isMonitoring: StateFlow<Boolean> = _isMonitoring.asStateFlow()
-    private var monitorJob: kotlinx.coroutines.Job? = null
-    private var monitorFile: java.io.File? = null
+    private val _monitors = MutableStateFlow<List<MonitorInstance>>(emptyList())
+    val monitors: StateFlow<List<MonitorInstance>> = _monitors.asStateFlow()
+    private val monitorJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private val monitorFiles = mutableMapOf<String, java.io.File>()
 
     fun updateScriptContent(content: String) {
         _scriptContent.value = content
@@ -500,53 +498,89 @@ class R2FridaViewModel @Inject constructor(
         _searchResults.value = null
     }
 
-    fun startMonitor(address: String, size: Int) {
+    fun addMonitor(address: String, size: Int) {
+        val id = "mon_${System.currentTimeMillis()}"
+        val instance = MonitorInstance(id = id, address = address, size = size)
+        _monitors.value = _monitors.value + instance
+    }
+
+    fun removeMonitor(monitorId: String) {
+        stopMonitor(monitorId)
+        _monitors.value = _monitors.value.filter { it.id != monitorId }
+    }
+
+    fun updateMonitorFilter(monitorId: String, filter: MonitorFilter) {
+        _monitors.value = _monitors.value.map {
+            if (it.id == monitorId) it.copy(filter = filter) else it
+        }
+    }
+
+    fun clearMonitorEvents(monitorId: String) {
+        _monitors.value = _monitors.value.map {
+            if (it.id == monitorId) it.copy(events = emptyList()) else it
+        }
+    }
+
+    fun startMonitor(monitorId: String) {
+        val mon = _monitors.value.find { it.id == monitorId } ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val path = repo.startMonitor(context.cacheDir.absolutePath, getPublicExchangeDir(), address, size)
-            monitorFile = java.io.File(path)
-            _isMonitoring.value = true
-            _monitorEvents.value = emptyList() // clear previous events
-            
-            monitorJob?.cancel()
-            monitorJob = launch(Dispatchers.IO) {
-                var lastPos = 0L
-                while (_isMonitoring.value) {
-                    val file = monitorFile
-                    if (file != null && file.exists()) {
-                        val len = file.length()
-                        if (len > lastPos) {
-                            java.io.RandomAccessFile(file, "r").use { raf ->
+            try {
+                val path = repo.startMonitor(
+                    context.cacheDir.absolutePath, getPublicExchangeDir(),
+                    mon.address, mon.size, monitorId
+                )
+                val file = java.io.File(path)
+                monitorFiles[monitorId] = file
+                _monitors.value = _monitors.value.map {
+                    if (it.id == monitorId) it.copy(isActive = true, events = emptyList()) else it
+                }
+
+                monitorJobs[monitorId]?.cancel()
+                monitorJobs[monitorId] = launch(Dispatchers.IO) {
+                    var lastPos = 0L
+                    while (_monitors.value.any { it.id == monitorId && it.isActive }) {
+                        val f = monitorFiles[monitorId]
+                        if (f != null && f.exists() && f.length() > lastPos) {
+                            java.io.RandomAccessFile(f, "r").use { raf ->
                                 raf.seek(lastPos)
                                 val newLines = mutableListOf<String>()
                                 var line = raf.readLine()
-                                while (line != null) {
-                                    newLines.add(line)
-                                    line = raf.readLine()
-                                }
+                                while (line != null) { newLines.add(line); line = raf.readLine() }
                                 lastPos = raf.filePointer
-                                
-                                val newEvents = newLines.mapNotNull { 
-                                    try { FridaMonitorEvent.fromJson(org.json.JSONObject(it)) } 
-                                    catch(e: Exception) { null } 
+
+                                val newEvents = newLines.mapNotNull {
+                                    try { FridaMonitorEvent.fromJson(org.json.JSONObject(it)) }
+                                    catch (_: Exception) { null }
                                 }
                                 if (newEvents.isNotEmpty()) {
-                                    _monitorEvents.value = (_monitorEvents.value + newEvents).takeLast(1000)
+                                    _monitors.value = _monitors.value.map { m ->
+                                        if (m.id == monitorId) m.copy(
+                                            events = (m.events + newEvents).takeLast(1000)
+                                        ) else m
+                                    }
                                 }
                             }
                         }
+                        kotlinx.coroutines.delay(1000)
                     }
-                    kotlinx.coroutines.delay(1000)
+                }
+            } catch (_: Exception) {
+                _monitors.value = _monitors.value.map {
+                    if (it.id == monitorId) it.copy(isActive = false) else it
                 }
             }
         }
     }
 
-    fun stopMonitor() {
+    fun stopMonitor(monitorId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _isMonitoring.value = false
-            repo.stopMonitor()
-            monitorJob?.cancel()
-            monitorJob = null
+            _monitors.value = _monitors.value.map {
+                if (it.id == monitorId) it.copy(isActive = false) else it
+            }
+            try { repo.stopMonitor(monitorId) } catch (_: Exception) {}
+            monitorJobs[monitorId]?.cancel()
+            monitorJobs.remove(monitorId)
+            monitorFiles.remove(monitorId)
         }
     }
 
