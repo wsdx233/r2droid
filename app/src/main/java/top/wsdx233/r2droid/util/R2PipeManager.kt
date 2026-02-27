@@ -192,7 +192,9 @@ object R2PipeManager {
                     _state.value = State.Executing("Open R2Pipe raw: $rawArgs")
                     closeOldPipe()
 
-                    isHttpMode = SettingsManager.useHttpMode
+                    // r2frida 不支持 HTTP 模式，强制使用 stdio
+                    val isFrida = rawArgs.contains("frida://")
+                    isHttpMode = SettingsManager.useHttpMode && !isFrida
                     val appCtx = context.applicationContext
 
                     if (isHttpMode) {

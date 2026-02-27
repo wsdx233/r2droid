@@ -42,7 +42,6 @@ object R2Installer {
     /**
      * 检查并安装 Radare2
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun checkAndInstall(context: Context) = withContext(Dispatchers.IO) {
         initialized = false
         val targetDir = File(context.filesDir, R2_DIR_NAME)
@@ -129,7 +128,6 @@ object R2Installer {
     /**
      * 运行已安装的 r2 -v 获取版本号
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun getInstalledR2Version(context: Context): String? {
         return try {
             val workDir = File(context.filesDir, "radare2/bin")
@@ -146,7 +144,7 @@ object R2Installer {
 
             val process = pb.start()
             val output = process.inputStream.bufferedReader().readText()
-            process.waitFor(5, TimeUnit.SECONDS)
+            process.waitFor()
             process.destroy()
 
             parseR2Version(output)

@@ -7,7 +7,6 @@ import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -141,6 +140,25 @@ class R2pipeHttp(
         return envs
     }
 
+    /**
+     * r2 HTTP server 的自定义 URL 编码。
+     * 只编码必须转义的字符，其余特殊字符保持原样传递。
+     */
+    private fun encodeR2Command(command: String): String {
+        val sb = StringBuilder()
+        for (b in command.toByteArray(Charsets.UTF_8)) {
+            val c = b.toInt() and 0xFF
+            if (c in 0x80..0xFF // 非 ASCII（UTF-8 多字节）
+                || c.toChar() in CHARS_TO_ENCODE
+            ) {
+                sb.append(String.format("%%%02X", c))
+            } else {
+                sb.append(c.toChar())
+            }
+        }
+        return sb.toString()
+    }
+
     private fun parseEnvArray(envs: List<String>): Map<String, String> {
         val envMap = mutableMapOf<String, String>()
         for (env in envs) {
@@ -163,8 +181,7 @@ class R2pipeHttp(
         }
 
         val result = try {
-            // URLEncoder 将空格编码为 +，但 URL 路径中 + 是字面量，必须用 %20
-            val encoded = URLEncoder.encode(command, "UTF-8").replace("+", "%20")
+            val encoded = encodeR2Command(command)
             val url = URL("$baseUrl/cmd/$encoded")
             val conn = url.openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
@@ -212,7 +229,7 @@ class R2pipeHttp(
         LogManager.log(LogType.COMMAND, command)
         if (!isRunning) throw IllegalStateException("R2 HTTP server not running")
 
-        val encoded = URLEncoder.encode(command, "UTF-8").replace("+", "%20")
+        val encoded = encodeR2Command(command)
         val url = URL("$baseUrl/cmd/$encoded")
         val conn = url.openConnection() as HttpURLConnection
         conn.connectTimeout = 5000
@@ -228,8 +245,7 @@ class R2pipeHttp(
                 isRunning = false
                 // 尝试优雅关闭
                 try {
-                    val encoded = URLEncoder.encode("q", "UTF-8")
-                    val url = URL("$baseUrl/cmd/$encoded")
+                    val url = URL("$baseUrl/cmd/q")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.connectTimeout = 1000
                     conn.readTimeout = 1000
@@ -241,7 +257,7 @@ class R2pipeHttp(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     process?.waitFor(500, TimeUnit.MILLISECONDS)
                 }
-                process?.destroy()
+                killProcessTree()
             }
         } catch (_: Exception) {}
     }
@@ -268,15 +284,30 @@ class R2pipeHttp(
         } catch (_: Exception) { -1 }
     }
 
-    fun forceQuit() {
-        isRunning = false
+    /**
+     * 强制杀掉 sh 及其所有子进程（即 r2 本体）。
+     * process.destroy() 只能杀 sh，r2 子进程会残留。
+     */
+    private fun killProcessTree() {
         try {
+            val proc = process ?: return
+            val pid = getProcessId(proc)
+            if (pid > 0) {
+                // SIGKILL 整个进程组 + 所有子进程
+                val cmd = "kill -9 -$pid 2>/dev/null; kill -9 \$(pgrep -P $pid) 2>/dev/null"
+                Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", cmd))
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                process?.destroyForcibly()
+                proc.destroyForcibly()
             } else {
-                process?.destroy()
+                proc.destroy()
             }
         } catch (_: Exception) {}
+    }
+
+    fun forceQuit() {
+        isRunning = false
+        killProcessTree()
         process = null
     }
 
@@ -284,5 +315,12 @@ class R2pipeHttp(
 
     protected fun finalize() {
         quit()
+    }
+
+    companion object {
+        /** 需要百分号编码的字符集合 */
+        private val CHARS_TO_ENCODE = setOf(
+            ' ', '"', '#', '%', '<', '>', '[', ']', '^', '`', '{', '}', '\\'
+        )
     }
 }
