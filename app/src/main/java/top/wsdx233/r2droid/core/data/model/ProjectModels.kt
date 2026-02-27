@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.core.data.model
 
+import android.annotation.SuppressLint
 import org.json.JSONObject
 import java.io.File
 
@@ -57,7 +58,7 @@ data class SavedProject(
     fun isBinaryAccessible(): Boolean {
         return try {
             File(binaryPath).exists() && File(binaryPath).canRead()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -68,7 +69,7 @@ data class SavedProject(
     fun isScriptAccessible(): Boolean {
         return try {
             File(scriptPath).exists() && File(scriptPath).canRead()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -84,6 +85,7 @@ data class SavedProject(
     /**
      * Get formatted file size
      */
+    @SuppressLint("DefaultLocale")
     fun getFormattedFileSize(): String {
         return when {
             fileSize >= 1024 * 1024 * 1024 -> String.format("%.2f GB", fileSize / (1024.0 * 1024.0 * 1024.0))

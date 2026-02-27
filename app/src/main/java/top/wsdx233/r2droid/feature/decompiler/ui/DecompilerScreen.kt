@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.decompiler.ui
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +45,7 @@ import top.wsdx233.r2droid.core.data.model.DecompilationData
 import top.wsdx233.r2droid.feature.project.ProjectViewModel
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
+@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun DecompilationViewer(
     viewModel: ProjectViewModel,
@@ -145,7 +148,7 @@ fun DecompilationViewer(
     val config = LocalConfiguration.current
     
     // Track previous cursor address to only scroll when it actually changes
-    var previousCursorAddress by remember { mutableStateOf(cursorAddress) }
+    var previousCursorAddress by remember { mutableLongStateOf(cursorAddress) }
     var hasInitiallyScrolled by remember { mutableStateOf(false) }
 
     LaunchedEffect(cursorAddress, textLayoutResult) {

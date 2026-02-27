@@ -1,7 +1,6 @@
 package top.wsdx233.r2droid.util
 
 import android.content.Context
-import android.content.pm.PackageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject

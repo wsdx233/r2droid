@@ -1,8 +1,16 @@
 package top.wsdx233.r2droid.feature.hex.ui
 
+/**
+ * Virtualized Hex Viewer - uses items(count) pattern for smooth scrolling.
+ * 
+ * Core design:
+ * - LazyColumn knows total rows upfront (totalSize / 16)
+ * - Each row is identified by index (stable key)
+ * - Data is loaded on-demand from HexDataManager cache
+ * - Placeholder shown for unloaded rows
+ */
+import android.annotation.SuppressLint
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.AlertDialog
@@ -40,10 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
@@ -53,24 +56,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
-
-import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
-import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
-import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
 import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
+import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
+import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
+import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
-/**
- * Virtualized Hex Viewer - uses items(count) pattern for smooth scrolling.
- * 
- * Core design:
- * - LazyColumn knows total rows upfront (totalSize / 16)
- * - Each row is identified by index (stable key)
- * - Data is loaded on-demand from HexDataManager cache
- * - Placeholder shown for unloaded rows
- */
-import top.wsdx233.r2droid.feature.hex.HexEvent
-
+@SuppressLint("FrequentlyChangingValue")
 @Composable
 fun HexViewer(
     viewModel: top.wsdx233.r2droid.feature.hex.HexViewModel,

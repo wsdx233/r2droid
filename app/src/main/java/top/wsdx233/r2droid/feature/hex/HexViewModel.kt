@@ -1,22 +1,20 @@
 package top.wsdx233.r2droid.feature.hex
 
+/**
+ * ViewModel for Hex Viewer.
+ * Manages HexDataManager and hex-related interactions.
+ */
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.core.data.model.Section
-import top.wsdx233.r2droid.core.data.source.R2PipeDataSource
 import top.wsdx233.r2droid.feature.hex.data.HexDataManager
 import top.wsdx233.r2droid.feature.hex.data.HexRepository
 import top.wsdx233.r2droid.util.R2PipeManager
-
-/**
- * ViewModel for Hex Viewer.
- * Manages HexDataManager and hex-related interactions.
- */
-import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
 sealed interface HexEvent {

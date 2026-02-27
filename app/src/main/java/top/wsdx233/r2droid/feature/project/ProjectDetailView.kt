@@ -1,14 +1,13 @@
 package top.wsdx233.r2droid.feature.project
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
 import top.wsdx233.r2droid.feature.decompiler.ui.DecompilationViewer
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
@@ -18,7 +17,6 @@ import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
 import top.wsdx233.r2droid.feature.hex.ui.HexViewer
 import top.wsdx233.r2droid.util.R2PipeManager
-import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
 
 @Composable
 fun ProjectDetailView(

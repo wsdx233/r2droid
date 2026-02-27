@@ -17,24 +17,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.GenericFontFamily
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
-import top.wsdx233.r2droid.screen.about.AboutScreen
-import top.wsdx233.r2droid.screen.home.HomeScreen
-import top.wsdx233.r2droid.screen.install.InstallScreen
-import top.wsdx233.r2droid.screen.permission.PermissionScreen
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.project.ProjectScreen
+import top.wsdx233.r2droid.feature.about.AboutScreen
+import top.wsdx233.r2droid.feature.home.HomeScreen
+import top.wsdx233.r2droid.feature.install.InstallScreen
+import top.wsdx233.r2droid.feature.permission.PermissionScreen
+import top.wsdx233.r2droid.feature.settings.SettingsScreen
 import top.wsdx233.r2droid.ui.theme.R2droidTheme
 import top.wsdx233.r2droid.util.IntentFileResolver
 import top.wsdx233.r2droid.util.PermissionManager
 import top.wsdx233.r2droid.util.R2Installer
 import top.wsdx233.r2droid.util.R2PipeManager
-
-import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
     override fun attachBaseContext(newBase: Context) {
         // Apply language from settings
-        val prefs = newBase.getSharedPreferences("r2droid_settings", Context.MODE_PRIVATE)
+        val prefs = newBase.getSharedPreferences("r2droid_settings", MODE_PRIVATE)
         val language = prefs.getString("language", "system")
 
         val context = if (language != null && language != "system") {
@@ -61,11 +61,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // Initialize SettingsManager
-        top.wsdx233.r2droid.data.SettingsManager.initialize(applicationContext)
+        SettingsManager.initialize(applicationContext)
         top.wsdx233.r2droid.feature.ai.data.AiSettingsManager.initialize(applicationContext)
 
         // 启动常驻通知保活服务
-        if (top.wsdx233.r2droid.data.SettingsManager.keepAliveNotification) {
+        if (SettingsManager.keepAliveNotification) {
             top.wsdx233.r2droid.service.KeepAliveService.start(applicationContext)
         }
 
@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             // Load custom font if available
             val customFont = remember {
-                top.wsdx233.r2droid.data.SettingsManager.getCustomFont() ?: androidx.compose.ui.text.font.FontFamily.Monospace
+                SettingsManager.getCustomFont() ?: androidx.compose.ui.text.font.FontFamily.Monospace
             }
 
             val windowWidthClass = top.wsdx233.r2droid.core.ui.adaptive.calculateWindowWidthClass()
@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
                 top.wsdx233.r2droid.ui.theme.LocalAppFont provides customFont,
                 top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass provides windowWidthClass
             ) {
-                val darkModeSetting by top.wsdx233.r2droid.data.SettingsManager.darkModeFlow.collectAsState()
+                val darkModeSetting by SettingsManager.darkModeFlow.collectAsState()
 
                 val darkTheme = when (darkModeSetting) {
                     "light" -> false
@@ -235,7 +235,7 @@ fun MainAppNavigation(
             BackHandler {
                 currentScreen = AppScreen.Home
             }
-            top.wsdx233.r2droid.screen.settings.SettingsScreen(
+            SettingsScreen(
                 onBackClick = { currentScreen = AppScreen.Home }
             )
         }

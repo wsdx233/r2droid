@@ -64,7 +64,7 @@ class R2ActionExecutor {
         try {
             val outputLines = mutableListOf<String>()
             val quickJs = QuickJs.create(Dispatchers.IO)
-            try {
+            quickJs.use { quickJs ->
                 // Inject console.log
                 quickJs.define("console") {
                     function("log") { args ->
@@ -98,8 +98,6 @@ class R2ActionExecutor {
                     else "(JavaScript executed successfully, no output)",
                     success = true
                 )
-            } finally {
-                quickJs.close()
             }
         } catch (e: Exception) {
             ActionResult(

@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.ai.ui
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -98,6 +99,7 @@ private fun collapseToLastTwoLines(text: String): String {
 
 // region Message Bubbles
 
+@SuppressLint("ConfigurationScreenWidthHeight")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
@@ -235,6 +237,7 @@ fun MessageBubble(
     }
 }
 
+@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun StreamingMessageBubble(content: String) {
     val maxWidth = LocalConfiguration.current.screenWidthDp.dp * 0.85f

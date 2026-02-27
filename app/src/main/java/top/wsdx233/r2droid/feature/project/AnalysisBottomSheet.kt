@@ -137,7 +137,6 @@ fun AnalysisBottomSheet(onDismiss: () -> Unit) {
                         isRunning = true
                         val cmd = selected
                         val appContext = context.applicationContext
-                        val dismiss = onDismiss
                         CoroutineScope(Dispatchers.Main).launch {
                             try {
                                 R2PipeManager.execute(cmd)
@@ -145,7 +144,7 @@ fun AnalysisBottomSheet(onDismiss: () -> Unit) {
                             } catch (e: Exception) {
                                 Toast.makeText(appContext, appContext.getString(R.string.proj_analysis_error) + ": ${e.message}", Toast.LENGTH_LONG).show()
                             }
-                            dismiss()
+                            onDismiss()
                         }
                     }) {
                         Text(stringResource(R.string.proj_analysis_run))

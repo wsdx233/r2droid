@@ -1,4 +1,4 @@
-package top.wsdx233.r2droid.screen.home
+package top.wsdx233.r2droid.feature.home
 
 import android.content.Context
 import android.net.Uri
@@ -11,9 +11,12 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.SavedProject
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.project.data.SavedProjectRepository
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.UriUtils
 import java.io.File
 import java.io.FileOutputStream
 
@@ -85,10 +88,10 @@ class HomeViewModel : ViewModel() {
                     R2PipeManager.pendingRestoreFlags = null // Regular open, no restore
                     _uiEvent.send(HomeUiEvent.NavigateToProject)
                 } else {
-                    _uiEvent.send(HomeUiEvent.ShowError(context.getString(top.wsdx233.r2droid.R.string.home_error_resolve_path)))
+                    _uiEvent.send(HomeUiEvent.ShowError(context.getString(R.string.home_error_resolve_path)))
                 }
             } catch (e: Exception) {
-                _uiEvent.send(HomeUiEvent.ShowError(e.message ?: context.getString(top.wsdx233.r2droid.R.string.home_error_unknown)))
+                _uiEvent.send(HomeUiEvent.ShowError(e.message ?: context.getString(R.string.home_error_unknown)))
             }
         }
     }
@@ -102,7 +105,7 @@ class HomeViewModel : ViewModel() {
                 // Check if binary is accessible
                 if (!project.isBinaryAccessible()) {
                     _uiEvent.send(HomeUiEvent.ShowError(
-                        context.getString(top.wsdx233.r2droid.R.string.home_error_binary_not_found)
+                        context.getString(R.string.home_error_binary_not_found)
                     ))
                     return@launch
                 }
@@ -110,7 +113,7 @@ class HomeViewModel : ViewModel() {
                 // Check if script is accessible
                 if (!project.isScriptAccessible()) {
                     _uiEvent.send(HomeUiEvent.ShowError(
-                        context.getString(top.wsdx233.r2droid.R.string.home_error_script_not_found)
+                        context.getString(R.string.home_error_script_not_found)
                     ))
                     return@launch
                 }
@@ -128,7 +131,7 @@ class HomeViewModel : ViewModel() {
                 _uiEvent.send(HomeUiEvent.NavigateToProject)
             } catch (e: Exception) {
                 _uiEvent.send(HomeUiEvent.ShowError(
-                    e.message ?: context.getString(top.wsdx233.r2droid.R.string.home_error_unknown)
+                    e.message ?: context.getString(R.string.home_error_unknown)
                 ))
             }
         }
@@ -143,11 +146,11 @@ class HomeViewModel : ViewModel() {
                 repository?.deleteProject(project.id)
                 loadSavedProjects() // Refresh list
                 _uiEvent.send(HomeUiEvent.ShowMessage(
-                    context.getString(top.wsdx233.r2droid.R.string.home_project_deleted)
+                    context.getString(R.string.home_project_deleted)
                 ))
             } catch (e: Exception) {
                 _uiEvent.send(HomeUiEvent.ShowError(
-                    e.message ?: context.getString(top.wsdx233.r2droid.R.string.home_error_unknown)
+                    e.message ?: context.getString(R.string.home_error_unknown)
                 ))
             }
         }
@@ -156,7 +159,7 @@ class HomeViewModel : ViewModel() {
     private suspend fun resolvePath(context: Context, uri: Uri): String? {
         // 1. Try to get the real path first
         try {
-            val realPath = top.wsdx233.r2droid.util.UriUtils.getPath(context, uri)
+            val realPath = UriUtils.getPath(context, uri)
             if (realPath != null) {
                 val file = File(realPath)
                 if (file.exists() && file.canRead()) {
@@ -179,7 +182,7 @@ class HomeViewModel : ViewModel() {
             val fileName = "r2_target_${System.currentTimeMillis()}" 
             
             // Use custom project home if set, otherwise cache dir
-            val baseDir = top.wsdx233.r2droid.data.SettingsManager.projectHome?.let { File(it) } 
+            val baseDir = SettingsManager.projectHome?.let { File(it) }
                 ?.takeIf { it.exists() && it.isDirectory && it.canWrite() } 
                 ?: context.cacheDir
                 

@@ -1,4 +1,4 @@
-package top.wsdx233.r2droid.screen.debug
+package top.wsdx233.r2droid.feature.debug
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -87,10 +87,9 @@ class DebugViewModel : ViewModel() {
 
             withContext(Dispatchers.IO) {
                 try {
-                    val finalCmd = command
 
                     // 这行代码会阻塞，直到 r2 真正输出 \0
-                    val result = r2Session?.cmd(finalCmd) ?: ""
+                    val result = r2Session?.cmd(command) ?: ""
 
                     if (result.isBlank()) {
                         // aaa 命令通常没有输出，显示这个提示

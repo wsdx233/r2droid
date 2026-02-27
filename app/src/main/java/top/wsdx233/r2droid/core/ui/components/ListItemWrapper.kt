@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.annotation.StringRes
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 
 data class ListItemActions(
     val onCopy: (String) -> Unit,
@@ -153,7 +154,7 @@ fun UnifiedListItemWrapper(
                 expanded = false
                 menuScreen = "Main"
             },
-            offset = if (top.wsdx233.r2droid.data.SettingsManager.menuAtTouch) {
+            offset = if (SettingsManager.menuAtTouch) {
                 with(density) { DpOffset(tapOffset.x.toDp(), (tapOffset.y - boxHeight).toDp()) }
             } else DpOffset.Zero
         ) {

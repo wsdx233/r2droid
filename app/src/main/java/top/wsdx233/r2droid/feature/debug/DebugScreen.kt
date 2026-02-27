@@ -1,4 +1,4 @@
-package top.wsdx233.r2droid.screen.debug
+package top.wsdx233.r2droid.feature.debug
 
 import androidx.compose.ui.res.stringResource
 import top.wsdx233.r2droid.R

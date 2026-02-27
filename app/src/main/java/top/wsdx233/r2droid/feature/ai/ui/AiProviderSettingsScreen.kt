@@ -1,6 +1,5 @@
 package top.wsdx233.r2droid.feature.ai.ui
 
-import android.R.attr.checked
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

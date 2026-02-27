@@ -10,48 +10,51 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.MenuOpen
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.MenuOpen
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FormatPaint
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.isImeVisible
-import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
-import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
@@ -60,16 +63,16 @@ import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,39 +84,37 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
-import top.wsdx233.r2droid.core.ui.dialogs.HistoryDialog
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
+import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
+import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
+import top.wsdx233.r2droid.core.ui.components.CommandSuggestButton
+import top.wsdx233.r2droid.core.ui.components.CommandSuggestionPanel
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
+import top.wsdx233.r2droid.core.ui.dialogs.HistoryDialog
 import top.wsdx233.r2droid.core.ui.dialogs.JumpDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
-import top.wsdx233.r2droid.feature.disasm.DisasmEvent
-import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
-import top.wsdx233.r2droid.feature.hex.HexEvent
-import top.wsdx233.r2droid.feature.hex.HexViewModel
 import top.wsdx233.r2droid.feature.ai.AiViewModel
 import top.wsdx233.r2droid.feature.ai.ui.AiChatScreen
 import top.wsdx233.r2droid.feature.ai.ui.AiPromptsScreen
 import top.wsdx233.r2droid.feature.ai.ui.AiProviderSettingsScreen
-import top.wsdx233.r2droid.feature.terminal.ui.CommandScreen
-import top.wsdx233.r2droid.core.ui.components.CommandSuggestButton
-import top.wsdx233.r2droid.core.ui.components.CommandSuggestionPanel
-import kotlinx.coroutines.delay
-import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.feature.disasm.DisasmEvent
+import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
+import top.wsdx233.r2droid.feature.hex.HexEvent
+import top.wsdx233.r2droid.feature.hex.HexViewModel
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
 import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.feature.r2frida.ui.*
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.FormatPaint
-import androidx.compose.material.icons.filled.SelectAll
+import top.wsdx233.r2droid.feature.terminal.ui.CommandScreen
+import top.wsdx233.r2droid.util.R2PipeManager
 
 enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
-    List(R.string.proj_category_list, Icons.Filled.List),
+    List(R.string.proj_category_list, Icons.AutoMirrored.Filled.List),
     Detail(R.string.proj_category_detail, Icons.Filled.Info),
     R2Frida(R.string.proj_category_r2frida, Icons.Filled.BugReport),
     Project(R.string.proj_category_project, Icons.Filled.Build),
@@ -160,7 +161,7 @@ fun ProjectScaffold(
     var selectedR2FridaTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
     val isR2Frida = R2PipeManager.isR2FridaSession
-    val isAiEnabled = top.wsdx233.r2droid.data.SettingsManager.aiEnabled
+    val isAiEnabled = SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
 
     // Hoisted R2Frida list scroll states (survive category switches)
@@ -681,7 +682,7 @@ fun ProjectScaffold(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ) {
                     Spacer(Modifier.height(8.dp))
-                    MainCategory.values()
+                    MainCategory.entries
                         .filter { it != MainCategory.R2Frida || isR2Frida }
                         .filter { it != MainCategory.AI || isAiEnabled }
                         .forEach { category ->
@@ -1237,9 +1238,9 @@ private fun ProjectBottomBar(
                 },
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
             ) {
-                MainCategory.values()
+                MainCategory.entries
                     .filter { it != MainCategory.R2Frida || isR2Frida }
-                    .filter { it != MainCategory.AI || top.wsdx233.r2droid.data.SettingsManager.aiEnabled }
+                    .filter { it != MainCategory.AI || SettingsManager.aiEnabled }
                     .forEach { category ->
                         NavigationBarItem(
                             selected = selectedCategory == category,

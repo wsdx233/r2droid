@@ -1,7 +1,6 @@
 package top.wsdx233.r2droid.feature.project
 
 import android.content.Context
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
@@ -20,9 +19,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
 import top.wsdx233.r2droid.core.data.db.*
-import top.wsdx233.r2droid.core.data.source.R2PipeDataSource
 import top.wsdx233.r2droid.core.data.model.*
-import top.wsdx233.r2droid.data.SettingsManager
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.bininfo.data.BinInfoRepository
 import top.wsdx233.r2droid.feature.project.data.ProjectRepository
 import top.wsdx233.r2droid.feature.project.data.SavedProjectRepository

@@ -3,29 +3,51 @@ package top.wsdx233.r2droid.feature.bininfo.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -33,7 +55,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.R
-import top.wsdx233.r2droid.core.data.model.*
+import top.wsdx233.r2droid.core.data.model.ArchInfo
+import top.wsdx233.r2droid.core.data.model.BinInfo
+import top.wsdx233.r2droid.core.data.model.BlockStatsData
+import top.wsdx233.r2droid.core.data.model.EntropyData
+import top.wsdx233.r2droid.core.data.model.EntryPoint
+import top.wsdx233.r2droid.core.data.model.HashInfo
+import top.wsdx233.r2droid.core.data.model.HeaderInfo
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.core.ui.components.UnifiedListItemWrapper
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
@@ -203,7 +231,7 @@ fun EntryPointsCard(entryPoints: List<EntryPoint>, actions: ListItemActions) {
 
 @Composable
 fun HeadersCard(headers: List<HeaderInfo>, headersString: String?, actions: ListItemActions) {
-    OverviewSectionCard(title = stringResource(R.string.binary_headers), icon = Icons.Default.List) {
+    OverviewSectionCard(title = stringResource(R.string.binary_headers), icon = Icons.AutoMirrored.Filled.List) {
         if (!headersString.isNullOrBlank()) {
             var expanded by remember { mutableStateOf(false) }
             val lines = headersString.lines()

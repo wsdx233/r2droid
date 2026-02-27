@@ -7,7 +7,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
-import java.io.File
+import androidx.core.net.toUri
 
 object UriUtils {
 
@@ -50,7 +50,7 @@ object UriUtils {
                 // Keep it simple for now, catching long IDs usually found in newer Androids
                 try {
                     val contentUri = ContentUris.withAppendedId(
-                        Uri.parse("content://downloads/public_downloads"), java.lang.Long.valueOf(id)
+                        "content://downloads/public_downloads".toUri(), java.lang.Long.valueOf(id)
                     )
                     return getDataColumn(context, contentUri, null, null)
                 } catch (e: Exception) {
@@ -102,7 +102,7 @@ object UriUtils {
         } catch (e: Exception) {
             // Ignore
         } finally {
-            if (cursor != null) cursor.close()
+            cursor?.close()
         }
         return null
     }

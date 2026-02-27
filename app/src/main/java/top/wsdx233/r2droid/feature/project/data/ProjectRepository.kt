@@ -1,8 +1,35 @@
 ﻿package top.wsdx233.r2droid.feature.project.data
 
+/**
+ * Repository to fetch analysis data from R2Pipe.
+ */
 import org.json.JSONArray
 import org.json.JSONObject
-import top.wsdx233.r2droid.core.data.model.*
+import top.wsdx233.r2droid.core.data.model.ArchInfo
+import top.wsdx233.r2droid.core.data.model.BinInfo
+import top.wsdx233.r2droid.core.data.model.BlockStatsData
+import top.wsdx233.r2droid.core.data.model.DecompilationData
+import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.data.model.EntropyData
+import top.wsdx233.r2droid.core.data.model.EntryPoint
+import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
+import top.wsdx233.r2droid.core.data.model.FunctionInfo
+import top.wsdx233.r2droid.core.data.model.FunctionVariable
+import top.wsdx233.r2droid.core.data.model.FunctionVariablesData
+import top.wsdx233.r2droid.core.data.model.FunctionXref
+import top.wsdx233.r2droid.core.data.model.GraphData
+import top.wsdx233.r2droid.core.data.model.HashInfo
+import top.wsdx233.r2droid.core.data.model.HeaderInfo
+import top.wsdx233.r2droid.core.data.model.HistoryEntry
+import top.wsdx233.r2droid.core.data.model.ImportInfo
+import top.wsdx233.r2droid.core.data.model.MainAddressInfo
+import top.wsdx233.r2droid.core.data.model.Relocation
+import top.wsdx233.r2droid.core.data.model.Section
+import top.wsdx233.r2droid.core.data.model.StringInfo
+import top.wsdx233.r2droid.core.data.model.Symbol
+import top.wsdx233.r2droid.core.data.model.Xref
+import top.wsdx233.r2droid.core.data.model.XrefWithDisasm
+import top.wsdx233.r2droid.core.data.model.XrefsData
 import top.wsdx233.r2droid.core.data.parser.CLexer
 import top.wsdx233.r2droid.feature.ai.data.AiRepository
 import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
@@ -10,11 +37,6 @@ import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.util.Locale
-import kotlinx.coroutines.flow.collect
-
-/**
- * Repository to fetch analysis data from R2Pipe.
- */
 import javax.inject.Inject
 
 class ProjectRepository @Inject constructor(

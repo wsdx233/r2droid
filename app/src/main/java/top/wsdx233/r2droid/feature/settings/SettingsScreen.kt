@@ -1,11 +1,12 @@
-package top.wsdx233.r2droid.screen.settings
+package top.wsdx233.r2droid.feature.settings
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FontDownload
@@ -22,7 +24,6 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
@@ -36,18 +37,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import top.wsdx233.r2droid.R
-import top.wsdx233.r2droid.data.SettingsManager
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.ai.AiViewModel
 import top.wsdx233.r2droid.feature.ai.ui.AiProviderSettingsScreen
 import top.wsdx233.r2droid.util.UriUtils
+import androidx.core.net.toUri
+import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.MainScope
+import org.json.JSONArray
+import org.json.JSONObject
+import top.wsdx233.r2droid.service.KeepAliveService
+import top.wsdx233.r2droid.util.UpdateManager
+import java.io.File
 
-class SettingsViewModel : androidx.lifecycle.ViewModel() {
+class SettingsViewModel : ViewModel() {
     // R2RC Content State
     private val _r2rcContent = MutableStateFlow("")
     val r2rcContent = _r2rcContent.asStateFlow()
@@ -120,20 +130,20 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
     }
 
     fun migrateProjects(context: Context, oldPath: String?, newPath: String) {
-        val oldDir = java.io.File(oldPath ?: context.filesDir.absolutePath, "projects")
-        val newDir = java.io.File(newPath, "projects")
+        val oldDir = File(oldPath ?: context.filesDir.absolutePath, "projects")
+        val newDir = File(newPath, "projects")
         if (oldDir.exists() && oldDir.isDirectory) {
             oldDir.copyRecursively(newDir, overwrite = true)
             oldDir.deleteRecursively()
             // Update scriptPath in JSON files to reflect new directory
             val oldPrefix = oldDir.absolutePath
             val newPrefix = newDir.absolutePath
-            fun rewriteJson(file: java.io.File, isIndex: Boolean) {
+            fun rewriteJson(file: File, isIndex: Boolean) {
                 if (!file.exists()) return
                 try {
                     val text = file.readText()
                     if (isIndex) {
-                        val arr = org.json.JSONArray(text)
+                        val arr = JSONArray(text)
                         for (i in 0 until arr.length()) {
                             val obj = arr.getJSONObject(i)
                             val sp = obj.optString("scriptPath", "")
@@ -143,7 +153,7 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
                         }
                         file.writeText(arr.toString(2))
                     } else {
-                        val obj = org.json.JSONObject(text)
+                        val obj = JSONObject(text)
                         val sp = obj.optString("scriptPath", "")
                         if (sp.startsWith(oldPrefix)) {
                             obj.put("scriptPath", sp.replace(oldPrefix, newPrefix))
@@ -152,9 +162,9 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
                     }
                 } catch (_: Exception) {}
             }
-            rewriteJson(java.io.File(newDir, "index.json"), true)
+            rewriteJson(File(newDir, "index.json"), true)
             newDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
-                rewriteJson(java.io.File(dir, "project.json"), false)
+                rewriteJson(File(dir, "project.json"), false)
             }
         }
     }
@@ -213,9 +223,9 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
         SettingsManager.keepAliveNotification = value
         _keepAlive.value = value
         if (value) {
-            top.wsdx233.r2droid.service.KeepAliveService.start(context)
+            KeepAliveService.start(context)
         } else {
-            top.wsdx233.r2droid.service.KeepAliveService.stop(context)
+            KeepAliveService.stop(context)
         }
     }
 
@@ -253,6 +263,7 @@ class SettingsViewModel : androidx.lifecycle.ViewModel() {
     }
 }
 
+@SuppressLint("BatteryLife")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -452,7 +463,7 @@ fun SettingsScreen(
                     icon = Icons.Default.BatteryAlert,
                     onClick = {
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                            data = Uri.parse("package:${context.packageName}")
+                            data = "package:${context.packageName}".toUri()
                         }
                         context.startActivity(intent)
                     }
@@ -463,9 +474,9 @@ fun SettingsScreen(
                 SettingsItem(
                     title = stringResource(R.string.settings_dontkillmyapp),
                     subtitle = stringResource(R.string.settings_dontkillmyapp_desc),
-                    icon = Icons.Default.OpenInNew,
+                    icon = Icons.AutoMirrored.Filled.OpenInNew,
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://dontkillmyapp.com/")))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://dontkillmyapp.com/".toUri()))
                     }
                 )
             }
@@ -565,7 +576,7 @@ fun SettingsScreen(
             }
 
             item {
-                val isChecking by top.wsdx233.r2droid.util.UpdateManager.isChecking.collectAsState()
+                val isChecking by UpdateManager.isChecking.collectAsState()
                 val checkingText = if (isChecking) stringResource(R.string.update_checking) else stringResource(R.string.update_check_desc)
 
                 SettingsItem(
@@ -575,23 +586,23 @@ fun SettingsScreen(
                     onClick = {
                         if (!isChecking) {
                             // 使用 CoroutineScope 启动协程
-                            kotlinx.coroutines.MainScope().launch {
+                            MainScope().launch {
                                 try {
-                                    val update = top.wsdx233.r2droid.util.UpdateManager.checkForUpdate(context)
+                                    val update = UpdateManager.checkForUpdate(context)
                                     if (update == null) {
                                         // Show "no update available" message
-                                        android.widget.Toast.makeText(
+                                        Toast.makeText(
                                             context,
                                             context.getString(R.string.update_no_update),
-                                            android.widget.Toast.LENGTH_SHORT
+                                            Toast.LENGTH_SHORT
                                         ).show()
                                     }
                                 } catch (e: Exception) {
                                     // Show error message
-                                    android.widget.Toast.makeText(
+                                    Toast.makeText(
                                         context,
                                         context.getString(R.string.update_check_failed),
-                                        android.widget.Toast.LENGTH_SHORT
+                                        Toast.LENGTH_SHORT
                                     ).show()
                                 }
                             }
@@ -879,7 +890,7 @@ fun SettingsScreen(
     if (showAiProviderSettings) {
         Dialog(
             onDismissRequest = { showAiProviderSettings = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
                 val aiViewModel: AiViewModel = hiltViewModel()

@@ -8,12 +8,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,8 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
+import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.flow.StateFlow
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.GraphBlockInstruction
@@ -43,7 +43,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
-import androidx.core.graphics.toColorInt
 
 // Layout constants — sized for mobile readability
 private const val NODE_PADDING = 20f
@@ -349,8 +348,8 @@ private fun routeAllEdges(
         val sortedTargets = if (hasJump && hasFail) {
             validTargets.sortedBy { (tid, tln) ->
                 when (tln.node.address) {
-                    lastInstr?.jump -> 0  // true branch first
-                    lastInstr?.fail -> 1  // false branch second
+                    lastInstr.jump -> 0  // true branch first
+                    lastInstr.fail -> 1  // false branch second
                     else -> 2
                 }
             }
@@ -362,8 +361,8 @@ private fun routeAllEdges(
             val (targetId, targetLayout) = pair
             val color = if (hasJump && hasFail) {
                 when (targetLayout.node.address) {
-                    lastInstr?.jump -> edgeTrueColor
-                    lastInstr?.fail -> edgeFalseColor
+                    lastInstr.jump -> edgeTrueColor
+                    lastInstr.fail -> edgeFalseColor
                     else -> edgeColor
                 }
             } else {
@@ -660,7 +659,7 @@ fun GraphViewer(
     var menuPosition by remember { mutableStateOf(DpOffset.Zero) }
     var menuInstr by remember { mutableStateOf<GraphBlockInstruction?>(null) }
     var menuNodeTitle by remember { mutableStateOf("") }
-    var menuNodeAddress by remember { mutableStateOf(0L) }
+    var menuNodeAddress by remember { mutableLongStateOf(0L) }
 
     // Hoist context for clipboard operations
     val context = LocalContext.current
@@ -1029,13 +1028,13 @@ private fun DrawScope.drawInstructions(
 
         // Color-code the disasm based on instruction type
         instrPaint.color = when (instr.type) {
-            "call", "ucall", "ircall" -> android.graphics.Color.parseColor("#42A5F5")
-            "jmp", "cjmp", "ujmp" -> android.graphics.Color.parseColor("#66BB6A")
-            "ret" -> android.graphics.Color.parseColor("#EF5350")
-            "push", "pop", "rpush" -> android.graphics.Color.parseColor("#AB47BC")
-            "cmp", "test", "acmp" -> android.graphics.Color.parseColor("#FFCA28")
+            "call", "ucall", "ircall" -> "#42A5F5".toColorInt()
+            "jmp", "cjmp", "ujmp" -> "#66BB6A".toColorInt()
+            "ret" -> "#EF5350".toColorInt()
+            "push", "pop", "rpush" -> "#AB47BC".toColorInt()
+            "cmp", "test", "acmp" -> "#FFCA28".toColorInt()
             "nop" -> android.graphics.Color.GRAY
-            else -> android.graphics.Color.parseColor("#D4D4D4")
+            else -> "#D4D4D4".toColorInt()
         }
 
         // Draw disasm text with gap after address

@@ -10,10 +10,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.feature.ai.data.ActionType
-import top.wsdx233.r2droid.feature.ai.data.AiProvider
 import top.wsdx233.r2droid.feature.ai.data.AiProviderConfig
 import top.wsdx233.r2droid.feature.ai.data.AiRepository
-import top.wsdx233.r2droid.data.SettingsManager
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
@@ -197,7 +196,7 @@ class AiViewModel @Inject constructor(
                             }
                             ActionType.JavaScript -> {
                                 _uiState.update {
-                                    it.copy(streamingContent = responseText + "\n\n⏳ Running JavaScript...")
+                                    it.copy(streamingContent = "$responseText\n\n⏳ Running JavaScript...")
                                 }
                                 actionExecutor.executeJavaScript(action.content)
                             }

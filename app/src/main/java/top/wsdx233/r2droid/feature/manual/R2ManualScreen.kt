@@ -52,7 +52,7 @@ fun R2ManualScreen(onBack: () -> Unit) {
     var searchQuery by remember { mutableStateOf("") }
 
     val currentPrefix = pathStack.lastOrNull()
-    val title = if (currentPrefix != null) currentPrefix else stringResource(R.string.manual_title)
+    val title = currentPrefix ?: stringResource(R.string.manual_title)
 
     Scaffold(
         topBar = {

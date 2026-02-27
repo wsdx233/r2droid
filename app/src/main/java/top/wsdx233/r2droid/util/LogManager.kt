@@ -2,9 +2,7 @@ package top.wsdx233.r2droid.util
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 
 enum class LogType {
     COMMAND, OUTPUT, INFO, WARNING, ERROR
@@ -30,7 +28,7 @@ object LogManager {
             message
         }
         val entry = LogEntry(type = type, message = truncatedMessage)
-        val maxEntries = top.wsdx233.r2droid.data.SettingsManager.maxLogEntries
+        val maxEntries = SettingsManager.maxLogEntries
         val currentLogs = _logs.value
         val newLogs = if (currentLogs.size >= maxEntries) {
             currentLogs.drop(currentLogs.size - maxEntries + 1) + entry

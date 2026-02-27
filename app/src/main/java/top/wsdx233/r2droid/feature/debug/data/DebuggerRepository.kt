@@ -11,7 +11,7 @@ class DebuggerRepository @Inject constructor() {
 
     // 获取当前断点列表
     suspend fun getBreakpoints(): Result<Set<Long>> = R2PipeManager.executeJson("dbj").mapCatching {
-        val arr = JSONArray(if (it.isBlank()) "[]" else it)
+        val arr = JSONArray(it.ifBlank { "[]" })
         val bps = mutableSetOf<Long>()
         for (i in 0 until arr.length()) {
             bps.add(arr.getJSONObject(i).optLong("addr"))
@@ -53,7 +53,7 @@ class DebuggerRepository @Inject constructor() {
 
     // 获取当前寄存器状态
     suspend fun getRegisters(): Result<JSONObject> = R2PipeManager.executeJson("drj").mapCatching {
-        JSONObject(if (it.isBlank()) "{}" else it)
+        JSONObject(it.ifBlank { "{}" })
     }
 
     // 获取当前 PC 指针地址 (RIP/PC)

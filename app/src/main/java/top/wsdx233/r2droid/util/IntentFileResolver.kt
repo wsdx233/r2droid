@@ -2,7 +2,7 @@ package top.wsdx233.r2droid.util
 
 import android.content.Context
 import android.net.Uri
-import top.wsdx233.r2droid.data.SettingsManager
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import java.io.File
 import java.io.FileOutputStream
 

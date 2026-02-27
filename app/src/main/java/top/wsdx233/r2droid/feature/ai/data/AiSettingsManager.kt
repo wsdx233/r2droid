@@ -2,9 +2,9 @@ package top.wsdx233.r2droid.feature.ai.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 object AiSettingsManager {
@@ -41,7 +41,7 @@ object AiSettingsManager {
     }
 
     private fun saveConfig(config: AiProviderConfig) {
-        prefs.edit().putString(KEY_PROVIDER_CONFIG, json.encodeToString(config)).apply()
+        prefs.edit { putString(KEY_PROVIDER_CONFIG, json.encodeToString(config)) }
         _configFlow.value = config
     }
 
@@ -114,7 +114,7 @@ object AiSettingsManager {
     }
 
     private fun saveSessions(sessions: List<ChatSession>) {
-        prefs.edit().putString(KEY_CHAT_SESSIONS, json.encodeToString(sessions)).apply()
+        prefs.edit { putString(KEY_CHAT_SESSIONS, json.encodeToString(sessions)) }
         _sessionsFlow.value = sessions
     }
 
@@ -138,19 +138,19 @@ object AiSettingsManager {
     var systemPrompt: String
         get() = prefs.getString(KEY_SYSTEM_PROMPT, null) ?: DEFAULT_SYSTEM_PROMPT
         set(value) {
-            prefs.edit().putString(KEY_SYSTEM_PROMPT, value).apply()
+            prefs.edit { putString(KEY_SYSTEM_PROMPT, value) }
         }
 
     var instrExplainPrompt: String
         get() = prefs.getString(KEY_PROMPT_INSTR_EXPLAIN, null) ?: DEFAULT_INSTR_EXPLAIN_PROMPT
         set(value) {
-            prefs.edit().putString(KEY_PROMPT_INSTR_EXPLAIN, value).apply()
+            prefs.edit { putString(KEY_PROMPT_INSTR_EXPLAIN, value) }
         }
 
     var disasmPolishPrompt: String
         get() = prefs.getString(KEY_PROMPT_DISASM_POLISH, null) ?: DEFAULT_DISASM_POLISH_PROMPT
         set(value) {
-            prefs.edit().putString(KEY_PROMPT_DISASM_POLISH, value).apply()
+            prefs.edit { putString(KEY_PROMPT_DISASM_POLISH, value) }
         }
 
     // region Dangerous Commands
@@ -167,7 +167,7 @@ object AiSettingsManager {
             }
         }
         set(value) {
-            prefs.edit().putString(KEY_DANGEROUS_COMMANDS, json.encodeToString(value)).apply()
+            prefs.edit { putString(KEY_DANGEROUS_COMMANDS, json.encodeToString(value)) }
         }
 
     fun requiresApproval(cmd: String): Boolean {

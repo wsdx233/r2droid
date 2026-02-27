@@ -1,6 +1,6 @@
-package top.wsdx233.r2droid.screen.permission
+package top.wsdx233.r2droid.feature.permission
 
-import android.app.Activity
+import android.annotation.SuppressLint
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.PermissionManager
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun PermissionScreen(
     onPermissionGranted: () -> Unit

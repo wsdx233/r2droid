@@ -315,7 +315,7 @@ data class DisasmInstruction(
     fun isJumpOut(): Boolean {
         if (fcnAddr == 0L || fcnLast == 0L) return false
         val target = jump ?: return false
-        return target < fcnAddr || target > fcnLast
+        return target !in fcnAddr..fcnLast
     }
     
     /**
@@ -325,7 +325,7 @@ data class DisasmInstruction(
     fun hasJumpIn(): Boolean {
         if (fcnAddr == 0L || fcnLast == 0L) return false
         return xrefs.any { xref ->
-            xref.type == "CODE" && (xref.addr < fcnAddr || xref.addr > fcnLast)
+            xref.type == "CODE" && (xref.addr !in fcnAddr..fcnLast)
         }
     }
 

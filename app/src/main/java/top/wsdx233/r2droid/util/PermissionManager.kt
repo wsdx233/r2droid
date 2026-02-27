@@ -4,11 +4,12 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 
 object PermissionManager {
 
@@ -47,16 +48,17 @@ object PermissionManager {
     }
 
     // Create an intent to open the "All files access" settings page
+    @RequiresApi(Build.VERSION_CODES.R)
     fun getManageExternalStorageIntent(context: Context): Intent {
         val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-        intent.data = Uri.parse("package:${context.packageName}")
+        intent.data = "package:${context.packageName}".toUri()
         return intent
     }
 
     // Open settings for manual permission granting (fallback)
     fun openAppSettings(context: Context) {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-        intent.data = Uri.parse("package:${context.packageName}")
+        intent.data = "package:${context.packageName}".toUri()
         context.startActivity(intent)
     }
 }

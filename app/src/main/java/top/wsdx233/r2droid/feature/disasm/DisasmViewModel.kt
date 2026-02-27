@@ -1,12 +1,14 @@
 package top.wsdx233.r2droid.feature.disasm
 
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
@@ -14,9 +16,7 @@ import top.wsdx233.r2droid.core.data.model.FunctionVariablesData
 import top.wsdx233.r2droid.core.data.model.FunctionXref
 import top.wsdx233.r2droid.core.data.model.InstructionDetail
 import top.wsdx233.r2droid.core.data.model.Section
-import top.wsdx233.r2droid.core.data.model.Xref
 import top.wsdx233.r2droid.core.data.model.XrefsData
-import top.wsdx233.r2droid.core.data.source.R2PipeDataSource
 import top.wsdx233.r2droid.feature.ai.data.AiRepository
 import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
@@ -25,13 +25,8 @@ import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.disasm.data.DisasmRepository
 import top.wsdx233.r2droid.util.R2PipeManager
-
-
-import kotlinx.coroutines.Job
-
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import java.util.Locale
+import javax.inject.Inject
 
 
 data class XrefsState(
@@ -616,7 +611,7 @@ class DisasmViewModel @Inject constructor(
                         android.util.Log.d("DisasmMS", "extendToFunction: snapshot is null")
                         return@launch
                     }
-                    val inRange = snapshot.filter { it.addr >= funcStart && it.addr < funcEnd }
+                    val inRange = snapshot.filter { it.addr in funcStart..<funcEnd }
                     android.util.Log.d("DisasmMS", "extendToFunction: ${inRange.size} instrs in range")
                     val lastAddr = inRange.lastOrNull()?.addr ?: (funcEnd - 1)
                     android.util.Log.d("DisasmMS", "extendToFunction: lastAddr=0x${lastAddr.toString(16)}")
@@ -800,7 +795,7 @@ class DisasmViewModel @Inject constructor(
             }.onSuccess { text ->
                 _instructionDetailState.value = _instructionDetailState.value.copy(
                     aiExplainLoading = false,
-                    aiExplanation = if (text.isNotBlank()) text else _instructionDetailState.value.aiExplanation,
+                    aiExplanation = text.ifBlank { _instructionDetailState.value.aiExplanation },
                     aiExplainError = null
                 )
             }.onFailure { throwable ->
@@ -854,7 +849,7 @@ class DisasmViewModel @Inject constructor(
             }.onSuccess { text ->
                 _aiPolishState.value = _aiPolishState.value.copy(
                     isLoading = false,
-                    result = if (text.isNotBlank()) text else _aiPolishState.value.result,
+                    result = text.ifBlank { _aiPolishState.value.result },
                     error = null
                 )
             }.onFailure { throwable ->

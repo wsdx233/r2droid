@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.disasm.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +11,22 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowRightAlt
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,22 +40,6 @@ import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowRightAlt
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Redo
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.foundation.layout.size
-import top.wsdx233.r2droid.feature.disasm.DebugStatus
 
 /** Pick color based on current theme */
 @Composable
@@ -335,7 +334,7 @@ fun DisasmRow(
                     // Render PC arrow overriding everything (or overlaying)
                     if (isPC) {
                         Icon(
-                            imageVector = Icons.Default.ArrowRightAlt,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowRightAlt,
                             contentDescription = "PC",
                             tint = Color.Yellow,
                             modifier = Modifier.size(16.dp).align(Alignment.Center)
@@ -524,10 +523,10 @@ fun DebugControlBar(
                         Icon(Icons.Default.KeyboardArrowDown, "Step Into")
                     }
                     IconButton(onClick = onStepOver) {
-                        Icon(Icons.Default.Redo, "Step Over")
+                        Icon(Icons.AutoMirrored.Filled.Redo, "Step Over")
                     }
                     IconButton(onClick = onShowRegisters) {
-                        Icon(Icons.Default.List, "Show Registers")
+                        Icon(Icons.AutoMirrored.Filled.List, "Show Registers")
                     }
                 }
             }

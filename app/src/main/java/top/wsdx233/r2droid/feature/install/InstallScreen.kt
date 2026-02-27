@@ -1,4 +1,4 @@
-package top.wsdx233.r2droid.screen.install
+package top.wsdx233.r2droid.feature.install
 
 import top.wsdx233.r2droid.R
 import androidx.compose.foundation.layout.*

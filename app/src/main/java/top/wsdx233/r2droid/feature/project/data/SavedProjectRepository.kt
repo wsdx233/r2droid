@@ -19,6 +19,7 @@ import java.util.UUID
  */
 import javax.inject.Inject
 import dagger.hilt.android.qualifiers.ApplicationContext
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 
 class SavedProjectRepository @Inject constructor(@ApplicationContext private val context: Context) {
     
@@ -32,7 +33,7 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
 
     private val projectsDir: File
         get() {
-            val customHome = top.wsdx233.r2droid.data.SettingsManager.projectHome
+            val customHome = SettingsManager.projectHome
             val base = if (customHome != null) {
                 val dir = File(customHome, PROJECTS_DIR)
                 if (dir.exists() || dir.mkdirs()) dir

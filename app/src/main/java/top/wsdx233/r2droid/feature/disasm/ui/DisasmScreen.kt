@@ -1,17 +1,15 @@
 package top.wsdx233.r2droid.feature.disasm.ui
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,10 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -51,7 +45,6 @@ import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
-import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -68,6 +61,10 @@ import top.wsdx233.r2droid.R
 import androidx.compose.runtime.setValue
 import top.wsdx233.r2droid.feature.debug.ui.RegisterBottomSheet
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
+import top.wsdx233.r2droid.feature.debug.data.DebugBackend
 
 /**
  * Virtualized Disassembly Viewer - uses DisasmDataManager for smooth infinite scrolling.
@@ -80,6 +77,7 @@ import androidx.compose.material.icons.filled.BugReport
  */
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 
+@SuppressLint("FrequentlyChangingValue")
 @Composable
 fun DisassemblyViewer(
     viewModel: top.wsdx233.r2droid.feature.disasm.DisasmViewModel,
@@ -108,14 +106,14 @@ fun DisassemblyViewer(
 
     // Back handler to cancel multi-select
     androidx.activity.compose.BackHandler(enabled = multiSelectState.active) {
-        viewModel.onEvent(top.wsdx233.r2droid.feature.disasm.DisasmEvent.ClearMultiSelect)
+        viewModel.onEvent(DisasmEvent.ClearMultiSelect)
     }
 
     // Menu & Dialog States
     var showMenu by remember { mutableStateOf(false) }
     var menuTargetAddress by remember { mutableStateOf<Long?>(null) }
     var menuTapOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    var menuRowHeight by remember { mutableStateOf(0) }
+    var menuRowHeight by remember { mutableIntStateOf(0) }
 
     var showModifyDialog by remember { mutableStateOf(false) }
     var modifyType by remember { mutableStateOf("hex") } // hex, string, asm
@@ -170,7 +168,7 @@ fun DisassemblyViewer(
     val coroutineScope = rememberCoroutineScope()
     
     // Track previous cursor address to only scroll when it actually changes
-    var previousCursorAddress by remember { mutableStateOf(cursorAddress) }
+    var previousCursorAddress by remember { mutableLongStateOf(cursorAddress) }
     var hasInitiallyScrolled by remember { mutableStateOf(false) }
     
     // Auto-scroll to cursor ONLY when cursorAddress changes (not on data load)
@@ -200,9 +198,8 @@ fun DisassemblyViewer(
     LaunchedEffect(scrollTarget) {
         val target = scrollTarget ?: return@LaunchedEffect
         val (targetAddr, targetIndex) = target
-        val count = loadedCount
-        if (targetIndex >= 0 && count > 0) {
-            val clampedIndex = targetIndex.coerceIn(0, count - 1)
+        if (targetIndex >= 0 && loadedCount > 0) {
+            val clampedIndex = targetIndex.coerceIn(0, loadedCount - 1)
             // Check if target is already visible on screen
             val visibleItem = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == clampedIndex }
@@ -254,7 +251,7 @@ fun DisassemblyViewer(
             }
             
             // Load more at top
-            if (firstVisible < 10 && firstVisible > 0) {
+            if (firstVisible in 1..<10) {
                 viewModel.onEvent(DisasmEvent.LoadMore(false))
             }
             
@@ -397,7 +394,7 @@ fun DisassemblyViewer(
                                     onInstructionClick(addr)
                                     showMenu = false
                                 },
-                                offset = if (top.wsdx233.r2droid.data.SettingsManager.menuAtTouch) {
+                                offset = if (SettingsManager.menuAtTouch) {
                                     with(density) {
                                         androidx.compose.ui.unit.DpOffset(menuTapOffset.x.toDp(), (menuTapOffset.y - menuRowHeight).toDp())
                                     }
@@ -644,7 +641,7 @@ fun DisassemblyViewer(
                 aiExplainError = instructionDetailState.aiExplainError,
                 onDismiss = { viewModel.onEvent(DisasmEvent.DismissInstructionDetail) },
                 onJump = { addr -> onInstructionClick(addr) },
-                onAiExplain = if (top.wsdx233.r2droid.data.SettingsManager.aiEnabled) { { addr ->
+                onAiExplain = if (SettingsManager.aiEnabled) { { addr ->
                     viewModel.onEvent(DisasmEvent.ExplainInstructionWithAi(addr))
                 } } else null
             )
@@ -736,7 +733,7 @@ fun DisassemblyViewer(
                 title = { Text("Debug Backend") },
                 text = {
                     Column {
-                        val backends = top.wsdx233.r2droid.feature.debug.data.DebugBackend.values()
+                        val backends = DebugBackend.entries.toTypedArray()
                         backends.forEach { backend ->
                             Row(
                                 modifier = Modifier
