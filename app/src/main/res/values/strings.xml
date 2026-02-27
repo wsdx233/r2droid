@@ -83,11 +83,11 @@
     <string name="about_back_desc">Back</string>
     <string name="about_author_name">Wsdx233</string>
     <string name="about_author_comment">// The Creator</string>
-    <string name="about_contact_value">QQ(1284321744)\nGroup(1014171868)</string>
+    <string name="about_contact_value">QQ(1284321744)\nQQGroup(1014171868)</string>
     <string name="about_contact_comment">// Reach out</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// Source Code</string>
-    <string name="about_core_value">radare2 @ 6.0.8</string>
+    <string name="about_core_value">radare2 @ 6.1.0</string>
     <string name="about_core_comment">// Powering the engine</string>
     <string name="about_footer">Build with ❤️ &amp; Kotlin</string>
     <string name="about_logo_desc">App Logo</string>
@@ -132,7 +132,7 @@
     <string name="decompiler_r2ghidra">r2ghidra</string>
     <string name="decompiler_native">native</string>
     <string name="decompiler_r2dec">r2dec</string>
-    <string name="decompiler_aipdg">AIPdg</string>
+    <string name="decompiler_aipdg">AIBeautify</string>
     <string name="decompiler_switch">Switch Decompiler</string>
     <string name="decompiler_section_decompiler">Decompiler</string>
     <string name="decompiler_section_display">Display</string>

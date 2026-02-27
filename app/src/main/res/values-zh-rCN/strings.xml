@@ -51,7 +51,7 @@
     <string name="about_contact_comment">// 联系方式</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// 源代码</string>
-    <string name="about_core_value">radare2 @ 6.0.8</string>
+    <string name="about_core_value">radare2 @ 6.1.0</string>
     <string name="about_core_comment">// 核心引擎</string>
     <string name="about_footer">Build with ❤️ &amp; Kotlin</string>
     <string name="about_logo_desc">应用图标</string>
@@ -96,7 +96,7 @@
     <string name="decompiler_r2ghidra">r2ghidra</string>
     <string name="decompiler_native">native</string>
     <string name="decompiler_r2dec">r2dec</string>
-    <string name="decompiler_aipdg">AIPdg</string>
+    <string name="decompiler_aipdg">AI美化</string>
     <string name="decompiler_switch">切换反编译器</string>
     <string name="decompiler_section_decompiler">反编译器</string>
     <string name="decompiler_section_display">显示</string>
