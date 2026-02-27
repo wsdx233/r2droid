@@ -25,6 +25,7 @@ composeMarkdown = "0.5.8"
 room = "2.7.1"
 pagingRuntime = "3.2.1"
 pagingCompose = "3.2.1"
+material3 = "1.4.0"
 
 [libraries]
 compose-markdown = { module = "com.github.jeziellago:compose-markdown", version.ref = "composeMarkdown" }
@@ -63,6 +64,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
 paging-runtime = { group = "androidx.paging", name = "paging-runtime-ktx", version.ref = "pagingRuntime" }
 paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "pagingCompose" }
+androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

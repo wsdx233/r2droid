@@ -14,28 +14,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh 
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -642,64 +623,64 @@ private fun SearchResultList(
     val listState = rememberLazyListState()
     Box(modifier = modifier) {
         LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
-        items(results) { r ->
-            val isFrozen = frozenAddresses.containsKey(r.address)
-            UnifiedListItemWrapper(
-                title = r.address,
-                fullText = "${r.address} = ${r.value}",
-                actions = actions,
-                address = r.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
-            ) {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            r.address,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            r.value,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Freeze toggle
-                            IconButton(
-                                onClick = { onToggleFreeze(r.address, r.value) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    if (isFrozen) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = if (isFrozen) MaterialTheme.colorScheme.error
-                                           else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            // Edit button
-                            IconButton(
-                                onClick = { onEdit(r) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Filled.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
+            items(results) { r ->
+                val isFrozen = frozenAddresses.containsKey(r.address)
+                UnifiedListItemWrapper(
+                    title = r.address,
+                    fullText = "${r.address} = ${r.value}",
+                    actions = actions,
+                    address = r.address.removePrefix("0x").removePrefix("0X").toLongOrNull(16) ?: 0L
+                ) {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                r.address,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                r.value,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Freeze toggle
+                                IconButton(
+                                    onClick = { onToggleFreeze(r.address, r.value) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        if (isFrozen) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = if (isFrozen) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                // Edit button
+                                IconButton(
+                                    onClick = { onEdit(r) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
-    }
         AutoHideScrollbar(
             listState = listState,
             totalItems = results.size,
