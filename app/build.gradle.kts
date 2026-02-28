@@ -37,6 +37,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            isCrunchPngs = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -48,19 +49,36 @@ android {
             }
         }
     }
+
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     packaging {
         resources {
-            excludes += "META-INF/native-image/**"  // Optional: Prevents potential metadata conflicts
+            excludes += setOf(
+                "META-INF/native-image/**", // Optional: Prevents potential metadata conflicts
+                "kotlin/**",
+                "tables/**",
+                "org/**",
+                "**.properties",
+                "DebugProbesKt.bin"
+            )
         }
     }
 
     buildFeatures {
         compose = true
+        viewBinding = true
+    }
+
+    //noinspection WrongGradleMethod
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
 
     lint {

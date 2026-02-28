@@ -1,7 +1,7 @@
 ![R2droid](preview/icon.png)
 # R2Droid
 
-![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple.svg)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material3-blue.svg)
 ![Radare2](https://img.shields.io/badge/Engine-Radare2-orange.svg)
 
