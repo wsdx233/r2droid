@@ -1,20 +1,1216 @@
 {
   "tips": [
     {
-      "zh": "如果你只想快速浏览结构，可以先选择较轻量的分析选项，进入后再按需深入。",
-      "en": "If you only need a quick overview, start with a lighter analysis mode and dive deeper later."
+      "zh": "输入 '?' 可以查看当前上下文的帮助信息，加上单词可以搜索命令。例如 '? pdf'。",
+      "en": "Type '?' to view context help. Append a word to search commands, e.g., '? pdf'."
     },
     {
-      "zh": "分析期间日志会持续更新，出现 WARN/ERR 时可以优先定位对应命令。",
-      "en": "Logs update continuously during analysis. If you see WARN/ERR, check the related command first."
+      "zh": "使用 'aaa' 会进行深度自动分析，包含函数引用和类型推断，但在大文件中可能很慢。",
+      "en": "'aaa' performs deep auto-analysis including xrefs and types, but can be slow on large files."
     },
     {
-      "zh": "大文件分析可能较慢，保持应用前台可减少被系统回收的概率。",
-      "en": "Large file analysis can be slow; keeping the app in foreground reduces the chance of being killed."
+      "zh": "长按反汇编视图中的指令可以进入多选模式，方便批量复制或修改。",
+      "en": "Long press an instruction in the disassembly view to enter multi-select mode."
     },
     {
-      "zh": "进入项目后可按模块进行局部分析，通常比一次性全量分析更高效。",
-      "en": "After entering the project, analyzing specific modules is often more efficient than all-at-once full analysis."
+      "zh": "在 R2Droid 中，你可以通过 AI 助手一键解释难以理解的汇编代码。",
+      "en": "In R2Droid, you can use the AI assistant to explain complex assembly code with one click."
+    },
+    {
+      "zh": "'pdf' 命令全称是 Print Disassemble Function，用于打印当前函数的反汇编。",
+      "en": "The 'pdf' command stands for Print Disassemble Function."
+    },
+    {
+      "zh": "切换到“图表” (Graph) 视图可以更直观地查看函数的基本块控制流。",
+      "en": "Switch to the Graph view for a more intuitive look at the basic block control flow of a function."
+    },
+    {
+      "zh": "遇到未知的混淆代码？试试在 AI 聊天中发送片段让大模型帮你分析。",
+      "en": "Encountered obfuscated code? Send a snippet in the AI chat to let the LLM analyze it for you."
+    },
+    {
+      "zh": "'iz' 命令用于列出二进制文件中的数据段字符串。",
+      "en": "The 'iz' command lists strings in the data sections of the binary."
+    },
+    {
+      "zh": "'izz' 命令会扫描整个二进制文件中的所有内容来寻找字符串。",
+      "en": "The 'izz' command scans the entire binary to find all potential strings."
+    },
+    {
+      "zh": "十六进制视图 (Hex Viewer) 的底部键盘可以让你快速修改二进制数据。",
+      "en": "The bottom keyboard in the Hex Viewer allows you to quickly patch binary data."
+    },
+    {
+      "zh": "R2Droid 内置了 r2ghidra 和 r2dec，可以在“设置”中切换默认的反编译器。",
+      "en": "R2Droid includes r2ghidra and r2dec. You can switch the default decompiler in Settings."
+    },
+    {
+      "zh": "在终端中输入 's main' 可以快速跳转到 main 函数的地址。",
+      "en": "Type 's main' in the terminal to quickly seek to the main function's address."
+    },
+    {
+      "zh": "使用 'pdg' 可以调用 r2ghidra 插件生成 C 伪代码。",
+      "en": "Use 'pdg' to invoke the r2ghidra plugin and generate C pseudo-code."
+    },
+    {
+      "zh": "熵值 (Entropy) 高于 7.0 通常意味着该文件被加壳或加密了。",
+      "en": "An entropy value above 7.0 usually indicates the file is packed or encrypted."
+    },
+    {
+      "zh": "'iI' 命令显示二进制文件的基本信息，如架构、位数、操作系统等。",
+      "en": "'iI' shows basic binary info like architecture, bits, and OS."
+    },
+    {
+      "zh": "在 r2frida 模式下，你可以输入 'il' 查看目标进程加载的模块（动态库）。",
+      "en": "In r2frida mode, type 'il' to view loaded modules (libraries) of the target process."
+    },
+    {
+      "zh": "使用 'afl' 可以列出当前已分析出的所有函数。",
+      "en": "Use 'afl' to list all functions that have been analyzed so far."
+    },
+    {
+      "zh": "不知道某个函数的调用者？在反汇编界面点击菜单选择“交叉引用 (Xrefs)”。",
+      "en": "Don't know who called a function? Open the menu in the disasm view and select 'Xrefs'."
+    },
+    {
+      "zh": "ESIL 是 Radare2 的中间语言，用于评估和模拟指令的执行。",
+      "en": "ESIL is Radare2's intermediate language, used to evaluate and emulate instruction execution."
+    },
+    {
+      "zh": "ARM64 架构中，X0 到 X7 寄存器通常用于传递函数参数。",
+      "en": "In ARM64 architecture, registers X0 to X7 are typically used for passing function arguments."
+    },
+    {
+      "zh": "ARM64 的函数返回值通常存放在 X0 寄存器中。",
+      "en": "The return value of an ARM64 function is usually stored in the X0 register."
+    },
+    {
+      "zh": "使用 'wx' 命令可以写入十六进制字节，例如 'wx 9090'。",
+      "en": "Use the 'wx' command to write hex bytes, e.g., 'wx 9090'."
+    },
+    {
+      "zh": "使用 'wa' 命令可以写入汇编指令，例如 'wa nop'。",
+      "en": "Use the 'wa' command to write assembly instructions, e.g., 'wa nop'."
+    },
+    {
+      "zh": "在 Android 逆向中，JNI_OnLoad 是加载 so 库时第一个被执行的函数。",
+      "en": "In Android RE, JNI_OnLoad is the first function executed when a .so library is loaded."
+    },
+    {
+      "zh": "'axt' 查找谁调用了当前地址 (Xrefs To)，'axf' 查找当前地址调用了谁 (Xrefs From)。",
+      "en": "'axt' finds who calls the current address (Xrefs To); 'axf' finds who the current address calls (Xrefs From)."
+    },
+    {
+      "zh": "如果你需要保留 R2Droid 在后台分析，请在设置中开启“常驻通知”保活。",
+      "en": "If you need R2Droid to analyze in the background, enable 'Persistent Notification' in Settings."
+    },
+    {
+      "zh": "终端支持命令补全功能，点击键盘上方的 '$' 按钮可以展开补全建议。",
+      "en": "The terminal supports command completion. Tap the '$' button above the keyboard to see suggestions."
+    },
+    {
+      "zh": "在 Frida 模式下，'ic' 命令可以列出所有的类，'icq' 则只列出类名。",
+      "en": "In Frida mode, 'ic' lists all classes, while 'icq' lists only class names quietly."
+    },
+    {
+      "zh": "使用 'px' 打印十六进制转储，'pxw' 打印 32 位字长的十六进制转储。",
+      "en": "Use 'px' for a hex dump, and 'pxw' for a 32-bit word hex dump."
+    },
+    {
+      "zh": "当 R2 提示文件不可写时，可以通过终端输入 'oo+' 重新以可写模式打开文件。",
+      "en": "If R2 says the file is read-only, type 'oo+' in the terminal to reopen it in write mode."
+    },
+    {
+      "zh": "反编译器界面支持双指缩放调整字体大小。",
+      "en": "The decompiler view supports pinch-to-zoom to adjust the font size."
+    },
+    {
+      "zh": "使用 'CC' 命令可以为当前地址添加注释，'CC-' 用于删除注释。",
+      "en": "Use 'CC' to add a comment at the current address, and 'CC-' to remove it."
+    },
+    {
+      "zh": "在“设置”中开启“使用 HTTP 模式”可以提高长输出命令的响应速度。",
+      "en": "Enabling 'Use HTTP Mode' in Settings can improve response speed for commands with long outputs."
+    },
+    {
+      "zh": "R2Droid 的搜索界面支持使用自定义 R2 命令进行极客搜索 (如 /x 112233)。",
+      "en": "R2Droid's search interface supports custom R2 commands for geeky searches (e.g., /x 112233)."
+    },
+    {
+      "zh": "想要清空终端屏幕？输入 'clear' 或 'cls' 即可。",
+      "en": "Want to clear the terminal screen? Just type 'clear' or 'cls'."
+    },
+    {
+      "zh": "Radare2 的命令通常以单个字母代表一个大类，比如 'p' 代表 Print，'w' 代表 Write。",
+      "en": "Radare2 commands usually start with a letter representing a category: 'p' for Print, 'w' for Write."
+    },
+    {
+      "zh": "添加 '~' 可以像 Linux 的 grep 一样过滤命令输出，例如 'iI ~arch'。",
+      "en": "Append '~' to filter command output like Linux grep, e.g., 'iI ~arch'."
+    },
+    {
+      "zh": "R2Frida 允许你在没有 Root 的情况下通过 Gadget 模式调试 Android 应用。",
+      "en": "R2Frida allows you to debug Android apps without root using Gadget mode."
+    },
+    {
+      "zh": "'afn new_name' 可以重命名当前函数，这在去混淆时非常有用。",
+      "en": "'afn new_name' renames the current function, which is very helpful during deobfuscation."
+    },
+    {
+      "zh": "在分析大文件时，建议先选择“无”分析级别，进去后再针对特定函数使用 'af' 分析。",
+      "en": "For large files, it's recommended to choose 'None' analysis, then use 'af' on specific functions later."
+    },
+    {
+      "zh": "R2Droid 的 AI 功能可以调用外部大语言模型，你需要先在设置中配置 API Key。",
+      "en": "R2Droid's AI feature calls external LLMs. You need to configure your API Key in Settings first."
+    },
+    {
+      "zh": "在 AI 聊天中，你可以让它帮你写一个 Frida Hook 脚本。",
+      "en": "In the AI chat, you can ask the assistant to write a Frida hook script for you."
+    },
+    {
+      "zh": "汇编指令 'RET' 并不仅是函数结束，ROP 攻击中它被用来连接各个 Gadget。",
+      "en": "The 'RET' instruction isn't just for ending functions; in ROP attacks, it links gadgets together."
+    },
+    {
+      "zh": "使用 'is' 命令可以列出所有符号 (Symbols)，包括导入和导出的函数。",
+      "en": "Use the 'is' command to list all symbols, including imported and exported functions."
+    },
+    {
+      "zh": "'iS' 列出区段 (Sections)，比如 .text (代码段), .data (数据段), .rodata (只读数据)。",
+      "en": "'iS' lists sections, such as .text (code), .data (data), and .rodata (read-only data)."
+    },
+    {
+      "zh": "找不到入口点？'ie' 会列出所有的 Entry Points。",
+      "en": "Can't find the entry point? 'ie' lists all Entry Points."
+    },
+    {
+      "zh": "如果反汇编看起来像乱码，可能是架构不对，可以在“外观”中切换架构。",
+      "en": "If the disassembly looks like garbage, the architecture might be wrong. Switch it in the Appearance menu."
+    },
+    {
+      "zh": "ARM Thumb 模式的指令长度是 16 位，而标准 ARM 模式是 32 位。",
+      "en": "ARM Thumb mode instructions are 16 bits long, while standard ARM mode is 32 bits."
+    },
+    {
+      "zh": "你可以通过导出分析报告将逆向结果生成 Markdown 或 HTML 文档。",
+      "en": "You can generate a Markdown or HTML document by exporting the analysis report."
+    },
+    {
+      "zh": "逆向工程中，喝杯咖啡往往能带来灵感（或者带来更多 Bug）。",
+      "en": "In reverse engineering, a cup of coffee often brings inspiration (or more bugs)."
+    },
+    {
+      "zh": "使用 'V' 命令在原生 Radare2 中进入可视化模式 (但在 R2Droid 终端中不可用)。",
+      "en": "Use 'V' in native Radare2 to enter Visual Mode (not available in R2Droid's terminal though)."
+    },
+    {
+      "zh": "'pxa' 会将数据同时打印为十六进制和汇编指令。",
+      "en": "'pxa' prints data as both hex and assembly instructions."
+    },
+    {
+      "zh": "如果你不知道某个寄存器干什么的，'ar' 可以打印当前所有寄存器的状态。",
+      "en": "If you don't know what a register does, 'ar' prints the state of all current registers."
+    },
+    {
+      "zh": "使用 'dr' 可以在调试模式下查看寄存器值。",
+      "en": "Use 'dr' to view register values in debug mode."
+    },
+    {
+      "zh": "在 Frida 模式下，':dc' 可以继续执行进程。",
+      "en": "In Frida mode, ':dc' continues process execution."
+    },
+    {
+      "zh": "AI 聊天支持使用 <js>...</js> 标签执行 JavaScript 脚本。",
+      "en": "The AI chat supports executing JavaScript scripts using <js>...</js> tags."
+    },
+    {
+      "zh": "使用 'p=' 打印基于当前游标位置的熵值条形图。",
+      "en": "Use 'p=' to print an entropy bar graph based on the current cursor position."
+    },
+    {
+      "zh": "在十六进制视图中，每一行通常显示 16 个字节 (0x10)。",
+      "en": "In the Hex Viewer, each row typically displays 16 bytes (0x10)."
+    },
+    {
+      "zh": "点击地址栏历史记录图标，可以快速回到之前看过的函数。",
+      "en": "Tap the history icon on the address bar to quickly return to previously viewed functions."
+    },
+    {
+      "zh": "R2Droid 支持高亮显示 JMP 和 CALL 指令的目标地址。",
+      "en": "R2Droid highlights the target addresses of JMP and CALL instructions."
+    },
+    {
+      "zh": "'pd 20' 会向下打印 20 条汇编指令。",
+      "en": "'pd 20' prints 20 assembly instructions downwards."
+    },
+    {
+      "zh": "'pD 20' 类似于 pd，但专用于打印数据。 ",
+      "en": "'pD 20' is similar to pd, but used specifically for printing data."
+    },
+    {
+      "zh": "Radare2 的配置保存在 .radare2rc 文件中，R2Droid 也支持自定义它。",
+      "en": "Radare2 config is stored in .radare2rc. R2Droid supports customizing it."
+    },
+    {
+      "zh": "使用 'e' 命令查看或修改 Radare2 的全局配置。如 'e asm.arch=arm'。",
+      "en": "Use 'e' to view or modify Radare2 global configs. E.g., 'e asm.arch=arm'."
+    },
+    {
+      "zh": "遇到花指令 (Junk Code)？尝试用 'wx 90' (x86) 或 'wx 1f2003d5' (ARM64) 把它 NOP 掉。",
+      "en": "Encountered junk code? Try NOPing it with 'wx 90' (x86) or 'wx 1f2003d5' (ARM64)."
+    },
+    {
+      "zh": "通过 R2Frida，你可以在不暂停应用的情况下动态修改内存。",
+      "en": "With R2Frida, you can dynamically modify memory without suspending the app."
+    },
+    {
+      "zh": "AI 助手的 '思考深度' 选项如果设为 Heavy，它会产生更长但更准确的推理过程。",
+      "en": "If you set the AI's 'Thinking Level' to Heavy, it will produce longer but more accurate reasoning."
+    },
+    {
+      "zh": "'afvd' 命令用于打印当前函数的局部变量。",
+      "en": "'afvd' is used to print the local variables of the current function."
+    },
+    {
+      "zh": "C++ 的虚函数表 (vtable) 通常存放在 .rodata 段中。",
+      "en": "C++ virtual function tables (vtables) are usually stored in the .rodata section."
+    },
+    {
+      "zh": "如果你想查找 ROP Gadget，可以使用 '/R' 命令。",
+      "en": "If you want to find ROP gadgets, you can use the '/R' command."
+    },
+    {
+      "zh": "'/m' 可以搜索特定的魔数 (Magic numbers)。",
+      "en": "'/m' can search for specific magic numbers."
+    },
+    {
+      "zh": "在反汇编视图中，蓝色的指令通常是 CALL，绿色的通常是 JMP。",
+      "en": "In the disassembly view, blue instructions are usually CALLs, and green ones are JMPs."
+    },
+    {
+      "zh": "R2Droid 的调试面板支持单步步入 (Step Into) 和单步步过 (Step Over)。",
+      "en": "R2Droid's debug panel supports Step Into and Step Over."
+    },
+    {
+      "zh": "使用 'db 0x1000' 可以在 0x1000 处设置断点。",
+      "en": "Use 'db 0x1000' to set a breakpoint at 0x1000."
+    },
+    {
+      "zh": "'db- 0x1000' 用于移除 0x1000 处的断点。",
+      "en": "'db- 0x1000' is used to remove the breakpoint at 0x1000."
+    },
+    {
+      "zh": "在 Android 11+ 上，为了加载任意目录的文件，应用需要“所有文件访问”权限。",
+      "en": "On Android 11+, the app needs 'All files access' permission to load files from any directory."
+    },
+    {
+      "zh": "'s-' 命令可以撤销上一次跳转，类似于返回键。",
+      "en": "The 's-' command undoes the last seek, acting like a back button."
+    },
+    {
+      "zh": "'s+' 可以重做上一次被撤销的跳转。",
+      "en": "'s+' redoes the previously undone seek."
+    },
+    {
+      "zh": "Radare2 的魔法：几乎所有命令后面加 'j' 就会输出 JSON 格式！",
+      "en": "Radare2 magic: append 'j' to almost any command and it outputs JSON!"
+    },
+    {
+      "zh": "如果你看到乱码字符串，它可能被异或 (XOR) 加密了，试试 'wox' 命令解密。",
+      "en": "If you see gibberish strings, they might be XOR encrypted. Try the 'wox' command to decrypt."
+    },
+    {
+      "zh": "Android 的 DEX 文件以 'dex\\n035\\0' 开头。",
+      "en": "Android DEX files start with the magic bytes 'dex\\n035\\0'."
+    },
+    {
+      "zh": "ELF 文件的魔数是 7F 45 4C 46 (\\x7fELF)。",
+      "en": "The magic number for ELF files is 7F 45 4C 46 (\\x7fELF)."
+    },
+    {
+      "zh": "PE 文件的魔数是 4D 5A (MZ)。",
+      "en": "The magic number for PE files is 4D 5A (MZ)."
+    },
+    {
+      "zh": "使用 'it' 命令可以计算整个文件的哈希值 (MD5, SHA1 等)。",
+      "en": "Use the 'it' command to calculate the hash (MD5, SHA1, etc.) of the whole file."
+    },
+    {
+      "zh": "在分析大型 so 文件前，可以先用 R2Droid 的符号列表搜索感兴趣的函数。",
+      "en": "Before analyzing a huge .so file, use R2Droid's symbol list to search for functions of interest."
+    },
+    {
+      "zh": "R2Frida 的监控 (Monitor) 标签页底层使用的是 Frida 的 MemoryAccessMonitor。",
+      "en": "R2Frida's Monitor tab uses Frida's MemoryAccessMonitor under the hood."
+    },
+    {
+      "zh": "使用 'pdc' 可以调用系统内置的伪C代码生成器，速度比 r2ghidra 快。",
+      "en": "Use 'pdc' to invoke the built-in pseudo-C generator, which is faster than r2ghidra."
+    },
+    {
+      "zh": "如果 r2ghidra 报错，可能是 sleigh 架构文件缺失或不匹配。",
+      "en": "If r2ghidra throws an error, the sleigh architecture files might be missing or mismatched."
+    },
+    {
+      "zh": "图表视图中的红色边代表条件跳转失败 (Fail) 的分支。",
+      "en": "In the graph view, red edges represent the fail branch of a conditional jump."
+    },
+    {
+      "zh": "图表视图中的绿色边代表条件跳转成功 (Jump/True) 的分支。",
+      "en": "In the graph view, green edges represent the true (jump) branch of a conditional jump."
+    },
+    {
+      "zh": "蓝色边通常代表无条件跳转 (Unconditional Jump)。",
+      "en": "Blue edges usually represent unconditional jumps."
+    },
+    {
+      "zh": "通过 R2Droid 的导出功能，你可以一键生成目标函数的所有 Frida Hook 骨架代码。",
+      "en": "Using R2Droid's export feature, you can generate Frida hook skeletons for target functions with one click."
+    },
+    {
+      "zh": "在“设置”中可以更改默认的快速跳转目标（直接进反汇编或十六进制）。",
+      "en": "You can change the default quick jump target (directly to Disasm or Hex) in Settings."
+    },
+    {
+      "zh": "分析遇到瓶颈？出去走走，呼吸一下新鲜空气，答案也许就出来了。",
+      "en": "Stuck on analysis? Take a walk, get some fresh air. The answer might just come to you."
+    },
+    {
+      "zh": "在 R2 终端中，'agj' 用于导出函数的图形 JSON 数据，R2Droid 用它来画图。",
+      "en": "In the R2 terminal, 'agj' exports function graph JSON, which R2Droid uses to draw graphs."
+    },
+    {
+      "zh": "使用 '~?' 可以查看所有支持的过滤操作符符 (grep 操作)。",
+      "en": "Use '~?' to view all supported filter operators (grep operations)."
+    },
+    {
+      "zh": "'aflc' 命令可以统计当前文件中的函数总数。",
+      "en": "The 'aflc' command counts the total number of functions in the current file."
+    },
+    {
+      "zh": "如果程序跑飞了，检查一下是不是栈不平衡 (Stack Imbalance)。",
+      "en": "If the program crashes randomly, check if there's a stack imbalance."
+    },
+    {
+      "zh": "ARM 的 'POP {PC}' 相当于 x86 的 'RET' 指令。",
+      "en": "ARM's 'POP {PC}' is equivalent to the 'RET' instruction in x86."
+    },
+    {
+      "zh": "在 64 位 ARM 中，通常使用 'RET' 而不是 'POP {PC}'。",
+      "en": "In 64-bit ARM, 'RET' is typically used instead of 'POP {PC}'."
+    },
+    {
+      "zh": "Android NDK 开发中，C++ 函数名会被修饰 (Name Mangling)，R2 可以自动解修饰。",
+      "en": "In Android NDK, C++ function names are mangled. R2 can demangle them automatically."
+    },
+    {
+      "zh": "R2Droid 的反编译器支持“外部编辑器”模式，可将代码导出到其他 App 查看。",
+      "en": "R2Droid's decompiler supports 'External Editor' mode, exporting code to other apps for viewing."
+    },
+    {
+      "zh": "你可以长按导航栏的后退键来调出跳转历史对话框。",
+      "en": "Long press the back button on the navigation bar to bring up the jump history dialog."
+    },
+    {
+      "zh": "'pi 5' 会打印当前地址的 5 条汇编指令，不带地址和字节码前缀。",
+      "en": "'pi 5' prints 5 assembly instructions at the current address without address and byte prefixes."
+    },
+    {
+      "zh": "在多选模式下，点击“填充(Fill)”可以快速用指定的机器码覆盖大段代码。",
+      "en": "In multi-select mode, tap 'Fill' to quickly overwrite large code segments with specified opcodes."
+    },
+    {
+      "zh": "Frida 的 'Stalker' 模块可以用于指令级的执行追踪。",
+      "en": "Frida's 'Stalker' module can be used for instruction-level execution tracing."
+    },
+    {
+      "zh": "分析代码时，别忘了关注 BSS 段，那里存着未初始化的全局变量。",
+      "en": "When analyzing code, don't forget the BSS section; it holds uninitialized global variables."
+    },
+    {
+      "zh": "R2Pipe 是 Radare2 提供的 API 接口，R2Droid 通过它与底层的 C 核心通信。",
+      "en": "R2Pipe is Radare2's API. R2Droid uses it to communicate with the underlying C core."
+    },
+    {
+      "zh": "在终端中输入 'q' 会退出 Radare2 会话并关闭应用。",
+      "en": "Typing 'q' in the terminal will quit the Radare2 session and close the app."
+    },
+    {
+      "zh": "在设置中修改了 AI 提供商后，新的设置会立刻生效。",
+      "en": "After modifying the AI provider in settings, the new configuration takes effect immediately."
+    },
+    {
+      "zh": "十六进制编辑器中的 ASCII 列也可以点击跳转地址。",
+      "en": "The ASCII column in the hex editor can also be tapped to seek to an address."
+    },
+    {
+      "zh": "如果你需要进行批量重命名，可以编写一段 JavaScript 交给 AI 执行。",
+      "en": "If you need bulk renaming, you can write a JavaScript snippet and let the AI execute it."
+    },
+    {
+      "zh": "'axc' 可以列出当前函数所有的 CALL 指令。",
+      "en": "'axc' lists all CALL instructions in the current function."
+    },
+    {
+      "zh": "使用 'ood' 可以在调试模式下重新打开当前文件。",
+      "en": "Use 'ood' to reopen the current file in debug mode."
+    },
+    {
+      "zh": "遇到防调试 (Anti-Debugging)？检查 ptrace 调用或 /proc/self/status。",
+      "en": "Encountered anti-debugging? Check for ptrace calls or reads to /proc/self/status."
+    },
+    {
+      "zh": "TLS 回调函数会在 main 函数之前执行，常被恶意软件利用。",
+      "en": "TLS callbacks execute before the main function and are often abused by malware."
+    },
+    {
+      "zh": "不要试图在一个 1GB 的文件上直接运行 'aaaa'，你会后悔的。",
+      "en": "Don't try to run 'aaaa' directly on a 1GB file. You will regret it."
+    },
+    {
+      "zh": "如果分析卡住了，可以在顶部状态栏点击红色的停止按钮强制中断。",
+      "en": "If analysis gets stuck, tap the red stop button in the top status bar to forcefully interrupt it."
+    },
+    {
+      "zh": "逆向是一门艺术，而耐心是这门艺术的基础。",
+      "en": "Reverse engineering is an art, and patience is its foundation."
+    },
+    {
+      "zh": "在反汇编中看到 0x55555555 这样的地址？这说明开启了 PIE (地址无关执行)。",
+      "en": "Seeing addresses like 0x55555555 in disasm? It means PIE (Position Independent Executable) is enabled."
+    },
+    {
+      "zh": "可以通过 'e io.cache=true' 开启缓存模式，所有的修改只保存在内存中。",
+      "en": "Enable cache mode with 'e io.cache=true' to keep all modifications in memory only."
+    },
+    {
+      "zh": "Frida 搜索支持类型推断，'fsearch' 界面中可以联合搜索多个值。",
+      "en": "Frida search supports type inference. You can do union searches in the 'fsearch' screen."
+    },
+    {
+      "zh": "Android 的 libc.so 中包含了大量的标准 C 库函数，是逆向分析的好跳板。",
+      "en": "Android's libc.so contains many standard C library functions, making it a good springboard for RE."
+    },
+    {
+      "zh": "'aF' 命令可以强制在当前地址识别一个函数。",
+      "en": "The 'aF' command forcefully identifies a function at the current address."
+    },
+    {
+      "zh": "如果你弄乱了分析，可以用 'aaa' 重新覆盖，或者重新加载项目。",
+      "en": "If you mess up the analysis, you can overwrite it with 'aaa' or reload the project."
+    },
+    {
+      "zh": "R2Droid 会将你所有的修改 (旗标、注释、重命名) 保存到项目脚本中。",
+      "en": "R2Droid saves all your modifications (flags, comments, renames) into the project script."
+    },
+    {
+      "zh": "在图表视图中，如果某个块有很多入边，它可能是一个错误处理块或循环的结尾。",
+      "en": "In graph view, if a block has many incoming edges, it might be an error handler or loop end."
+    },
+    {
+      "zh": "'e asm.lines=false' 可以关闭反汇编视图左侧的控制流连线 (在终端中)。",
+      "en": "'e asm.lines=false' disables control flow lines on the left side of disassembly (in terminal)."
+    },
+    {
+      "zh": "使用 'p=e' 可以在终端里打印出非常酷炫的熵值热力图。",
+      "en": "Use 'p=e' to print a very cool entropy heatmap in the terminal."
+    },
+    {
+      "zh": "如果程序使用了 OLLVM 进行控制流平坦化，图表视图看起来会像一团乱麻。",
+      "en": "If the program uses OLLVM for control flow flattening, the graph view will look like a tangled mess."
+    },
+    {
+      "zh": "AI 聊天记录是自动保存的，点击右上角历史图标随时找回上下文。",
+      "en": "AI chat history is auto-saved. Tap the history icon to retrieve context anytime."
+    },
+    {
+      "zh": "在指令详情中，你可以查看该指令的 ESIL 表达式，了解其微观行为。",
+      "en": "In Instruction Detail, you can view the ESIL expression to understand its microscopic behavior."
+    },
+    {
+      "zh": "逆向其实就是：猜想 -> 验证 -> 失败 -> 换个姿势猜想。",
+      "en": "Reverse engineering is essentially: Guess -> Verify -> Fail -> Guess again differently."
+    },
+    {
+      "zh": "在搜索页面，勾选“使用自定义标志”可以指定搜索范围，如从光标处开始。",
+      "en": "In the Search page, checking 'Custom Flags' lets you specify ranges, like starting from the cursor."
+    },
+    {
+      "zh": "Android NDK 默认使用小端序 (Little Endian)。",
+      "en": "Android NDK defaults to Little Endian."
+    },
+    {
+      "zh": "修改了系统字体的用户，如果界面错乱，请在设置中指定一款等宽字体。",
+      "en": "If you changed system fonts and the UI is messy, specify a monospace font in Settings."
+    },
+    {
+      "zh": "想知道 'wa' 写入的汇编对应的机器码？终端执行 'pa nop' 就能看到了。",
+      "en": "Want to know the machine code for an assembly? Run 'pa nop' in the terminal."
+    },
+    {
+      "zh": "使用 'afv' 可以管理函数的参数和局部变量。",
+      "en": "Use 'afv' to manage a function's arguments and local variables."
+    },
+    {
+      "zh": "如果某个字符串找不到引用，它可能是被动态解密或通过偏移计算得出的。",
+      "en": "If a string has no xrefs, it might be decrypted dynamically or calculated via offsets."
+    },
+    {
+      "zh": "在 r2frida 中，'dp' 命令可以列出所有正在运行的进程。",
+      "en": "In r2frida, the 'dp' command lists all running processes."
+    },
+    {
+      "zh": "遇到不认识的魔改库？看看导出表 (Exports)，里面经常藏着线索。",
+      "en": "Encountered an unknown modified library? Look at the Exports; they often hide clues."
+    },
+    {
+      "zh": "R2Droid 支持从系统文件管理器直接“分享”或“打开方式”导入二进制文件。",
+      "en": "R2Droid supports importing binaries directly via 'Share' or 'Open With' from the file manager."
+    },
+    {
+      "zh": "你可以配置多个 AI 提供商并在下拉菜单中快速切换。",
+      "en": "You can configure multiple AI providers and quickly switch them from the dropdown menu."
+    },
+    {
+      "zh": "'p8 32' 可以打印前 32 个字节的十六进制字符串，非常适合写脚本。",
+      "en": "'p8 32' prints the first 32 bytes as a hex string, great for scripting."
+    },
+    {
+      "zh": "在 Frida 内存搜索中，“冻结 (Freeze)”功能会不断将内存覆盖为你设定的值。",
+      "en": "In Frida memory search, the 'Freeze' function continuously overwrites memory with your set value."
+    },
+    {
+      "zh": "分析被去除符号的 (Stripped) 二进制文件时，'aaa' 命令会根据调用关系自动命名函数。",
+      "en": "When analyzing stripped binaries, 'aaa' auto-names functions based on call relationships."
+    },
+    {
+      "zh": "'aflm' 会以更简洁的单行模式列出函数。",
+      "en": "'aflm' lists functions in a more concise single-line mode."
+    },
+    {
+      "zh": "如果你在逆向恶意软件，请确保在一个安全的环境中操作（或者你的手机足够坚固）。",
+      "en": "If you're RE-ing malware, ensure you're in a safe environment (or your phone is tough enough)."
+    },
+    {
+      "zh": "R2Droid 的项目会保存在私有目录，你可以通过设置将其迁移到公共存储。",
+      "en": "R2Droid projects are saved in private dir. You can migrate them to public storage in Settings."
+    },
+    {
+      "zh": "'ie' 命令不仅列出 main 函数，还会列出 INIT 和 FINI 数组中的函数。",
+      "en": "'ie' command lists not only the main function but also functions in INIT and FINI arrays."
+    },
+    {
+      "zh": "使用 'pf' (Print Format) 可以按照类似 C 结构体的格式打印内存数据。",
+      "en": "Use 'pf' (Print Format) to print memory data structured like C structs."
+    },
+    {
+      "zh": "如果程序有大量加壳，静态分析可能没用，你需要用 r2frida 动态 Dump 内存。",
+      "en": "If the app is heavily packed, static analysis might fail. You need r2frida to dump memory dynamically."
+    },
+    {
+      "zh": "Android 上的 ARM 汇编中，'SVC 0' 用于发起系统调用 (Syscall)。",
+      "en": "In Android ARM assembly, 'SVC 0' is used to trigger a system call (Syscall)."
+    },
+    {
+      "zh": "系统调用的调用号 (Syscall Number) 通常存放在 X8 (ARM64) 或 R7 (ARM32) 寄存器中。",
+      "en": "The Syscall Number is usually stored in the X8 (ARM64) or R7 (ARM32) register."
+    },
+    {
+      "zh": "在反编译窗口，高亮显示的变量和函数名是可以点击的（如果启用了高亮）。",
+      "en": "In the decompiler window, highlighted variables and function names are clickable (if enabled)."
+    },
+    {
+      "zh": "如果在终端看到一串很长的 r2 命令提示，输入 'q' 就可以退出该提示层级。",
+      "en": "If you see a long r2 command prompt in the terminal, type 'q' to exit that prompt level."
+    },
+    {
+      "zh": "'afb' 命令会列出当前函数的所有基本块 (Basic Blocks)。",
+      "en": "'afb' lists all Basic Blocks of the current function."
+    },
+    {
+      "zh": "如果你需要将修改后的二进制保存，使用 'wc' 命令将内存写入文件，但这需要文件以写模式打开。",
+      "en": "To save a patched binary, use 'wc' to write memory to file, requiring write mode."
+    },
+    {
+      "zh": "在 R2Droid 的全局概览中，可以直观地看到文件的区块权限 (如 r-x, rw-)。",
+      "en": "In R2Droid's global overview, you can intuitively see section permissions (e.g., r-x, rw-)."
+    },
+    {
+      "zh": "很多 Android 加固会破坏 ELF 头，导致 R2 解析失败。这时候你需要先修复 ELF 头。",
+      "en": "Many Android packers corrupt the ELF header, causing R2 parsing to fail. Fix the header first."
+    },
+    {
+      "zh": "'so' 命令可以跳转到文件的开头，相当于 's 0'，但不受基址影响。",
+      "en": "The 'so' command seeks to the beginning of the file, similar to 's 0' but ignores base address."
+    },
+    {
+      "zh": "使用 'wv' 可以写入一个随机值，这是模糊测试 (Fuzzing) 的小技巧。",
+      "en": "Use 'wv' to write a random value. This is a neat little fuzzing trick."
+    },
+    {
+      "zh": "当你迷失在代码中时，查看右侧的自动隐藏地址滚动条，它可以帮你定位大概位置。",
+      "en": "Lost in the code? Look at the auto-hiding address scrollbar on the right to orient yourself."
+    },
+    {
+      "zh": "如果分析过程应用闪退了，不用担心，你的上一次分析结果可能已经保存在项目里了。",
+      "en": "If the app crashes during analysis, don't worry, your last analysis might be saved in the project."
+    },
+    {
+      "zh": "在 AI 对话中，发送截图是不支持的，但你可以直接复制整行反汇编给它。",
+      "en": "Sending screenshots in AI chat is not supported, but you can copy entire disasm rows to it."
+    },
+    {
+      "zh": "在 Frida 脚本界面，右侧有快捷按键栏，可以快速输入常用字符如 'function'。 ",
+      "en": "In the Frida script UI, the right shortcut bar helps you quickly input common chars like 'function'."
+    },
+    {
+      "zh": "如果你把反编译引擎设为 AIBeautify，它会调用大模型来美化 r2ghidra 的输出。",
+      "en": "If you set the decompiler engine to AIBeautify, it will use an LLM to polish r2ghidra's output."
+    },
+    {
+      "zh": "'rabin2 -I' 是命令行下获取二进制信息的工具，在 R2Droid 中被整合到了概览页。",
+      "en": "'rabin2 -I' gets binary info in CLI. In R2Droid, it's integrated into the Overview page."
+    },
+    {
+      "zh": "在 r2frida 中，'dt' 命令用于追踪当前进程的调用栈。",
+      "en": "In r2frida, the 'dt' command is used to trace the call stack of the current process."
+    },
+    {
+      "zh": "想自己写个小脚本自动化分析？R2Droid 的 AI 助手内置了 r2pipe 的 JS 绑定环境。",
+      "en": "Want to automate analysis? R2Droid's AI assistant has a built-in JS r2pipe binding environment."
+    },
+    {
+      "zh": "当你在终端输入 'v' 并且卡住时，这说明你不应该在手机端用原生图形界面。",
+      "en": "When you type 'v' in the terminal and it hangs, it means you shouldn't use the native GUI on a phone."
+    },
+    {
+      "zh": "你可以通过修改系统提示词 (System Prompt)，让 AI 助手扮演特定流派的黑客。",
+      "en": "You can modify the System Prompt to make the AI assistant roleplay as a specific type of hacker."
+    },
+    {
+      "zh": "如果在十六进制视图长按字节，可以快速调出修改菜单。",
+      "en": "Long pressing a byte in the Hex Viewer brings up the modification menu quickly."
+    },
+    {
+      "zh": "R2 的 'agC' 命令可以生成全局的函数调用图，它展示了所有函数的相互调用关系。",
+      "en": "R2's 'agC' command generates a global call graph, showing all function relationships."
+    },
+    {
+      "zh": "在 Android 平台上调试，很多反调试手段会检测 'TracerPid'，记得绕过它。",
+      "en": "When debugging on Android, many anti-debug techniques check 'TracerPid'. Remember to bypass it."
+    },
+    {
+      "zh": "使用 'Vp' 可以进入炫酷的网格模式，但手机上看起来可能会有点小。",
+      "en": "Use 'Vp' to enter the cool grid mode, though it might look a bit small on a phone."
+    },
+    {
+      "zh": "如果觉得背景太亮，请在设置中强制启用“深色模式”。",
+      "en": "If the background is too bright, force enable 'Dark Mode' in Settings."
+    },
+    {
+      "zh": "对于基于 Java 的 Android 应用，你其实需要的是 Jadx 或 JEB，R2Droid 更适合分析 C/C++ 的 so 文件。",
+      "en": "For Java Android apps, you actually want Jadx or JEB. R2Droid is better for C/C++ .so files."
+    },
+    {
+      "zh": "遇到未知的指令？你可以用 'ao' 命令获取该指令的详细解析和模拟状态。",
+      "en": "Unknown instruction? Use the 'ao' command to get a detailed breakdown and emulation state."
+    },
+    {
+      "zh": "在 '关于' 页面，点击跳动的代码块会有神奇的物理动画效果。",
+      "en": "In the 'About' page, tapping the bouncing code blocks triggers a magical physics animation."
+    },
+    {
+      "zh": "逆向是一场猫鼠游戏，而你手里拿的是 Radare2 这把瑞士军刀。",
+      "en": "Reverse engineering is a cat-and-mouse game, and Radare2 is your Swiss Army knife."
+    },
+    {
+      "zh": "在 Frida 搜索中，修改值的同时勾选“冻结”，即可实现类似游戏修改器的“锁定”功能。",
+      "en": "In Frida search, modifying a value and checking 'Freeze' acts like a 'Lock' in game trainers."
+    },
+    {
+      "zh": "'aflj' 是 afl 的 JSON 输出版本，R2Droid 大量依赖以 'j' 结尾的命令。",
+      "en": "'aflj' is the JSON output of afl. R2Droid relies heavily on commands ending in 'j'."
+    },
+    {
+      "zh": "如果你需要进行远程调试，R2 支持 gdb:// 和 rap:// 协议。",
+      "en": "If you need remote debugging, R2 supports gdb:// and rap:// protocols."
+    },
+    {
+      "zh": "如果遇到指令解析为 'invalid'，可能是因为该处的代码尚未被正确反汇编。",
+      "en": "If an instruction parses as 'invalid', it might be because the code there isn't correctly disassembled yet."
+    },
+    {
+      "zh": "使用 'yd' 命令可以在屏幕上打印随机的幸运饼干信息（不过对逆向没啥用）。",
+      "en": "Use 'yd' to print random fortune cookie messages on screen (useless for RE though)."
+    },
+    {
+      "zh": "在 Android 上，/data/local/tmp 通常具有可执行权限，适合放置测试程序。",
+      "en": "On Android, /data/local/tmp usually has executable permissions, suitable for test programs."
+    },
+    {
+      "zh": "AI 聊天中，若命令包含危险操作 (如 !*)，系统会弹窗请求你授权执行。",
+      "en": "In AI chat, if a command contains dangerous operations (like !*), the system will ask for your approval."
+    },
+    {
+      "zh": "'pdc' 引擎很轻量，但有时生成的代码可读性不如 'pdg' (Ghidra)。",
+      "en": "The 'pdc' engine is lightweight, but its code readability is sometimes worse than 'pdg' (Ghidra)."
+    },
+    {
+      "zh": "通过 R2Frida 导出的脚本存放在 Download 目录下，随时可以通过文件管理器找到。",
+      "en": "Scripts exported via R2Frida are saved in the Download directory, accessible via file managers."
+    },
+    {
+      "zh": "多用搜索功能。如果找不到明显的入口，就找日志字符串。",
+      "en": "Use the search function often. If you can't find an obvious entry, look for log strings."
+    },
+    {
+      "zh": "R2Droid 基于 Kotlin Compose 开发，这让它的 UI 在各种屏幕尺寸下都能流畅运行。",
+      "en": "R2Droid is built with Kotlin Compose, making its UI run smoothly across various screen sizes."
+    },
+    {
+      "zh": "在终端中长按可以粘贴剪贴板中的命令。",
+      "en": "Long press in the terminal to paste commands from the clipboard."
+    },
+    {
+      "zh": "如果应用被系统杀后台，可以尝试将应用加入系统的“电池无限制”白名单。",
+      "en": "If the app is killed in the background, try adding it to the system's 'Unrestricted Battery' whitelist."
+    },
+    {
+      "zh": "R2Frida 的 Gadget 模式适用于无 Root 手机，只需将 Gadget 注入 APK 即可。",
+      "en": "R2Frida's Gadget mode works on non-root phones. Just inject the Gadget into the APK."
+    },
+    {
+      "zh": "'Stalker' 追踪功能虽然强大，但会产生巨大开销，请小心使用。",
+      "en": "The 'Stalker' trace feature is powerful but generates massive overhead. Use it with caution."
+    },
+    {
+      "zh": "R2Pipe 使用了互斥锁，确保同一时间只有一个命令在与底层交互。",
+      "en": "R2Pipe uses a mutex to ensure only one command interacts with the backend at a time."
+    },
+    {
+      "zh": "不要试图理解这段混淆的控制流，用动态调试把它跑出来吧。",
+      "en": "Don't try to understand this obfuscated control flow. Let dynamic debugging execute it for you."
+    },
+    {
+      "zh": "在分析时，'f' 命令可以列出当前所有的旗标 (Flags)，相当于自定义书签。",
+      "en": "During analysis, 'f' lists all flags, which act like custom bookmarks."
+    },
+    {
+      "zh": "如果遇到了花指令，可以用 'afb' 查看基本块，如果一个块只有一条指令，很可能就是花指令。",
+      "en": "For junk code, check 'afb'. If a block has only one instruction, it's likely junk."
+    },
+    {
+      "zh": "逆向没有捷径，唯一的捷径就是多读、多写、多调。",
+      "en": "There are no shortcuts in reverse engineering. The only shortcut is to read, write, and debug more."
+    },
+    {
+      "zh": "对于 stripped 的二进制文件，导入表 (Imports) 是理解程序功能的关键。",
+      "en": "For stripped binaries, the Imports table is key to understanding the program's functionality."
+    },
+    {
+      "zh": "在 R2 中，'cc' 命令用于比较文件内容或内存。",
+      "en": "In R2, the 'cc' command is used to compare file contents or memory."
+    },
+    {
+      "zh": "使用 'wz' 可以写入以 null 结尾的字符串。",
+      "en": "Use 'wz' to write a null-terminated string."
+    },
+    {
+      "zh": "R2 的 'agf' 可以将函数转换为图形，R2Droid 对此进行了深度的解析和渲染。",
+      "en": "R2's 'agf' converts a function to a graph. R2Droid parses and renders this deeply."
+    },
+    {
+      "zh": "在逆向过程中，保持冷静。即使是再复杂的算法，也是人写出来的。",
+      "en": "Stay calm during reversing. Even the most complex algorithms were written by humans."
+    },
+    {
+      "zh": "遇到反调试，可以尝试修改 ptrace 的返回值，或者 Hook ptrace 函数。",
+      "en": "For anti-debugging, try modifying the return value of ptrace, or Hook the ptrace function."
+    },
+    {
+      "zh": "R2Droid 支持将分析项目保存为脚本，方便在 PC 端的 Radare2 中重新加载。",
+      "en": "R2Droid can save projects as scripts, making it easy to reload them in Radare2 on PC."
+    },
+    {
+      "zh": "如果文件非常大，加载十六进制视图可能会有微小延迟，这是正常的。",
+      "en": "If the file is huge, loading the Hex view might have a slight delay, which is normal."
+    },
+    {
+      "zh": "多善用 AI。有时它虽然会胡说八道，但能提供一个新思路。",
+      "en": "Use AI wisely. Sometimes it talks nonsense, but it can offer a new perspective."
+    },
+    {
+      "zh": "在终端中，'Ctrl+C' 对应的是中断正在执行的命令。",
+      "en": "In the terminal, 'Ctrl+C' interrupts the currently executing command."
+    },
+    {
+      "zh": "如果汇编里充满了 'ADD R0, PC, R0'，这通常是位置无关代码在计算绝对地址。",
+      "en": "If assembly is full of 'ADD R0, PC, R0', it's usually PIC calculating absolute addresses."
+    },
+    {
+      "zh": "记得备份你的二进制文件，手滑写错了数据可能会让程序彻底崩溃。",
+      "en": "Remember to backup your binaries. A slip of the hand writing data can corrupt the program."
+    },
+    {
+      "zh": "长按顶部导航栏的“返回”按钮，可以快速呼出历史跳转记录。",
+      "en": "Long press the 'Back' button on the top bar to open the navigation history dialog."
+    },
+    {
+      "zh": "在反汇编视图中长按任意指令，即可开启多选模式进行批量复制或填充。",
+      "en": "Long press any instruction in the disassembly view to enable multi-select for batch copying or filling."
+    },
+    {
+      "zh": "R2Frida 模式下的内存搜索支持 GameGuardian 风格！使用 ';' 分隔可以进行联合搜索。",
+      "en": "R2Frida memory search supports GameGuardian style! Use ';' to perform union searches."
+    },
+    {
+      "zh": "遇到乱码的反编译代码？点击指令详情，让内置的 AI 助手帮你解释和美化它。",
+      "en": "Confused by decompiled code? Open instruction details and let the AI assistant explain and polish it."
+    },
+    {
+      "zh": "在 AI 聊天中，你可以直接输入 [[aaa]] 让 AI 替你执行 r2 命令。",
+      "en": "In AI Chat, you can type [[aaa]] to let the AI execute r2 commands for you."
+    },
+    {
+      "zh": "如果觉得分析太慢，可以在配置页面选择“自定义”并输入 'aa'，只进行基础分析。",
+      "en": "If analysis is too slow, select 'Custom' in the config screen and type 'aa' for basic analysis only."
+    },
+    {
+      "zh": "在十六进制视图中，点击右上角的键盘图标可以直接修改内存或文件字节。",
+      "en": "In the Hex view, tap the keyboard icon at the bottom to patch memory or file bytes directly."
+    },
+    {
+      "zh": "R2Droid 支持将静态分析项目（带重定位）直接加载到运行中的 Frida 会话里！",
+      "en": "R2Droid allows you to load and rebase a static analysis project directly into a live Frida session!"
+    },
+    {
+      "zh": "彩蛋：如果反编译结果是一坨屎，这不是 R2Droid 的错，请去骂编译器的优化选项。",
+      "en": "Easter Egg: If the decompiled code looks like garbage, don't blame R2Droid. Blame the compiler's optimization."
+    },
+    {
+      "zh": "拖动右侧的自适应滚动条，可以在庞大的二进制文件中实现光速跃迁。",
+      "en": "Drag the auto-hiding scrollbar on the right to jump at lightspeed through massive binaries."
+    },
+    {
+      "zh": "r2frida 的 Monitor 标签页可以实时监控特定内存地址的读写操作。",
+      "en": "The Monitor tab in r2frida allows you to trace read/write memory access in real-time."
+    },
+    {
+      "zh": "导出的 HTML 报告可以离线浏览，甚至会自动生成基础的 Frida Hook 脚本。",
+      "en": "Exported HTML reports can be viewed offline and even include auto-generated Frida hook scripts."
+    },
+    {
+      "zh": "跳转对话框（Jump）不仅支持十六进制地址，还可以直接输入函数名或符号名。",
+      "en": "The Jump dialog supports not only hex addresses but also function and symbol names."
+    },
+    {
+      "zh": "在反汇编视图点击行号左侧的区域，可以快速下断点（如果处于调试模式）。",
+      "en": "Tap the left gutter in the disassembly view to quickly toggle breakpoints (if in debug mode)."
+    },
+    {
+      "zh": "在设置中开启“保持后台运行”，可以防止手机在执行 'aaaa' 时把应用杀掉。",
+      "en": "Enable 'Persistent Notification' in settings to prevent Android from killing the app during a long 'aaaa' analysis."
+    },
+    {
+      "zh": "在 R2Frida 的脚本页面，向下滑动底栏可以呼出隐藏的控制台输出。",
+      "en": "In the R2Frida Scripts page, swipe down on the bottom bar to reveal the hidden console output."
+    },
+    {
+      "zh": "AI 助手非常聪明，它甚至可以使用 <js> 标签编写 JavaScript 脚本来处理数据。",
+      "en": "The AI assistant is smart enough to write and execute JavaScript using <js> tags to process data."
+    },
+    {
+      "zh": "不要在 1GB 大小的文件上跑 'aaaa'，除非你想拿手机煎鸡蛋。",
+      "en": "Don't run 'aaaa' on a 1GB file unless you want to fry an egg on your phone."
+    },
+    {
+      "zh": "长按顶部栏的定位图标（靶心），可以强制刷新所有视图的缓存。",
+      "en": "Long press the locate (target) icon on the top bar to force refresh all view caches."
+    },
+    {
+      "zh": "反编译视图支持双指缩放（Pinch-to-zoom），缩放比例会被自动保存。",
+      "en": "The Decompiler view supports pinch-to-zoom, and your preferred scale will be saved automatically."
+    },
+    {
+      "zh": "如果你把文件搞坏了，没关系，我们在“修改”时会提示你使用 'oo+' 以可写模式重新打开。",
+      "en": "If you break the file, don't worry. We will prompt you to reopen it in write mode with 'oo+' when patching."
+    },
+    {
+      "zh": "R2Frida 的搜索结果中，点击锁头图标可以“冻结”内存值，它会在后台不断被重写。",
+      "en": "In R2Frida search results, tap the lock icon to 'freeze' a memory value. It will be rewritten constantly in the background."
+    },
+    {
+      "zh": "你可以在设置中把默认的反编译器从 r2ghidra 切换到 r2dec，或者直接用 AI。",
+      "en": "You can change the default decompiler from r2ghidra to r2dec in the settings, or just use AI."
+    },
+    {
+      "zh": "交叉引用（Xrefs）对话框不仅显示从哪里来，还显示它调用了哪里（Refs To）。",
+      "en": "The Xrefs dialog shows both where it's called from (Refs From) and what it calls (Refs To)."
+    },
+    {
+      "zh": "图表视图（Graph）除了函数流程图，还支持全局调用图和数据引用图。",
+      "en": "The Graph view supports Global Call Graphs and Data Reference Graphs, not just Function Flow."
+    },
+    {
+      "zh": "R2Droid 内置了原生的终端模拟器（Terminal），并且配备了 ESC/CTRL/ALT 快捷键栏。",
+      "en": "R2Droid has a built-in native terminal emulator with a handy ESC/CTRL/ALT shortcut bar."
+    },
+    {
+      "zh": "温馨提示：逆向工程是一门艺术，也是掉头发的主要原因之一。",
+      "en": "Friendly reminder: Reverse engineering is an art, and also a leading cause of hair loss."
+    },
+    {
+      "zh": "在 R2Frida 的库（Libraries）列表中，长按某个库可以直接跳转到它的基址。",
+      "en": "In the R2Frida Libraries list, long press a library to jump directly to its base address."
+    },
+    {
+      "zh": "多选模式下的“填充”功能，可以直接输入 'nop'，它会自动帮你转换成对应的机器码并填充！",
+      "en": "In multi-select 'Fill', you can just type 'nop' and it will auto-translate to machine code and fill the range!"
+    },
+    {
+      "zh": "想要深色模式？去设置里调整“外观”，保护你熬夜逆向的眼睛。",
+      "en": "Want Dark Mode? Go to Settings -> Appearance. Protect your eyes during late-night reversing."
+    },
+    {
+      "zh": "R2Frida 的模糊搜索支持“增大”、“减小”和“未变”，非常适合用来找游戏的血量和金币。",
+      "en": "R2Frida's fuzzy search supports 'Increased', 'Decreased', and 'Unchanged'. Perfect for finding HP or coins in games."
+    },
+    {
+      "zh": "你可以在 AI 提示词设置中，给 AI 赋予不同的人设，比如让它用傲娇的语气回答你。",
+      "en": "You can customize the AI system prompt in settings. Make it answer you in a tsundere tone if you want."
+    },
+    {
+      "zh": "内置的 ESIL 调试器允许你在不运行实际代码的情况下，模拟执行和观察寄存器变化。",
+      "en": "The built-in ESIL debugger lets you emulate execution and observe register changes without actually running the code."
+    },
+    {
+      "zh": "点击函数列表中的项目，可以选择“函数变量”来查看当前函数的局部变量和参数。",
+      "en": "Tap an item in the Functions list and select 'Function Variables' to inspect locals and arguments."
+    },
+    {
+      "zh": "R2Droid 支持自定义 .radare2rc 文件，启动时会自动加载你的专属配置。",
+      "en": "R2Droid supports custom .radare2rc files. Your personal configs will be loaded on startup."
+    },
+    {
+      "zh": "在反汇编视图中，蓝色指令通常是 Call，绿色是跳转，红色是返回。很容易辨认吧？",
+      "en": "In Disassembly, blue instructions are Calls, green are Jumps, and red are Returns. Easy to spot, right?"
+    },
+    {
+      "zh": "手机屏幕太小看代码费劲？反编译视图开启“自动换行”也许能救你一命。",
+      "en": "Phone screen too small for reading code? Enabling 'Word Wrap' in Decompiler settings might save your life."
+    },
+    {
+      "zh": "在菜单的“复制”子选项中，你可以选择只复制操作码，或者连带地址和机器码一起复制完整行。",
+      "en": "In the 'Copy' submenu, you can choose to copy just opcodes, or the full row including address and bytes."
+    },
+    {
+      "zh": "R2Frida 的 Gadget 模式不需要设备 Root，非常适合未越狱手机的动态分析。",
+      "en": "R2Frida's Gadget mode doesn't require a rooted device. Perfect for dynamic analysis on stock phones."
+    },
+    {
+      "zh": "多去外面的世界看看，别老盯着这些十六进制的数字，它们又不会变成美少女。",
+      "en": "Go touch some grass. Staring at hex numbers won't turn them into anime girls."
+    },
+    {
+      "zh": "使用 HTTP 模式（实验性）可以让 R2Pipe 通信更快，如果卡顿可以去设置里开启试试。",
+      "en": "Using HTTP Mode (experimental) makes R2Pipe communication faster. Enable it in settings if the app feels sluggish."
+    },
+    {
+      "zh": "AI 提供商支持配置 Responses API 选项，适配最新的流式推理模型。",
+      "en": "The AI Provider settings support a Responses API toggle, adapting to the latest streaming reasoning models."
+    },
+    {
+      "zh": "在项目设置页面可以一键清空日志，让你的强迫症得到满足。",
+      "en": "You can clear all logs with one tap in the Project Settings page to satisfy your OCD."
+    },
+    {
+      "zh": "你知道吗？在任意视图按“自定义命令”，可以直接输入 'iI' 这种原生 r2 指令并查看结果。",
+      "en": "Did you know? Tap 'Custom Command' in any view to run native r2 commands like 'iI' and see the output."
+    },
+    {
+      "zh": "R2Droid 会自动提取硬编码字符串，你甚至可以按字符串所在节(Section)进行搜索。",
+      "en": "R2Droid automatically extracts hardcoded strings, and you can even search them by their Section name."
+    },
+    {
+      "zh": "R2Frida 的自定义函数扫描脚本可以找出那些没被标准导出表记录的隐藏函数。",
+      "en": "R2Frida's Custom Functions scanner can find hidden functions that aren't logged in standard export tables."
+    },
+    {
+      "zh": "点击寄存器面板的右上角，你可以切换调试后端（ESIL 或 Frida）。",
+      "en": "Tap the top-right of the Registers panel to switch between debug backends (ESIL or Frida)."
+    },
+    {
+      "zh": "代码图（Graph）里的节点可以随意拖拽和平移，别忘了试试双指缩放。",
+      "en": "Nodes in the Graph view can be panned freely. Don't forget to try pinch-to-zoom."
+    },
+    {
+      "zh": "如果你不知道某个选项什么意思，那通常保持默认就是最好的选择。",
+      "en": "If you don't know what an option does, leaving it at default is usually the best choice."
+    },
+    {
+      "zh": "R2Droid 的项目系统会将分析脚本和元数据保存在应用目录中，原文件不会被污染。",
+      "en": "R2Droid's project system saves analysis scripts and metadata in the app dir. Your original binary remains untouched."
+    },
+    {
+      "zh": "使用 R2Frida 搜索内存时，指定特定的内存区域（如 C_DATA 或 JAVA_HEAP）会快得多。",
+      "en": "When searching memory with R2Frida, specifying memory regions (like C_DATA or JAVA_HEAP) makes it much faster."
+    },
+    {
+      "zh": "修改反汇编视图的变量名时，原有的栈指针偏移依然会被 AI 识别并提供帮助。",
+      "en": "When renaming variables in disassembly, the original stack offsets are still recognized by AI for assistance."
+    },
+    {
+      "zh": "如果应用闪退了，不用担心，上次自动保存的项目可能还活着。",
+      "en": "If the app crashes, don't panic. Your last auto-saved project might still be alive."
+    },
+    {
+      "zh": "AI 对话支持保留历史记录，你可以随时回溯上周和 AI 探讨过的算法细节。",
+      "en": "AI Chat supports history retention. You can always go back to the algorithm details you discussed with AI last week."
+    },
+    {
+      "zh": "在十六进制视图中，长按一个字节可以选择“修改字符串”，它会自动帮你处理转义。",
+      "en": "In Hex view, long press a byte and select 'Modify String'. It handles escaping automatically for you."
+    },
+    {
+      "zh": "R2Frida 的批量写入功能（Batch Write）可以直接将内存搜索出的所有结果一次性修改。",
+      "en": "R2Frida's Batch Write can modify all memory search results at once. Handle with care!"
+    },
+    {
+      "zh": "遇到无法解析的指令？那是花指令，或者你搞错了架构。去主页试试切换架构选项。",
+      "en": "Encountering unparseable instructions? It's junk code, or you picked the wrong arch. Try 'Switch Arch' on the home page."
+    },
+    {
+      "zh": "在设置中可以更改字体，如果你有看起来很酷的黑客字体（.ttf），现在就可以用上了。",
+      "en": "You can change fonts in Settings. If you have a cool hacker font (.ttf), now is the time to use it."
+    },
+    {
+      "zh": "终端里的快捷输入栏（Ctrl, Alt, Tab）专门为没有实体键盘的触屏黑客设计。",
+      "en": "The extra keys bar (Ctrl, Alt, Tab) in the Terminal is designed specifically for touchscreen hackers without physical keyboards."
+    },
+    {
+      "zh": "当 AI 试图执行含有风险的 r2 命令（比如 !rm）时，R2Droid 会弹窗请求你的批准。",
+      "en": "When AI tries to execute risky r2 commands (like !rm), R2Droid will pop up requesting your approval."
+    },
+    {
+      "zh": "逆向是一场持久战，如果卡住了，喝杯咖啡、睡个觉，明天醒来也许就豁然开朗了。",
+      "en": "Reversing is a marathon. If you're stuck, drink coffee, sleep, and you might figure it out tomorrow."
+    },
+    {
+      "zh": "在概览页面点击入口点（Entry Points）的地址，可以直接跳转到反汇编代码的开始处。",
+      "en": "Tap an address in the Entry Points card on the Overview page to jump straight to the start of the code."
+    },
+    {
+      "zh": "AI 助手生成的带有 <thought> 的推理过程，可以点击展开查看它的“内心戏”。",
+      "en": "You can tap to expand the <thought> reasoning process generated by the AI to see its 'inner monologue'."
+    },
+    {
+      "zh": "反汇编列表的分页加载机制即使面对几百 MB 的 SO 文件也能保持丝滑流畅。",
+      "en": "The paging mechanism of the disassembly list keeps things buttery smooth even with hundreds of MBs of SO files."
+    },
+    {
+      "zh": "如果在终端输入了乱码导致屏幕花了，输入 'clear' 或者 'cls' 就可以清屏拯救一下。",
+      "en": "If you messed up the terminal screen with garbage output, type 'clear' or 'cls' to save it."
+    },
+    {
+      "zh": "R2Frida 提供一键复制 Frida Hook 模板的功能，再也不用手敲 Interceptor.attach 了。",
+      "en": "R2Frida provides one-tap copying of Frida Hook templates. No more typing Interceptor.attach by hand."
+    },
+    {
+      "zh": "你可以随时在“功能”页选择重新安装 r2frida 核心库，以获取最新的构建版本。",
+      "en": "You can reinstall the r2frida core library anytime from the Features page to get the latest build."
+    },
+    {
+      "zh": "反编译内置的 Sora Editor 拥有出色的 C 语言语法高亮，长代码阅读体验极佳。",
+      "en": "The built-in Sora Editor for decompilation has excellent C syntax highlighting, great for reading long code."
+    },
+    {
+      "zh": "二进制文件熵值图（Entropy）里高高突起的波峰，往往意味着那里藏着被压缩或加密的数据。",
+      "en": "High peaks in the Entropy chart usually mean compressed or encrypted data is hiding there."
+    },
+    {
+      "zh": "R2Droid 虽然是个移动端应用，但它底层跑的可是原汁原味的开源 Radare2 引擎！",
+      "en": "Though R2Droid is a mobile app, it runs the authentic, open-source Radare2 engine under the hood!"
+    },
+    {
+      "zh": "当你在十六进制视图上下拖动滚动条时，左下角会实时显示当前所在的准确文件偏移。",
+      "en": "When you drag the scrollbar in Hex view, the exact file offset is updated in real-time at the bottom left."
+    },
+    {
+      "zh": "代码有混淆？试试打开实验性分析（aaaa），虽然慢，但它会尝试执行 ESIL 模拟来去混淆。",
+      "en": "Obfuscated code? Try experimental analysis (aaaa). It's slow, but it uses ESIL emulation to deobfuscate."
+    },
+    {
+      "zh": "设置中的“默认跳转目标”允许你配置：每次点击地址是跳到反汇编，还是十六进制，或者每次询问。",
+      "en": "The 'Default Jump Target' in settings lets you choose: always jump to Disasm, Hex, or Ask every time."
+    },
+    {
+      "zh": "AI 会话支持 Markdown 渲染，包含代码块的输出看起来就像是在用电脑一样舒适。",
+      "en": "AI Chat supports Markdown rendering. Output with code blocks looks as comfortable as using a PC."
+    },
+    {
+      "zh": "找不到想要的模块基址？去 R2Frida 的 Mappings 列表里直接搜索文件名就行了。",
+      "en": "Can't find a module base address? Just search its filename directly in the R2Frida Mappings list."
+    },
+    {
+      "zh": "逆向口诀：遇事不决先查壳，查壳不行就 Hook，Hook 不到看内存，内存没有早点睡。",
+      "en": "Reversing mantra: Check packers first, if failed then Hook, if no hook then dump memory, if no memory then go to sleep."
+    },
+    {
+      "zh": "你可以长按底部的导航栏图标，什么都不会发生，但这能锻炼你的耐心。",
+      "en": "You can long press the bottom navigation icons. Nothing will happen, but it builds your patience."
+    },
+    {
+      "zh": "分析配置文件过大加载缓慢时，试试在设置中限制 AI 输出的最大截断长度。",
+      "en": "If large analysis files load slowly, try limiting the AI output truncation length in Settings."
+    },
+    {
+      "zh": "自定义命令支持类似 `?v $s` 的数学和变量表达式解析，用它算偏移不要太爽。",
+      "en": "Custom commands support math and variable parsing like `?v $s`. Super satisfying for calculating offsets."
+    },
+    {
+      "zh": "R2Frida 的搜索结果允许直接输入自定义 JS 表达式过滤，比如 `v > 0 && v < 100`。",
+      "en": "R2Frida search results allow filtering with custom JS expressions, e.g., `v > 0 && v < 100`."
+    },
+    {
+      "zh": "多选操作中的“扩展到函数”按钮，能一键选中当前光标所在的整个函数的范围。",
+      "en": "The 'Extend' button in multi-select instantly selects the entire range of the current function."
+    },
+    {
+      "zh": "在使用 AI 助手时，尝试配置 DeepSeek 或 OpenAI 的 API Key，它们对汇编的理解最准确。",
+      "en": "When using the AI assistant, try configuring DeepSeek or OpenAI API keys. They understand assembly best."
+    },
+    {
+      "zh": "在“提取报告”功能中，你可以一键将成百上千个函数的反编译结果全部导出为 Markdown。",
+      "en": "In the 'Export Report' feature, you can export the decompiled results of hundreds of functions to Markdown at once."
+    },
+    {
+      "zh": "R2Frida 的内存读写可以直接绕过部分反调试检查，毕竟它是从外部附加的魔法。",
+      "en": "R2Frida's memory read/write can bypass some anti-debugging checks. It's external magic, after all."
+    },
+    {
+      "zh": "在图表视图中点击“详情”，它会自动弹出指令解释，结合流程图食用风味更佳。",
+      "en": "Tap 'Detail' in the Graph view to pop up instruction explanations. Tastes best when paired with flowcharts."
+    },
+    {
+      "zh": "如果你发现应用变卡了，建议检查是不是后台挂着一个正在搜索整个内存的 Frida 脚本。",
+      "en": "If the app becomes laggy, check if you left a Frida script searching the entire memory in the background."
+    },
+    {
+      "zh": "修改了函数的局部变量名称后，反编译视图里的伪代码也会同步更新你的命名。",
+      "en": "After renaming a function's local variable, the pseudocode in the Decompiler view will update with your new name."
+    },
+    {
+      "zh": "R2Droid 完全由 Kotlin 和 Jetpack Compose 编写，这就是为什么它的 UI 如此丝滑。",
+      "en": "R2Droid is written entirely in Kotlin and Jetpack Compose. That's why the UI is so buttery smooth."
+    },
+    {
+      "zh": "开启“忽略电池优化”，可以确保你在喝咖啡时，后台的深度分析不会被系统无情抹杀。",
+      "en": "Enable 'Ignore Battery Optimization' to ensure the system doesn't mercilessly kill your deep analysis while you grab coffee."
+    },
+    {
+      "zh": "“世上无难事，只要肯放弃。” —— 致每一位看着混淆代码发呆的逆向工程师。",
+      "en": "'Nothing is impossible if you just give up.' — To every reverse engineer staring blankly at obfuscated code."
     }
   ]
 }

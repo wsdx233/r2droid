@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,10 +60,15 @@ fun AnalysisProgressScreen(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val tips = remember { loadAnalysisTips(context) }
+    val tipSequence = remember(tips) {
+        mutableStateListOf<Int>().apply {
+            addAll(shuffledTipIndices(tips.size))
+        }
+    }
     val isChinese = remember(configuration) {
         configuration.locales[0]?.language?.startsWith("zh") == true
     }
-    var currentTipIndex by rememberSaveable { mutableIntStateOf(0) }
+    var sequencePosition by rememberSaveable(tips.size) { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -107,15 +113,26 @@ fun AnalysisProgressScreen(
             AnalysisTipsCarousel(
                 tips = tips,
                 isChinese = isChinese,
-                currentTipIndex = currentTipIndex,
+                currentTipIndex = if (tips.isEmpty()) 0 else tipSequence[sequencePosition],
+                currentTipNumber = if (tips.isEmpty()) 0 else tipSequence[sequencePosition] + 1,
+                canGoPrevious = sequencePosition > 0,
                 onPrevious = {
-                    if (tips.isNotEmpty()) {
-                        currentTipIndex = (currentTipIndex - 1 + tips.size) % tips.size
+                    if (sequencePosition > 0) {
+                        sequencePosition -= 1
                     }
                 },
                 onNext = {
                     if (tips.isNotEmpty()) {
-                        currentTipIndex = (currentTipIndex + 1) % tips.size
+                        if (sequencePosition < tipSequence.lastIndex) {
+                            sequencePosition += 1
+                        } else {
+                            val nextRound = shuffledTipIndices(
+                                count = tips.size,
+                                avoidFirst = tipSequence.lastOrNull()
+                            )
+                            tipSequence.addAll(nextRound)
+                            sequencePosition += 1
+                        }
                     }
                 }
             )
@@ -184,6 +201,8 @@ private fun AnalysisTipsCarousel(
     tips: List<AnalysisTip>,
     isChinese: Boolean,
     currentTipIndex: Int,
+    currentTipNumber: Int,
+    canGoPrevious: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -216,15 +235,14 @@ private fun AnalysisTipsCarousel(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(
-                    text = stringResource(
-                        R.string.analysis_tips_index,
-                        currentTipIndex + 1,
-                        tips.size
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+//                Text(
+//                    text = stringResource(
+//                        R.string.analysis_tips_index,
+//                        currentTipNumber
+//                    ),
+//                    style = MaterialTheme.typography.labelSmall,
+//                    color = MaterialTheme.colorScheme.onSurfaceVariant
+//                )
             }
 
             Row(
@@ -233,7 +251,7 @@ private fun AnalysisTipsCarousel(
             ) {
                 TipNavButton(
                     text = stringResource(R.string.analysis_tips_previous),
-                    enabled = tips.size > 1,
+                    enabled = canGoPrevious,
                     onClick = onPrevious
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -245,6 +263,20 @@ private fun AnalysisTipsCarousel(
             }
         }
     }
+}
+
+private fun shuffledTipIndices(count: Int, avoidFirst: Int? = null): List<Int> {
+    if (count <= 0) return emptyList()
+    if (count == 1) return listOf(0)
+
+    val shuffled = (0 until count).shuffled().toMutableList()
+    if (avoidFirst != null && shuffled.first() == avoidFirst) {
+        val second = 1
+        val first = shuffled[0]
+        shuffled[0] = shuffled[second]
+        shuffled[second] = first
+    }
+    return shuffled
 }
 
 @Composable

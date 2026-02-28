@@ -137,7 +137,7 @@
     <string name="analysis_tips_empty">暂时没有可显示的小贴士。</string>
     <string name="analysis_tips_previous">上一条</string>
     <string name="analysis_tips_next">下一条</string>
-    <string name="analysis_tips_index">第 %1$d / %2$d 条</string>
+    <string name="analysis_tips_index">#%1$d</string>
 
     <!-- Project Components -->
     <string name="menu_copy">复制</string>

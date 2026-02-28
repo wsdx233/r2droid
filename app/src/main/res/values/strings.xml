@@ -173,7 +173,7 @@
     <string name="analysis_tips_empty">No tips available right now.</string>
     <string name="analysis_tips_previous">Previous</string>
     <string name="analysis_tips_next">Next</string>
-    <string name="analysis_tips_index">Tip %1$d / %2$d</string>
+    <string name="analysis_tips_index">#%1$d</string>
 
     <!-- Project Components -->
     <string name="menu_copy">Copy</string>
