@@ -6,6 +6,7 @@ object FridaCustomScripts {
         try {
             var results = [];
             var currentOffset = r2frida.offset;
+            currentOffset = ptr(currentOffset);
             var targetMod = null;
             var modules = Process.enumerateModules();
             for (var m = 0; m < modules.length; m++) {

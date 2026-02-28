@@ -375,10 +375,20 @@ private fun HomeCompactLayout(
                 IconButton(onClick = viewModel::onSettingsClicked) {
                     Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.home_settings), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(stringResource(R.string.home_settings), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = stringResource(R.string.home_settings),
+                    modifier = Modifier.clickable(onClick = viewModel::onSettingsClicked),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.home_about), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = stringResource(R.string.home_about),
+                    modifier = Modifier.clickable(onClick = viewModel::onAboutClicked),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 IconButton(onClick = viewModel::onAboutClicked) {
                     Icon(Icons.Default.Info, contentDescription = stringResource(R.string.home_about), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

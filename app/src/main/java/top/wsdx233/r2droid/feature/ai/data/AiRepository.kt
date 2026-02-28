@@ -1,10 +1,5 @@
 package top.wsdx233.r2droid.feature.ai.data
 
-import com.aallam.openai.api.chat.ChatCompletionRequest
-import com.aallam.openai.api.chat.StreamOptions
-import com.aallam.openai.api.chat.ChatMessage as ApiChatMessage
-import com.aallam.openai.api.chat.ChatRole as ApiChatRole
-import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
 import com.aallam.openai.client.OpenAIConfig
 import com.aallam.openai.client.OpenAIHost
@@ -12,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapNotNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -23,20 +17,10 @@ import javax.inject.Singleton
 @Singleton
 class AiRepository @Inject constructor() {
 
-    private var openAI: OpenAI? = null
-    private var currentProviderId: String? = null
     private var currentProvider: AiProvider? = null
 
     fun configure(provider: AiProvider) {
         currentProvider = provider
-        if (currentProviderId == provider.id && openAI != null) return
-        currentProviderId = provider.id
-        openAI = OpenAI(
-            OpenAIConfig(
-                token = provider.apiKey,
-                host = OpenAIHost(baseUrl = provider.baseUrl.trimEnd('/') + "/")
-            )
-        )
     }
 
     fun streamChat(
@@ -46,36 +30,84 @@ class AiRepository @Inject constructor() {
         useResponsesApi: Boolean = false,
         thinkingLevel: ThinkingLevel = ThinkingLevel.Auto
     ): Flow<String> {
+        val provider = currentProvider ?: throw IllegalStateException("AI provider not configured")
         if (useResponsesApi) {
-            val provider = currentProvider ?: throw IllegalStateException("AI provider not configured")
             return streamResponsesApi(provider, messages, modelName, systemPrompt, thinkingLevel)
         }
+        return streamChatCompletionsApi(provider, messages, modelName, systemPrompt)
+    }
 
-        val client = openAI ?: throw IllegalStateException("AI provider not configured")
-
-        val apiMessages = buildList {
-            add(ApiChatMessage(role = ApiChatRole.System, content = systemPrompt))
-            for (msg in messages) {
-                val role = when (msg.role) {
-                    ChatRole.User, ChatRole.ExecutionResult -> ApiChatRole.User
-                    ChatRole.Assistant -> ApiChatRole.Assistant
-                    ChatRole.System -> ApiChatRole.System
-                }
-                add(ApiChatMessage(role = role, content = msg.content))
-            }
+    private fun streamChatCompletionsApi(
+        provider: AiProvider,
+        messages: List<ChatMessage>,
+        modelName: String,
+        systemPrompt: String
+    ): Flow<String> = flow {
+        val endpoint = provider.baseUrl.trimEnd('/') + "/chat/completions"
+        val payload = buildChatCompletionsPayload(messages, modelName, systemPrompt)
+        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 30_000
+            readTimeout = 120_000
+            doInput = true
+            doOutput = true
+            setRequestProperty("Authorization", "Bearer ${provider.apiKey.trim()}")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream")
         }
 
-        val request = ChatCompletionRequest(
-            model = ModelId(modelName),
-            messages = apiMessages,
-            streamOptions = StreamOptions(includeUsage = true)
-        )
+        try {
+            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
 
-        return client.chatCompletions(request)
-            .mapNotNull { chunk ->
-                chunk.choices.firstOrNull()?.delta?.content
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                val errorBody = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                throw IllegalStateException("Chat API failed ($responseCode): $errorBody")
             }
-            .flowOn(Dispatchers.IO)
+
+            connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                lines.forEach { rawLine ->
+                    val line = rawLine.trim()
+                    if (!line.startsWith("data:")) return@forEach
+                    val data = line.removePrefix("data:").trim()
+                    if (data == "[DONE]") return@forEach
+                    val delta = extractChatDelta(data)
+                    if (delta.isNotEmpty()) emit(delta)
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    private fun buildChatCompletionsPayload(
+        messages: List<ChatMessage>,
+        modelName: String,
+        systemPrompt: String
+    ): String {
+        val msgs = JSONArray()
+        msgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
+        for (msg in messages) {
+            val role = when (msg.role) {
+                ChatRole.User, ChatRole.ExecutionResult -> "user"
+                ChatRole.Assistant -> "assistant"
+                ChatRole.System -> "system"
+            }
+            msgs.put(JSONObject().put("role", role).put("content", msg.content))
+        }
+        return JSONObject()
+            .put("model", modelName)
+            .put("messages", msgs)
+            .put("stream", true)
+            .toString()
+    }
+
+    private fun extractChatDelta(data: String): String {
+        if (data.isBlank()) return ""
+        val json = JSONObject(data)
+        val choices = json.optJSONArray("choices") ?: return ""
+        val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: return ""
+        return delta.optString("content", "")
     }
 
     private fun streamResponsesApi(
@@ -214,8 +246,6 @@ class AiRepository @Inject constructor() {
     }
 
     fun resetClient() {
-        openAI = null
-        currentProviderId = null
         currentProvider = null
     }
 }
