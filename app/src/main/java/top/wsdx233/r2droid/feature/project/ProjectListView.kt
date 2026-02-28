@@ -47,7 +47,10 @@ fun ProjectListView(
     relocationsListState: LazyListState? = null,
     stringsListState: LazyListState? = null,
     functionsListState: LazyListState? = null,
-    onNavigateToDetail: (Long, Int) -> Unit
+    onNavigateToDetail: (Long, Int) -> Unit,
+    onQuickNavigateToDetail: (Long) -> Unit,
+    onMarkVisited: (Long) -> Unit,
+    isVisited: (Long) -> Boolean
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val state = uiState as? ProjectUiState.Success ?: return
@@ -65,6 +68,9 @@ fun ProjectListView(
             onJumpToDisasm = { addr ->
                 onNavigateToDetail(addr, 1)
             },
+            onQuickJump = { addr -> onQuickNavigateToDetail(addr) },
+            onMarkVisited = onMarkVisited,
+            isVisited = isVisited,
             onShowXrefs = { addr ->
                 disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr))
             }
@@ -82,6 +88,9 @@ fun ProjectListView(
             onJumpToDisasm = { addr ->
                 onNavigateToDetail(addr, 1)
             },
+            onQuickJump = { addr -> onQuickNavigateToDetail(addr) },
+            onMarkVisited = onMarkVisited,
+            isVisited = isVisited,
             onShowXrefs = { addr ->
                 disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr))
             },

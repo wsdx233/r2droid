@@ -89,6 +89,9 @@ class SettingsViewModel : ViewModel() {
     private val _httpPort = MutableStateFlow(SettingsManager.httpPort)
     val httpPort = _httpPort.asStateFlow()
 
+    private val _defaultJumpTarget = MutableStateFlow(SettingsManager.defaultJumpTarget)
+    val defaultJumpTarget = _defaultJumpTarget.asStateFlow()
+
     private val _decompilerShowLineNumbers = MutableStateFlow(SettingsManager.decompilerShowLineNumbers)
     val decompilerShowLineNumbers = _decompilerShowLineNumbers.asStateFlow()
 
@@ -199,6 +202,11 @@ class SettingsViewModel : ViewModel() {
         _httpPort.value = value
     }
 
+    fun setDefaultJumpTarget(value: String) {
+        SettingsManager.defaultJumpTarget = value
+        _defaultJumpTarget.value = value
+    }
+
     fun setDecompilerShowLineNumbers(value: Boolean) {
         SettingsManager.decompilerShowLineNumbers = value
         _decompilerShowLineNumbers.value = value
@@ -245,6 +253,7 @@ class SettingsViewModel : ViewModel() {
         SettingsManager.aiOutputTruncateLimit = 100000
         SettingsManager.useHttpMode = false
         SettingsManager.httpPort = 9090
+        SettingsManager.defaultJumpTarget = "ask"
         _fontPath.value = null
         _language.value = "system"
         _projectHome.value = null
@@ -260,6 +269,7 @@ class SettingsViewModel : ViewModel() {
         _aiOutputTruncateLimit.value = 100000
         _useHttpMode.value = false
         _httpPort.value = 9090
+        _defaultJumpTarget.value = "ask"
     }
 }
 
@@ -285,6 +295,7 @@ fun SettingsScreen(
     val aiOutputTruncateLimit by viewModel.aiOutputTruncateLimit.collectAsState()
     val useHttpMode by viewModel.useHttpMode.collectAsState()
     val httpPort by viewModel.httpPort.collectAsState()
+    val defaultJumpTarget by viewModel.defaultJumpTarget.collectAsState()
 
     val context = LocalContext.current
     
@@ -306,6 +317,7 @@ fun SettingsScreen(
     var tempAiTruncateLimit by remember { mutableStateOf("") }
     var showHttpPortDialog by remember { mutableStateOf(false) }
     var tempHttpPort by remember { mutableStateOf("") }
+    var showDefaultJumpTargetDialog by remember { mutableStateOf(false) }
     var pendingNewProjectHome by remember { mutableStateOf<String?>(null) }
     var oldProjectHome by remember { mutableStateOf<String?>(null) }
     
@@ -529,6 +541,20 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_menu_at_touch_desc),
                     checked = menuAtTouch,
                     onCheckedChange = { viewModel.setMenuAtTouch(it) }
+                )
+            }
+
+            item {
+                val defaultJumpTargetLabel = when (defaultJumpTarget) {
+                    "hex" -> stringResource(R.string.settings_default_jump_target_hex)
+                    "disasm" -> stringResource(R.string.settings_default_jump_target_disasm)
+                    else -> stringResource(R.string.settings_default_jump_target_ask)
+                }
+                SettingsItem(
+                    title = stringResource(R.string.settings_default_jump_target),
+                    subtitle = defaultJumpTargetLabel,
+                    icon = Icons.Default.Settings,
+                    onClick = { showDefaultJumpTargetDialog = true }
                 )
             }
 
@@ -760,6 +786,34 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showDecompilerDialog = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            }
+        )
+    }
+
+    if (showDefaultJumpTargetDialog) {
+        AlertDialog(
+            onDismissRequest = { showDefaultJumpTargetDialog = false },
+            title = { Text(stringResource(R.string.settings_default_jump_target)) },
+            text = {
+                Column {
+                    LanguageOption(stringResource(R.string.settings_default_jump_target_ask), "ask", defaultJumpTarget) {
+                        viewModel.setDefaultJumpTarget(it)
+                        showDefaultJumpTargetDialog = false
+                    }
+                    LanguageOption(stringResource(R.string.settings_default_jump_target_hex), "hex", defaultJumpTarget) {
+                        viewModel.setDefaultJumpTarget(it)
+                        showDefaultJumpTargetDialog = false
+                    }
+                    LanguageOption(stringResource(R.string.settings_default_jump_target_disasm), "disasm", defaultJumpTarget) {
+                        viewModel.setDefaultJumpTarget(it)
+                        showDefaultJumpTargetDialog = false
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDefaultJumpTargetDialog = false }) {
                     Text(stringResource(R.string.settings_cancel))
                 }
             }

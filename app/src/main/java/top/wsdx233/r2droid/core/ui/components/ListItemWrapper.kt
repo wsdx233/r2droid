@@ -1,8 +1,13 @@
 package top.wsdx233.r2droid.core.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
@@ -14,6 +19,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,9 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -36,11 +44,14 @@ data class ListItemActions(
     val onCopy: (String) -> Unit,
     val onJumpToHex: (Long) -> Unit,
     val onJumpToDisasm: (Long) -> Unit,
+    val onQuickJump: ((Long) -> Unit)? = null,
     val onShowXrefs: (Long) -> Unit,
     val onAnalyzeFunction: ((Long) -> Unit)? = null,
     val onFunctionInfo: ((Long) -> Unit)? = null,
     val onFunctionXrefs: ((Long) -> Unit)? = null,
     val onFunctionVariables: ((Long) -> Unit)? = null,
+    val onMarkVisited: ((Long) -> Unit)? = null,
+    val isVisited: ((Long) -> Boolean)? = null,
     /** Navigate to Frida monitor tab and pre-fill the address */
     val onFridaMonitor: ((String) -> Unit)? = null,
     /** Copy generated Frida code snippet to clipboard */
@@ -125,12 +136,20 @@ fun UnifiedListItemWrapper(
     var tapOffset by remember { mutableStateOf(Offset.Zero) }
     var boxHeight by remember { mutableStateOf(0) }
     val density = LocalDensity.current
+    val visited = address?.let { actions.isVisited?.invoke(it) } == true
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(elevation, shape)
             .clip(shape)
+            .background(
+                if (visited) {
+                    MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.22f)
+                } else {
+                    Color.Transparent
+                }
+            )
             .onGloballyPositioned { boxHeight = it.size.height }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -144,9 +163,36 @@ fun UnifiedListItemWrapper(
                     }
                 }
             }
-            .clickable { expanded = true }
+            .combinedClickable(
+                onClick = {
+                    if (address != null && actions.onQuickJump != null) {
+                        actions.onMarkVisited?.invoke(address)
+                        actions.onQuickJump.invoke(address)
+                    } else {
+                        expanded = true
+                    }
+                },
+                onLongClick = { expanded = true }
+            )
+            .then(
+                if (visited) {
+                    Modifier.shadow(2.dp, shape)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         content()
+
+        if (visited) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(8.dp)
+                    .background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(99.dp))
+            )
+        }
 
         DropdownMenu(
             expanded = expanded,
@@ -258,7 +304,10 @@ fun UnifiedListItemWrapper(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_hex_viewer)) },
                         onClick = {
-                            if (address != null) actions.onJumpToHex(address)
+                            if (address != null) {
+                                actions.onMarkVisited?.invoke(address)
+                                actions.onJumpToHex(address)
+                            }
                             expanded = false
                             menuScreen = "Main"
                         }
@@ -266,7 +315,10 @@ fun UnifiedListItemWrapper(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_disassembly)) },
                         onClick = {
-                            if (address != null) actions.onJumpToDisasm(address)
+                            if (address != null) {
+                                actions.onMarkVisited?.invoke(address)
+                                actions.onJumpToDisasm(address)
+                            }
                             expanded = false
                             menuScreen = "Main"
                         }

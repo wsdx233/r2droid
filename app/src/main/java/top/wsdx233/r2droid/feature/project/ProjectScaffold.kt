@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +65,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -74,6 +76,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -160,6 +163,8 @@ fun ProjectScaffold(
     var selectedAiTabIndex by remember { mutableIntStateOf(0) }
     var selectedR2FridaTabIndex by remember { mutableIntStateOf(0) }
     var showJumpDialog by remember { mutableStateOf(false) }
+    var pendingQuickJumpAddress by remember { mutableStateOf<Long?>(null) }
+    val visitedAddresses = remember { mutableStateListOf<Long>() }
     val isR2Frida = R2PipeManager.isR2FridaSession
     val isAiEnabled = SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
@@ -235,6 +240,31 @@ fun ProjectScaffold(
         R.string.r2frida_tab_symbols, R.string.r2frida_tab_sections,
         R.string.r2frida_tab_functions, R.string.r2frida_tab_search, R.string.r2frida_tab_monitor
     )
+
+    val quickJumpToDetail: (Long) -> Unit = { addr ->
+        val target = when (SettingsManager.defaultJumpTarget) {
+            "hex" -> 0
+            "disasm" -> 1
+            else -> -1
+        }
+        if (target == -1) {
+            pendingQuickJumpAddress = addr
+            showJumpDialog = true
+        } else {
+            selectedCategory = MainCategory.Detail
+            selectedDetailTabIndex = target
+            viewModel.currentDetailTab = target
+            viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+        }
+    }
+
+    val markVisited: (Long) -> Unit = { addr ->
+        if (!visitedAddresses.contains(addr)) {
+            visitedAddresses.add(addr)
+        }
+    }
+
+    val isVisited: (Long) -> Boolean = { addr -> visitedAddresses.contains(addr) }
 
     Scaffold(
         topBar = {
@@ -772,11 +802,17 @@ fun ProjectScaffold(
                                 stringsListState = listStringsState,
                                 functionsListState = listFunctionsState,
                                 onNavigateToDetail = { addr, tabIdx ->
+                                    markVisited(addr)
                                     selectedCategory = MainCategory.Detail
                                     selectedDetailTabIndex = tabIdx
                                     viewModel.currentDetailTab = tabIdx
                                     viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
-                                }
+                                },
+                                onQuickNavigateToDetail = { addr ->
+                                    quickJumpToDetail(addr)
+                                },
+                                onMarkVisited = markVisited,
+                                isVisited = isVisited
                             )
                         }
                         MainCategory.Detail -> {
@@ -810,17 +846,22 @@ fun ProjectScaffold(
                                 top.wsdx233.r2droid.core.ui.components.ListItemActions(
                                     onCopy = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(it)) },
                                     onJumpToHex = { addr ->
+                                        markVisited(addr)
                                         selectedCategory = MainCategory.Detail
                                         selectedDetailTabIndex = 0
                                         viewModel.currentDetailTab = 0
                                         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
                                     },
                                     onJumpToDisasm = { addr ->
+                                        markVisited(addr)
                                         selectedCategory = MainCategory.Detail
                                         selectedDetailTabIndex = 1
                                         viewModel.currentDetailTab = 1
                                         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
                                     },
+                                    onQuickJump = { addr -> quickJumpToDetail(addr) },
+                                    onMarkVisited = markVisited,
+                                    isVisited = isVisited,
                                     onShowXrefs = { addr ->
                                         disasmViewModel.onEvent(top.wsdx233.r2droid.feature.disasm.DisasmEvent.FetchXrefs(addr))
                                     },
@@ -1024,6 +1065,55 @@ fun ProjectScaffold(
                 }
             )
         }
+    }
+
+    if (showJumpDialog && pendingQuickJumpAddress != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showJumpDialog = false
+                pendingQuickJumpAddress = null
+            },
+            title = { Text(stringResource(R.string.settings_default_jump_target_ask)) },
+            text = { Text(stringResource(R.string.dialog_quick_jump_prompt)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val addr = pendingQuickJumpAddress
+                    if (addr != null) {
+                        selectedCategory = MainCategory.Detail
+                        selectedDetailTabIndex = 1
+                        viewModel.currentDetailTab = 1
+                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                    }
+                    showJumpDialog = false
+                    pendingQuickJumpAddress = null
+                }) {
+                    Text(stringResource(R.string.menu_disassembly))
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        val addr = pendingQuickJumpAddress
+                        if (addr != null) {
+                            selectedCategory = MainCategory.Detail
+                            selectedDetailTabIndex = 0
+                            viewModel.currentDetailTab = 0
+                            viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+                        }
+                        showJumpDialog = false
+                        pendingQuickJumpAddress = null
+                    }) {
+                        Text(stringResource(R.string.menu_hex_viewer))
+                    }
+                    TextButton(onClick = {
+                        showJumpDialog = false
+                        pendingQuickJumpAddress = null
+                    }) {
+                        Text(stringResource(R.string.settings_cancel))
+                    }
+                }
+            }
+        )
     }
 
     // External export

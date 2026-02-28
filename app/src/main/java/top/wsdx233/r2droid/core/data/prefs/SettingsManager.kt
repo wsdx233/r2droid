@@ -31,6 +31,7 @@ object SettingsManager {
     private const val KEY_HTTP_PORT = "http_port"
     private const val KEY_ANALYSIS_BENCHMARK_SCORE = "analysis_benchmark_score"
     private const val KEY_ANALYSIS_BENCHMARK_AT = "analysis_benchmark_at"
+    private const val KEY_DEFAULT_JUMP_TARGET = "default_jump_target"
 
     private lateinit var prefs: SharedPreferences
 
@@ -163,4 +164,9 @@ object SettingsManager {
     var analysisBenchmarkAt: Long
         get() = prefs.getLong(KEY_ANALYSIS_BENCHMARK_AT, 0L)
         set(value) { prefs.edit { putLong(KEY_ANALYSIS_BENCHMARK_AT, value) } }
+
+    // "ask", "hex", "disasm"
+    var defaultJumpTarget: String
+        get() = prefs.getString(KEY_DEFAULT_JUMP_TARGET, "ask") ?: "ask"
+        set(value) { prefs.edit { putString(KEY_DEFAULT_JUMP_TARGET, value) } }
 }
