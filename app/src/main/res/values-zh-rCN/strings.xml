@@ -311,6 +311,12 @@
     <string name="analysis_large_file_warning_title">大文件警告</string>
     <string name="analysis_large_file_warning_message">在大文件中使用全面自动分析可能导致分析和保存项目耗时过长，建议选择不分析，进入项目后手动局部分析</string>
     <string name="analysis_large_file_warning_continue">仍然继续</string>
+    <string name="analysis_estimated_time_title">预计分析耗时</string>
+    <string name="analysis_estimated_time_benchmarking">正在测量处理器性能...</string>
+    <string name="analysis_estimated_time_unavailable">暂时无法估算</string>
+    <string name="analysis_estimated_time_none">未选择自动分析</string>
+    <string name="analysis_estimated_time_value">约 %1$s</string>
+    <string name="analysis_estimated_time_details">文件大小: %1$s · 处理器评分: %2$.2f</string>
     
     <!-- Logs -->
     <string name="logs_clear_desc">清除日志</string>

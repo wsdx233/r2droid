@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.bininfo.ui
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +73,39 @@ fun OverviewCard(info: BinInfo, actions: ListItemActions) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        BasicInfoCard(info, actions)
+        
+        info.hashes?.let { if (it.md5.isNotBlank()) HashesCard(it, actions) }
+        
+        if (info.archs.isNotEmpty()) {
+            ArchsCard(info.archs, actions)
+        }
+        
+        if (info.entryPoints.isNotEmpty()) {
+            EntryPointsCard(info.entryPoints, actions)
+        }
+        
+        if (info.headers.isNotEmpty() || !info.headersString.isNullOrBlank()) {
+            HeadersCard(info.headers, info.headersString, actions)
+        }
+        
+        info.entropy?.let { if (it.entropy.isNotEmpty()) EntropyCard(it, actions) }
+        
+        info.blockStats?.let { if (it.blocks.isNotEmpty()) BlockStatsCard(it, actions) }
+        
+        Spacer(Modifier.height(64.dp))
+    }
+}
+
+@Composable
+fun OverviewCard(info: BinInfo, actions: ListItemActions, scrollState: ScrollState) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

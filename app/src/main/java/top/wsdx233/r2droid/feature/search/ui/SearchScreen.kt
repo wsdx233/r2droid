@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -60,6 +61,7 @@ import top.wsdx233.r2droid.ui.theme.LocalAppFont
 @Composable
 fun SearchScreen(
     actions: ListItemActions,
+    resultListState: LazyListState? = null,
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -91,7 +93,7 @@ fun SearchScreen(
             onClear = { viewModel.onEvent(SearchEvent.ClearResults) }
         )
 
-        SearchResultArea(uiState = uiState, actions = actions)
+        SearchResultArea(uiState = uiState, actions = actions, resultListState = resultListState)
     }
 }
 
@@ -254,7 +256,8 @@ private fun SearchTypeDropdown(
 @Composable
 private fun SearchResultArea(
     uiState: SearchUiState,
-    actions: ListItemActions
+    actions: ListItemActions,
+    resultListState: LazyListState? = null
 ) {
     when (uiState) {
         is SearchUiState.Idle -> {
@@ -307,7 +310,7 @@ private fun SearchResultArea(
                     )
                 }
             } else {
-                SearchResultList(results = uiState.results, actions = actions)
+                SearchResultList(results = uiState.results, actions = actions, listState = resultListState)
             }
         }
     }
@@ -316,13 +319,15 @@ private fun SearchResultArea(
 @Composable
 private fun SearchResultList(
     results: List<SearchResult>,
-    actions: ListItemActions
+    actions: ListItemActions,
+    listState: LazyListState? = null
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        val listState = rememberLazyListState()
+        val internalListState = rememberLazyListState()
+        val effectiveListState = listState ?: internalListState
 
         LazyColumn(
-            state = listState,
+            state = effectiveListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -334,7 +339,7 @@ private fun SearchResultList(
 
         if (results.isNotEmpty()) {
             AutoHideScrollbar(
-                listState = listState,
+                listState = effectiveListState,
                 totalItems = results.size,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )

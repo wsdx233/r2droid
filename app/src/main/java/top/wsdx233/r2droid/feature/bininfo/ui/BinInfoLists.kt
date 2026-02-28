@@ -457,9 +457,10 @@ fun PagingStringList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_strings_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.vAddr }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_strings_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.vAddr }) { item ->
         StringItem(StringInfo(item.string, item.vAddr, item.section, item.type), actions)
     }
 }
@@ -569,18 +570,20 @@ private fun <T : Any> GenericPagingList(
     onRefresh: (() -> Unit)?,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null,
     itemKey: (T) -> Any,
     itemContent: @Composable (T) -> Unit
 ) {
     val lazyPagingItems = pagingData.collectAsLazyPagingItems()
-    val listState = rememberLazyListState()
+    val internalListState = rememberLazyListState()
+    val effectiveListState = listState ?: internalListState
 
     // Debounce: only trigger Paging loads after scroll position stays stable for 200ms.
     // Using firstVisibleItemIndex instead of isScrollInProgress because
     // scrollToItem() (used by the scrollbar) is instant and doesn't set isScrollInProgress.
     var scrollSettled by remember { mutableStateOf(true) }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { idx ->
+    LaunchedEffect(effectiveListState) {
+        snapshotFlow { effectiveListState.firstVisibleItemIndex }.collectLatest {
             scrollSettled = false
             delay(75)
             scrollSettled = true
@@ -599,7 +602,7 @@ private fun <T : Any> GenericPagingList(
         }
         Spacer(modifier = Modifier.height(4.dp))
         Box(modifier = Modifier.weight(1f)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(state = effectiveListState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(count = lazyPagingItems.itemCount, key = lazyPagingItems.itemKey { itemKey(it) }) { index ->
                     val cached = lazyPagingItems.peek(index)
                     if (cached != null) {
@@ -617,7 +620,7 @@ private fun <T : Any> GenericPagingList(
                 }
             }
             if (lazyPagingItems.itemCount > 0) {
-                AutoHideScrollbar(listState = listState, totalItems = lazyPagingItems.itemCount, modifier = Modifier.align(Alignment.CenterEnd))
+                AutoHideScrollbar(listState = effectiveListState, totalItems = lazyPagingItems.itemCount, modifier = Modifier.align(Alignment.CenterEnd))
             }
         }
     }
@@ -629,9 +632,10 @@ fun PagingSectionList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_sections_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.vAddr }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_sections_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.vAddr }) { item ->
         SectionItem(Section(item.name, item.size, item.vSize, item.perm, item.vAddr, item.pAddr), actions)
     }
 }
@@ -642,9 +646,10 @@ fun PagingSymbolList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_symbols_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.id }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_symbols_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.id }) { item ->
         SymbolItem(Symbol(item.name, item.type, item.vAddr, item.pAddr, item.isImported, item.realname), actions)
     }
 }
@@ -655,9 +660,10 @@ fun PagingImportList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_imports_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.id }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_imports_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.id }) { item ->
         ImportItem(ImportInfo(item.name, item.ordinal, item.type, item.plt), actions)
     }
 }
@@ -668,9 +674,10 @@ fun PagingRelocationList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_relocations_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.id }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_relocations_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.id }) { item ->
         RelocationItem(Relocation(item.name, item.type, item.vAddr, item.pAddr), actions)
     }
 }
@@ -681,9 +688,10 @@ fun PagingFunctionList(
     actions: ListItemActions,
     onRefresh: (() -> Unit)? = null,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_functions_hint), onRefresh, searchQuery, onSearchQueryChange, itemKey = { it.addr }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_functions_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.addr }) { item ->
         FunctionItem(FunctionInfo(item.name, item.addr, item.size, item.nbbs, item.signature), actions)
     }
 }

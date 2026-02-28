@@ -2,6 +2,8 @@ package top.wsdx233.r2droid.feature.project
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.lazy.LazyListState
 
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
@@ -10,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -36,6 +39,14 @@ fun ProjectListView(
     viewModel: ProjectViewModel = hiltViewModel(),
     disasmViewModel: DisasmViewModel = hiltViewModel(),
     tabIndex: Int,
+    overviewScrollState: ScrollState? = null,
+    searchResultListState: LazyListState? = null,
+    sectionsListState: LazyListState? = null,
+    symbolsListState: LazyListState? = null,
+    importsListState: LazyListState? = null,
+    relocationsListState: LazyListState? = null,
+    stringsListState: LazyListState? = null,
+    functionsListState: LazyListState? = null,
     onNavigateToDetail: (Long, Int) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -101,7 +112,13 @@ fun ProjectListView(
     }
 
     when (tabIndex) {
-        0 -> state.binInfo?.let { OverviewCard(it, listItemActions) }
+        0 -> state.binInfo?.let {
+            OverviewCard(
+                info = it,
+                actions = listItemActions,
+                scrollState = overviewScrollState ?: rememberScrollState()
+            )
+        }
             ?: if (R2PipeManager.isR2FridaSession) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.r2frida_no_overview),
@@ -111,14 +128,16 @@ fun ProjectListView(
                         modifier = Modifier.padding(32.dp))
                 }
             } else Text(stringResource(R.string.hex_no_data), Modifier.fillMaxSize())
-        1 -> SearchScreen(actions = listItemActions)
+        1 -> SearchScreen(actions = listItemActions, resultListState = searchResultListState)
         2 -> {
             val syncing by viewModel.sectionsSyncing.collectAsState()
             val query by viewModel.sectionsSearchQuery.collectAsState()
             if (state.sections == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else PagingSectionList(viewModel.sectionsPagingData, listItemActions,
                 onRefresh = { viewModel.onEvent(ProjectEvent.LoadSections(forceRefresh = true)) },
-                searchQuery = query, onSearchQueryChange = { viewModel.updateSectionsSearchQuery(it) })
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateSectionsSearchQuery(it) },
+                listState = sectionsListState)
         }
         3 -> {
             val syncing by viewModel.symbolsSyncing.collectAsState()
@@ -126,7 +145,9 @@ fun ProjectListView(
             if (state.symbols == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else PagingSymbolList(viewModel.symbolsPagingData, listItemActions,
                 onRefresh = { viewModel.onEvent(ProjectEvent.LoadSymbols(forceRefresh = true)) },
-                searchQuery = query, onSearchQueryChange = { viewModel.updateSymbolsSearchQuery(it) })
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateSymbolsSearchQuery(it) },
+                listState = symbolsListState)
         }
         4 -> {
             val syncing by viewModel.importsSyncing.collectAsState()
@@ -134,7 +155,9 @@ fun ProjectListView(
             if (state.imports == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else PagingImportList(viewModel.importsPagingData, listItemActions,
                 onRefresh = { viewModel.onEvent(ProjectEvent.LoadImports(forceRefresh = true)) },
-                searchQuery = query, onSearchQueryChange = { viewModel.updateImportsSearchQuery(it) })
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateImportsSearchQuery(it) },
+                listState = importsListState)
         }
         5 -> {
             val syncing by viewModel.relocationsSyncing.collectAsState()
@@ -142,7 +165,9 @@ fun ProjectListView(
             if (state.relocations == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else PagingRelocationList(viewModel.relocationsPagingData, listItemActions,
                 onRefresh = { viewModel.onEvent(ProjectEvent.LoadRelocations(forceRefresh = true)) },
-                searchQuery = query, onSearchQueryChange = { viewModel.updateRelocationsSearchQuery(it) })
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateRelocationsSearchQuery(it) },
+                listState = relocationsListState)
         }
         6 -> {
             val stringsSyncing by viewModel.stringsSyncing.collectAsState()
@@ -155,7 +180,8 @@ fun ProjectListView(
                     actions = listItemActions,
                     onRefresh = { viewModel.onEvent(ProjectEvent.LoadStrings(forceRefresh = true)) },
                     searchQuery = stringsSearchQuery,
-                    onSearchQueryChange = { viewModel.updateStringsSearchQuery(it) }
+                    onSearchQueryChange = { viewModel.updateStringsSearchQuery(it) },
+                    listState = stringsListState
                 )
             }
         }
@@ -165,7 +191,9 @@ fun ProjectListView(
             if (state.functions == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else PagingFunctionList(viewModel.functionsPagingData, functionListActions,
                 onRefresh = { viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true)) },
-                searchQuery = query, onSearchQueryChange = { viewModel.updateFunctionsSearchQuery(it) })
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateFunctionsSearchQuery(it) },
+                listState = functionsListState)
         }
     }
 }

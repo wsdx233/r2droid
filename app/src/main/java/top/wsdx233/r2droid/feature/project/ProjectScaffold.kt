@@ -164,6 +164,16 @@ fun ProjectScaffold(
     val isAiEnabled = SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
 
+    // Hoisted list-category scroll states (survive category switches)
+    val listOverviewScrollState = rememberScrollState()
+    val listSearchResultState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listSectionsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listSymbolsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listImportsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listRelocationsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listStringsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listFunctionsState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     // Hoisted R2Frida list scroll states (survive category switches)
     val fridaLibrariesListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val fridaMappingsListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -753,6 +763,14 @@ fun ProjectScaffold(
                         MainCategory.List -> {
                             ProjectListView(
                                 tabIndex = selectedListTabIndex,
+                                overviewScrollState = listOverviewScrollState,
+                                searchResultListState = listSearchResultState,
+                                sectionsListState = listSectionsState,
+                                symbolsListState = listSymbolsState,
+                                importsListState = listImportsState,
+                                relocationsListState = listRelocationsState,
+                                stringsListState = listStringsState,
+                                functionsListState = listFunctionsState,
                                 onNavigateToDetail = { addr, tabIdx ->
                                     selectedCategory = MainCategory.Detail
                                     selectedDetailTabIndex = tabIdx

@@ -347,6 +347,12 @@
     <string name="analysis_large_file_warning_title">Large File Warning</string>
     <string name="analysis_large_file_warning_message">Using full automatic analysis on large files may take a long time to analyze and save. It is recommended to choose \'None\', enter the project, and then manually analyze specific parts.</string>
     <string name="analysis_large_file_warning_continue">Continue Anyway</string>
+    <string name="analysis_estimated_time_title">Estimated Analysis Time</string>
+    <string name="analysis_estimated_time_benchmarking">Measuring processor performance...</string>
+    <string name="analysis_estimated_time_unavailable">Unable to estimate right now</string>
+    <string name="analysis_estimated_time_none">No automatic analysis selected</string>
+    <string name="analysis_estimated_time_value">Approx. %1$s</string>
+    <string name="analysis_estimated_time_details">File size: %1$s · CPU score: %2$.2f</string>
     
     <!-- Logs -->
     <string name="logs_clear_desc">Clear Logs</string>

@@ -29,6 +29,8 @@ object SettingsManager {
     private const val KEY_AI_OUTPUT_TRUNCATE_LIMIT = "ai_output_truncate_limit"
     private const val KEY_USE_HTTP_MODE = "use_http_mode"
     private const val KEY_HTTP_PORT = "http_port"
+    private const val KEY_ANALYSIS_BENCHMARK_SCORE = "analysis_benchmark_score"
+    private const val KEY_ANALYSIS_BENCHMARK_AT = "analysis_benchmark_at"
 
     private lateinit var prefs: SharedPreferences
 
@@ -153,4 +155,12 @@ object SettingsManager {
     var httpPort: Int
         get() = prefs.getInt(KEY_HTTP_PORT, 9090)
         set(value) { prefs.edit { putInt(KEY_HTTP_PORT, value) } }
+
+    var analysisBenchmarkScore: Float
+        get() = prefs.getFloat(KEY_ANALYSIS_BENCHMARK_SCORE, 0f)
+        set(value) { prefs.edit { putFloat(KEY_ANALYSIS_BENCHMARK_SCORE, value) } }
+
+    var analysisBenchmarkAt: Long
+        get() = prefs.getLong(KEY_ANALYSIS_BENCHMARK_AT, 0L)
+        set(value) { prefs.edit { putLong(KEY_ANALYSIS_BENCHMARK_AT, value) } }
 }

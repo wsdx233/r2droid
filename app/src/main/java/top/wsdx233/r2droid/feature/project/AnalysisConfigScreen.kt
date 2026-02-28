@@ -1,8 +1,10 @@
 package top.wsdx233.r2droid.feature.project
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,9 +15,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
@@ -29,6 +33,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +55,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.R
+import java.util.concurrent.TimeUnit
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,8 +75,10 @@ fun AnalysisConfigScreen(
     
     val context = LocalContext.current
     var fileSize by remember { mutableStateOf(0L) }
+    var benchmarkScore by remember { mutableStateOf(SettingsManager.analysisBenchmarkScore) }
+    var benchmarking by remember { mutableStateOf(false) }
     
-    androidx.compose.runtime.LaunchedEffect(filePath) {
+    LaunchedEffect(filePath) {
         try {
             val file = java.io.File(filePath)
             if (file.exists()) {
@@ -83,10 +96,25 @@ fun AnalysisConfigScreen(
             e.printStackTrace()
         }
     }
+
+    LaunchedEffect(Unit) {
+        val benchmarkExpired = System.currentTimeMillis() - SettingsManager.analysisBenchmarkAt > TimeUnit.DAYS.toMillis(7)
+        if (benchmarkScore <= 0f || benchmarkExpired) {
+            benchmarking = true
+            benchmarkScore = runAndSaveAnalysisBenchmark()
+            benchmarking = false
+        }
+    }
     
     val isHeavyAnalysis = selectedLevel == "aaa" || selectedLevel == "aaaa"
     val isLargeFile = fileSize > 1024 * 1024 // 1MB
     val showWarning = isHeavyAnalysis && isLargeFile
+    val estimateSeconds = estimateAnalysisSeconds(
+        fileSizeBytes = fileSize,
+        selectedLevel = selectedLevel,
+        customCmd = customCmd,
+        benchmarkScore = benchmarkScore
+    )
 
     Scaffold(
         topBar = {
@@ -196,6 +224,83 @@ fun AnalysisConfigScreen(
                     }
                 }
             }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val estimateText = when {
+                    benchmarking -> stringResource(R.string.analysis_estimated_time_benchmarking)
+                    estimateSeconds == null -> stringResource(R.string.analysis_estimated_time_unavailable)
+                    estimateSeconds == 0L -> stringResource(R.string.analysis_estimated_time_none)
+                    else -> stringResource(
+                        R.string.analysis_estimated_time_value,
+                        formatDuration(estimateSeconds)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f),
+                                    shape = CircleShape
+                                )
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (benchmarking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.analysis_estimated_time_title),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                            )
+                            Text(
+                                text = estimateText,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(
+                            R.string.analysis_estimated_time_details,
+                            formatFileSize(fileSize),
+                            benchmarkScore
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
             
             HorizontalDivider()
             
@@ -230,6 +335,78 @@ fun AnalysisConfigScreen(
                 Text(stringResource(R.string.analysis_start_btn))
             }
         }
+    }
+}
+
+private suspend fun runAndSaveAnalysisBenchmark(): Float = withContext(Dispatchers.Default) {
+    val iterations = maxOf(6_000_000, Runtime.getRuntime().availableProcessors() * 1_500_000)
+    val seed = 0x9E3779B97F4A7C15UL.toLong()
+    val mulA = 0xC2B2AE3D27D4EB4FUL.toLong()
+    val mulB = 0x165667B19E3779F9UL.toLong()
+    var acc = seed
+    val startNanos = System.nanoTime()
+
+    for (i in 0 until iterations) {
+        acc = acc xor ((i.toLong() + 0x9E37L) * mulA)
+        acc = java.lang.Long.rotateLeft(acc, 13)
+        acc *= mulB
+    }
+
+    val elapsedNanos = (System.nanoTime() - startNanos).coerceAtLeast(1L)
+    val opsPerSecond = iterations / (elapsedNanos / 1_000_000_000f)
+    val score = ((opsPerSecond / 18_000_000f) + ((acc and 0x7L) * 0f)).coerceIn(0.2f, 5f)
+
+    SettingsManager.analysisBenchmarkScore = score
+    SettingsManager.analysisBenchmarkAt = System.currentTimeMillis()
+    score
+}
+
+private fun estimateAnalysisSeconds(
+    fileSizeBytes: Long,
+    selectedLevel: String,
+    customCmd: String,
+    benchmarkScore: Float
+): Long? {
+    val cmd = (if (selectedLevel == "custom") customCmd.trim() else selectedLevel).lowercase()
+    if (cmd.isBlank()) return null
+    if (cmd == "none") return 0L
+    if (fileSizeBytes <= 0L || benchmarkScore <= 0f) return null
+
+    val complexityFactor = when {
+        cmd.contains("aaaa") -> 20.0f
+        cmd.contains("aaa") -> 5.0f
+        cmd.contains("aa") -> 3.0f
+        cmd.contains("af") -> 1.0f
+        else -> 1.8f
+    }
+
+    val fileMb = (fileSizeBytes / (1024f * 1024f)).coerceAtLeast(0.1f)
+    val cpuScore = benchmarkScore.coerceIn(0.2f, 5f)
+    val seconds = 2.0f + (fileMb * complexityFactor * 3.4f / cpuScore)
+    return seconds.roundToLong().coerceAtLeast(1L)
+}
+
+private fun formatDuration(totalSeconds: Long): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> String.format("%dh %dm", hours, minutes)
+        minutes > 0 -> String.format("%dm %ds", minutes, seconds)
+        else -> String.format("%ds", seconds)
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0L) return "-"
+    val kb = 1024f
+    val mb = kb * 1024f
+    val gb = mb * 1024f
+    return when {
+        bytes >= gb -> String.format("%.2f GB", bytes / gb)
+        bytes >= mb -> String.format("%.2f MB", bytes / mb)
+        bytes >= kb -> String.format("%.1f KB", bytes / kb)
+        else -> "$bytes B"
     }
 }
 
