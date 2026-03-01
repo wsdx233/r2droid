@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import java.io.BufferedInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -12,6 +11,8 @@ import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.channels.ReadableByteChannel
 import java.nio.channels.WritableByteChannel
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
@@ -27,10 +28,10 @@ class R2pipe(context: Context, private val filePath: String? = null, private val
     private var pid: Int = -1
 
     // 自动计算且自适应的缓冲区
-    private var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(64 * 1024) // 初始 64KB（读）
+    private var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(256 * 1024) // 初始 256KB（读）
     private val writeBuffer: ByteBuffer = ByteBuffer.allocateDirect(16 * 1024) // 固定 16KB（写，不参与计算）
-    private val resultBaos = ByteArrayOutputStream(256 * 1024) // 初始 256KB
-    private val max_read_buffer = 2 * 1024 * 1024 // 限制最大 2MB，防止过大崩掉
+    private var resultBuffer: ByteBuffer = ByteBuffer.allocateDirect(512 * 1024) // 初始 512KB
+    private val maxBuffer = 4 * 1024 * 1024 // 限制最大 4MB，防止过大可能产生额外的问题
 
     init {
         startR2Process()
@@ -66,13 +67,12 @@ class R2pipe(context: Context, private val filePath: String? = null, private val
             // 获取pid
             pid = getProcessId(process!!)
 
-            // 启动线程消耗 Stderr，防止缓冲区填满导致死锁
-            Thread {
+            // 异步消耗 Stderr，防止缓冲区填满导致死锁
+            CompletableFuture.runAsync {
                 try {
                     val reader = process!!.errorStream.bufferedReader()
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
-                        // 记录日志
                         line?.let {
                             LogManager.log(LogType.WARNING, it)
                             Log.d("R2Pipe", it)
@@ -81,7 +81,7 @@ class R2pipe(context: Context, private val filePath: String? = null, private val
                 } catch (e: Exception) {
                     LogManager.log(LogType.ERROR, "Failed to read R2 stderr: ${e.message}")
                 }
-            }.start()
+            }
 
             outputStream = process!!.outputStream
             outputChannel = Channels.newChannel(outputStream!!)
@@ -181,67 +181,69 @@ class R2pipe(context: Context, private val filePath: String? = null, private val
 
     /** NIO + 自动自适应读取 */
     private fun readResultNio(): String {
-        resultBaos.reset()
-        readBuffer.clear()
-        var totalRead = 0
+        resultBuffer.clear()
 
         while (true) {
+            readBuffer.clear()
             val bytesRead = inputChannel?.read(readBuffer) ?: -1
             if (bytesRead == -1) {
                 isRunning = false
-                if (resultBaos.size() > 0) {
-                    growReadBufferIfNeeded(totalRead)
-                    return finishResult()
-                }
+                if (resultBuffer.position() > 0) return finishResult()
                 throw RuntimeException("R2 process terminated unexpectedly (EOF)")
             }
 
-            totalRead += bytesRead
             readBuffer.flip()
 
             val nullIndex = findFirstNull(readBuffer)
             if (nullIndex != -1) {
-                val temp = ByteArray(nullIndex)
-                readBuffer.get(temp)
-                resultBaos.write(temp)
-                growReadBufferIfNeeded(totalRead) // 自适应扩容判断
+                ensureResultCapacity(resultBuffer.position() + nullIndex)
+                readBuffer.limit(nullIndex) // 只取到 \0 前
+                resultBuffer.put(readBuffer)
                 break
             } else {
-                val temp = ByteArray(readBuffer.remaining())
-                readBuffer.get(temp)
-                resultBaos.write(temp)
+                ensureResultCapacity(resultBuffer.position() + readBuffer.remaining())
+                resultBuffer.put(readBuffer)
             }
-            readBuffer.clear()
         }
 
         return finishResult()
     }
 
     /** 自适应逻辑：输出过大则下次扩容 */
-    private fun growReadBufferIfNeeded(totalRead: Int) {
-        if (totalRead > readBuffer.capacity() * 3 / 4) { // 当 >75% 使用率时
-            val newSize = min(max_read_buffer, readBuffer.capacity() * 2)
-            if (newSize > readBuffer.capacity()) {
-                readBuffer = ByteBuffer.allocateDirect(newSize)
-                Log.i("R2Pipe", "Auto-expanded readBuffer to ${newSize / 1024}KB (peak output detected)")
+    private fun ensureResultCapacity(needed: Int) {
+        if (needed > resultBuffer.capacity()) {
+            val newSize = min(maxBuffer, (resultBuffer.capacity() * 2).coerceAtLeast(needed))
+            if (newSize > resultBuffer.capacity()) {
+                val newByteBuffer = ByteBuffer.allocateDirect(newSize)
+                resultBuffer.flip()
+                newByteBuffer.put(resultBuffer)
+                resultBuffer = newByteBuffer
+                Log.i("R2Pipe", "Auto-expanded resultBuffer to ${newSize / 1024}KB")
             }
         }
     }
 
     // 查找 buffer 中是否有 0 (NULL)
     private fun findFirstNull(buffer: ByteBuffer): Int {
-        val pos = buffer.position()
         val lim = buffer.limit()
-        for (i in pos until lim) {
-            if (buffer.get(i) == 0.toByte()) return i - pos
+        for (i in 0 until lim) {
+            if (buffer.get(i) == 0.toByte()) return i
         }
         return -1
     }
 
-    private fun finishResult(): String = try {
-        resultBaos.toString("UTF-8").trim()
-    } catch (e: Exception) {
-        resultBaos.toString()
+    private fun finishResult(): String {
+        resultBuffer.flip()
+        val len = resultBuffer.remaining()
+        if (len == 0) return ""
+
+        val bytes = ByteArray(len)
+        resultBuffer.get(bytes)
+        return try {
+            String(bytes, StandardCharsets.UTF_8).trim()
+        } catch (_: Exception) {
+            bytes.toString(Charsets.UTF_8).trim()
+        }
     }
 
     fun cmdj(command: String): String {
