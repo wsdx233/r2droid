@@ -69,6 +69,10 @@
             android:theme="@android:style/Theme.DeviceDefault.Light.DarkActionBar"
             android:windowSoftInputMode="adjustResize"
             android:label="@string/terminal"/>
+            
+        <activity android:name="top.wsdx233.r2droid.activity.CrashActivity"
+            android:theme="@style/Theme.R2droid"
+            android:process=":error_handler" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

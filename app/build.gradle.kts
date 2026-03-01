@@ -143,4 +143,5 @@ dependencies {
 
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+    implementation("cat.ereza:customactivityoncrash:2.4.0")
 }

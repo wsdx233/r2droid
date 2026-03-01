@@ -802,6 +802,15 @@
     <string name="export_report_include_strings">Включить список жестко закодированных строк</string>
     <string name="export_report_include_symbols">Включить динамические импорты/экспорты</string>
     <string name="export_report_include_disassembly">Включить дизассемблер функций</string>
+
+    <!-- Crash Screen -->
+    <string name="crash_title">Приложение остановилось</string>
+    <string name="crash_subtitle">Ой! Что-то пошло не так.</string>
+    <string name="crash_unknown_error">Неизвестная ошибка</string>
+    <string name="crash_copy_log">Скопировать лог</string>
+    <string name="crash_report_issue">Сообщить об ошибке</string>
+    <string name="crash_restart_app">Перезапустить</string>
+    <string name="crash_log_copied">Лог скопирован в буфер обмена</string>
     <string name="export_report_include_decompilation">Включить декомпиляцию функций</string>
     <string name="export_report_decompiler">Декомпилятор:</string>
     <string name="export_report_decompiler_r2">r2 (pdc)</string>

@@ -800,6 +800,16 @@
     <string name="export_report_include_strings">包含硬编码字符串列表</string>
     <string name="export_report_include_symbols">包含动态导入 / 导出表</string>
     <string name="export_report_include_disassembly">包含函数反汇编</string>
+
+    <!-- Crash Screen -->
+    <string name="crash_title">应用崩溃了</string>
+    <string name="crash_subtitle">哎呀！发生了一些错误。</string>
+    <string name="crash_unknown_error">未知错误</string>
+    <string name="crash_copy_log">复制日志</string>
+    <string name="crash_report_issue">提交反馈</string>
+    <string name="crash_restart_app">重启应用</string>
+    <string name="crash_log_copied">崩溃日志已复制到剪贴板</string>
+
     <string name="export_report_include_decompilation">包含函数反编译</string>
     <string name="export_report_decompiler">反编译器:</string>
     <string name="export_report_decompiler_r2">r2 (pdc)</string>

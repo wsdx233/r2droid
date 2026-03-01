@@ -798,6 +798,15 @@
     <string name="export_report_include_strings">Include hardcoded string list</string>
     <string name="export_report_include_symbols">Include dynamic imports / exports</string>
     <string name="export_report_include_disassembly">Include function disassembly</string>
+
+    <!-- Crash Screen -->
+    <string name="crash_title">App Crashed</string>
+    <string name="crash_subtitle">Oops! Something went wrong.</string>
+    <string name="crash_unknown_error">Unknown Error</string>
+    <string name="crash_copy_log">Copy Log</string>
+    <string name="crash_report_issue">Report Issue</string>
+    <string name="crash_restart_app">Restart App</string>
+    <string name="crash_log_copied">Crash log copied to clipboard</string>
     <string name="export_report_include_decompilation">Include function decompilation</string>
     <string name="export_report_decompiler">Decompiler:</string>
     <string name="export_report_decompiler_r2">r2 (pdc)</string>
