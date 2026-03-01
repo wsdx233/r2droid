@@ -149,6 +149,7 @@
 - **多语言资源**:
   - `app/src/main/res/values/strings.xml`
   - `app/src/main/res/values-zh-rCN/strings.xml`
+  - `app/src/main/res/values-ru/strings.xml`
 - **主题与样式**: `app/src/main/java/top/wsdx233/r2droid/core/ui/theme/`
 - **关键资产**: `app/src/main/assets/r2.tar`, `app/src/main/assets/r2dir.tar`
 - **Manifest**: `app/src/main/AndroidManifest.xml`
