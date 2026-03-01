@@ -65,6 +65,7 @@ sealed interface ProjectEvent {
     data class SaveProject(val name: String, val analysisLevel: String = "") : ProjectEvent
     data class UpdateProject(val projectId: String) : ProjectEvent
     object ResetSaveState : ProjectEvent
+    object ClearFunctionsCache : ProjectEvent
 }
 
 sealed class ProjectUiState {
@@ -350,6 +351,7 @@ class ProjectViewModel @Inject constructor(
             is ProjectEvent.SaveProject -> saveProject(event.name, event.analysisLevel)
             is ProjectEvent.UpdateProject -> updateProject(event.projectId)
             is ProjectEvent.ResetSaveState -> resetSaveState()
+            is ProjectEvent.ClearFunctionsCache -> clearFunctionsCache()
         }
     }
     
@@ -373,6 +375,13 @@ class ProjectViewModel @Inject constructor(
         _uiState.value = current.copy(decompilation = null)
         loadDecompilation()
     }
+
+    private fun clearFunctionsCache() {
+        viewModelScope.launch {
+            functionDao.clearAll()
+        }
+    }
+
     
     // === Address History Navigation ===
     // Stack to store previous addresses for back navigation

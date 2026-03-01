@@ -151,7 +151,15 @@ fun ProjectScaffold(
     val dataModified by disasmViewModel.dataModifiedEvent.collectAsState()
     androidx.compose.runtime.LaunchedEffect(dataModified) {
         if (dataModified > 0) {
-            viewModel.onEvent(ProjectEvent.LoadFunctions(forceRefresh = true))
+            viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
+        }
+    }
+
+    // Also clear when hex data is modified
+    val hexDataModified by hexViewModel.dataModifiedEvent.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(hexDataModified) {
+        if (hexDataModified > 0) {
+            viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
         }
     }
 
