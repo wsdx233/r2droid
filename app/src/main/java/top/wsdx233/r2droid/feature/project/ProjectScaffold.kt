@@ -899,7 +899,9 @@ fun ProjectScaffold(
 
                             val fridaCustomFunctions by r2fridaViewModel.customFunctions.collectAsState()
                             val fridaCustomFunctionsQuery by r2fridaViewModel.customFunctionsSearchQuery.collectAsState()
-                            
+                            val fridaAutoDemangleExports by r2fridaViewModel.autoDemangleExports.collectAsState()
+                            val fridaAutoDemangleCustomFunctions by r2fridaViewModel.autoDemangleCustomFunctions.collectAsState()
+
                             val fridaSearchResults by r2fridaViewModel.searchResults.collectAsState()
                             val fridaIsSearching by r2fridaViewModel.isSearching.collectAsState()
                             val fridaSearchValueType by r2fridaViewModel.searchValueType.collectAsState()
@@ -972,7 +974,10 @@ fun ProjectScaffold(
                                     searchHint = stringResource(R.string.r2frida_search_exports),
                                     searchQuery = fridaExportsQuery,
                                     onSearchQueryChange = r2fridaViewModel::updateExportsSearchQuery,
-                                    listState = fridaExportsListState)
+                                    listState = fridaExportsListState,
+                                    showAutoDemangleToggle = true,
+                                    autoDemangleEnabled = fridaAutoDemangleExports,
+                                    onAutoDemangleChange = r2fridaViewModel::setAutoDemangleExports)
                                 6 -> FridaStringList(fridaStrings, fridaActions,
                                     onRefresh = { r2fridaViewModel.loadStrings(true) },
                                     searchQuery = fridaStringsQuery,
@@ -994,7 +999,9 @@ fun ProjectScaffold(
                                     onRefresh = { r2fridaViewModel.loadCustomFunctions(true) },
                                     searchQuery = fridaCustomFunctionsQuery,
                                     onSearchChange = r2fridaViewModel::updateCustomFunctionsSearchQuery,
-                                    listState = fridaCustomFunctionsListState)
+                                    listState = fridaCustomFunctionsListState,
+                                    autoDemangleEnabled = fridaAutoDemangleCustomFunctions,
+                                    onAutoDemangleChange = r2fridaViewModel::setAutoDemangleCustomFunctions)
                                 10 -> FridaSearchScreen(
                                     results = fridaSearchResults,
                                     isSearching = fridaIsSearching,

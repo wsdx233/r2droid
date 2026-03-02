@@ -50,20 +50,46 @@ fun FridaCustomFunctionsScreen(
     onRefresh: () -> Unit,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    autoDemangleEnabled: Boolean = false,
+    onAutoDemangleChange: (Boolean) -> Unit = {}
 ) {
     if (functions == null) { CustomLoadingBox(); return }
     val filtered = remember(functions, searchQuery) {
         if (searchQuery.isBlank()) functions else functions.filter { it.name.contains(searchQuery, true) }
     }
     Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = searchQuery, onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            placeholder = { Text("Search") },
-            leadingIcon = { Icon(Icons.Filled.Search, null) },
-            singleLine = true
-        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Search") },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                singleLine = true
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.r2frida_auto_demangle),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Switch(
+                    checked = autoDemangleEnabled,
+                    onCheckedChange = onAutoDemangleChange
+                )
+            }
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,

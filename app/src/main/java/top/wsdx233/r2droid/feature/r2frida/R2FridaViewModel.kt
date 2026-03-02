@@ -17,6 +17,7 @@ import top.wsdx233.r2droid.util.LogManager
 import top.wsdx233.r2droid.util.LogType
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 sealed class StaticProjectLoadState {
@@ -47,6 +48,10 @@ class R2FridaViewModel @Inject constructor(
 
     private val _exports = MutableStateFlow<List<FridaExport>?>(null)
     val exports: StateFlow<List<FridaExport>?> = _exports.asStateFlow()
+    private val _rawExports = MutableStateFlow<List<FridaExport>?>(null)
+    private val exportDemangleCache = ConcurrentHashMap<String, String>()
+    private val _autoDemangleExports = MutableStateFlow(false)
+    val autoDemangleExports: StateFlow<Boolean> = _autoDemangleExports.asStateFlow()
 
     private val _strings = MutableStateFlow<List<FridaString>?>(null)
     val strings: StateFlow<List<FridaString>?> = _strings.asStateFlow()
@@ -83,6 +88,10 @@ class R2FridaViewModel @Inject constructor(
     // --- Custom Functions ---
     private val _customFunctions = MutableStateFlow<List<FridaFunction>?>(null)
     val customFunctions: StateFlow<List<FridaFunction>?> = _customFunctions.asStateFlow()
+    private val _rawCustomFunctions = MutableStateFlow<List<FridaFunction>?>(null)
+    private val functionDemangleCache = ConcurrentHashMap<String, String>()
+    private val _autoDemangleCustomFunctions = MutableStateFlow(false)
+    val autoDemangleCustomFunctions: StateFlow<Boolean> = _autoDemangleCustomFunctions.asStateFlow()
     private val _customFunctionsSearchQuery = MutableStateFlow("")
     val customFunctionsSearchQuery: StateFlow<String> = _customFunctionsSearchQuery.asStateFlow()
     fun updateCustomFunctionsSearchQuery(q: String) { _customFunctionsSearchQuery.value = q }
@@ -221,6 +230,24 @@ class R2FridaViewModel @Inject constructor(
     fun updateSymbolsSearchQuery(q: String) { _symbolsSearchQuery.value = q }
     fun updateSectionsSearchQuery(q: String) { _sectionsSearchQuery.value = q }
 
+    fun setAutoDemangleExports(enabled: Boolean) {
+        if (_autoDemangleExports.value == enabled) return
+        _autoDemangleExports.value = enabled
+        val raw = _rawExports.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _exports.value = if (enabled) applyDemangleToExports(raw) else raw
+        }
+    }
+
+    fun setAutoDemangleCustomFunctions(enabled: Boolean) {
+        if (_autoDemangleCustomFunctions.value == enabled) return
+        _autoDemangleCustomFunctions.value = enabled
+        val raw = _rawCustomFunctions.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _customFunctions.value = if (enabled) applyDemangleToFunctions(raw) else raw
+        }
+    }
+
     fun loadOverview() {
         viewModelScope.launch {
             repo.getOverview().onSuccess { _overview.value = it }
@@ -245,9 +272,18 @@ class R2FridaViewModel @Inject constructor(
 
     fun loadExports(force: Boolean = false) {
         if (!force && _exports.value != null) return
-        viewModelScope.launch {
-            repo.getExports().onSuccess { _exports.value = it }
-                .onFailure { _exports.value = emptyList() }
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.getExports().onSuccess { list ->
+                _rawExports.value = list
+                _exports.value = if (_autoDemangleExports.value) {
+                    applyDemangleToExports(list)
+                } else {
+                    list
+                }
+            }.onFailure {
+                _rawExports.value = emptyList()
+                _exports.value = emptyList()
+            }
         }
     }
 
@@ -286,11 +322,13 @@ class R2FridaViewModel @Inject constructor(
     fun clearNonLibraryCache() {
         _entries.value = null
         _exports.value = null
+        _rawExports.value = null
         _strings.value = null
         _symbols.value = null
         _sections.value = null
         _mappings.value = null
         _customFunctions.value = null
+        _rawCustomFunctions.value = null
         _searchResults.value = null
     }
 
@@ -303,9 +341,47 @@ class R2FridaViewModel @Inject constructor(
     fun loadCustomFunctions(force: Boolean = false) {
         if (!force && _customFunctions.value != null) return
         viewModelScope.launch(Dispatchers.IO) {
-            repo.getCustomFunctions(context.cacheDir.absolutePath, getPublicExchangeDir()).onSuccess { _customFunctions.value = it }
-                .onFailure { _customFunctions.value = emptyList() }
+            repo.getCustomFunctions(context.cacheDir.absolutePath, getPublicExchangeDir()).onSuccess { list ->
+                _rawCustomFunctions.value = list
+                _customFunctions.value = if (_autoDemangleCustomFunctions.value) {
+                    applyDemangleToFunctions(list)
+                } else {
+                    list
+                }
+            }.onFailure {
+                _rawCustomFunctions.value = emptyList()
+                _customFunctions.value = emptyList()
+            }
         }
+    }
+
+    private suspend fun applyDemangleToExports(items: List<FridaExport>): List<FridaExport> {
+        return items.map { export ->
+            val demangled = demangleNameCached(export.name, exportDemangleCache)
+            if (demangled == export.name) export else export.copy(name = demangled)
+        }
+    }
+
+    private suspend fun applyDemangleToFunctions(items: List<FridaFunction>): List<FridaFunction> {
+        return items.map { function ->
+            val demangled = demangleNameCached(function.name, functionDemangleCache)
+            if (demangled == function.name) function else function.copy(name = demangled)
+        }
+    }
+
+    private suspend fun demangleNameCached(
+        original: String,
+        cache: ConcurrentHashMap<String, String>
+    ): String {
+        if (original.isBlank()) return original
+        cache[original]?.let { return it }
+
+        val demangled = repo.demangleSymbol(original)
+            .getOrElse { original }
+            .ifBlank { original }
+
+        cache[original] = demangled
+        return demangled
     }
 
     /**

@@ -701,6 +701,7 @@
     <string name="r2frida_search_symbols">搜索符号…</string>
     <string name="r2frida_search_sections">搜索段…</string>
     <string name="r2frida_search_mappings">搜索映射…</string>
+    <string name="r2frida_auto_demangle">自动 Demangle</string>
     <string name="r2frida_overview_title">Frida 会话信息</string>
     <string name="r2frida_script_hint">在此编写 Frida 脚本…</string>
     <string name="r2frida_script_run">运行脚本</string>

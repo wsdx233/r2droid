@@ -18,3 +18,8 @@ app/release/*
 *.apk
 .claude
 .agent
+.idea
+.gradle-user-home
+.kotlin
+.roo
+.vscode

@@ -59,6 +59,11 @@ class R2FridaRepository {
         (0 until arr.length()).map { FridaFunction.fromJson(arr.getJSONObject(it)) }
     }
 
+    suspend fun demangleSymbol(name: String): Result<String> = runCatching {
+        val raw = R2PipeManager.execute("iD cxx $name").getOrThrow()
+        normalizeDemangleOutput(raw, name)
+    }
+
     /**
      * Unified memory search supporting all types, comparisons, ranges, union values.
      */
@@ -224,5 +229,17 @@ class R2FridaRepository {
         val trimmed = raw.trim()
         val idx = trimmed.indexOfFirst { it == '[' || it == '{' }
         return if (idx > 0) trimmed.substring(idx) else trimmed
+    }
+
+    private fun normalizeDemangleOutput(raw: String, original: String): String {
+        val line = raw.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() }
+            ?: return original
+
+        return when {
+            line.contains("->") -> line.substringAfterLast("->").trim().ifBlank { original }
+            else -> line
+        }
     }
 }

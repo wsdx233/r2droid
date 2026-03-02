@@ -201,6 +201,7 @@ private fun ArchCard(
                         .padding(8.dp)
                         .size(20.dp)
                 )
+                
             }
         }
     }

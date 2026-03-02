@@ -99,7 +99,10 @@ fun FridaEntryList(
 fun FridaExportList(
     items: List<FridaExport>?, actions: ListItemActions, onRefresh: () -> Unit, searchHint: String,
     searchQuery: String = "", onSearchQueryChange: (String) -> Unit = {},
-    listState: androidx.compose.foundation.lazy.LazyListState? = null
+    listState: androidx.compose.foundation.lazy.LazyListState? = null,
+    showAutoDemangleToggle: Boolean = false,
+    autoDemangleEnabled: Boolean = false,
+    onAutoDemangleChange: (Boolean) -> Unit = {}
 ) {
     if (items == null) { LoadingBox(); return }
     FilterableList(
@@ -109,7 +112,25 @@ fun FridaExportList(
         onRefresh = onRefresh,
         externalSearchQuery = searchQuery,
         onExternalSearchQueryChange = onSearchQueryChange,
-        externalListState = listState
+        externalListState = listState,
+        headerTrailingContent = if (showAutoDemangleToggle) {
+            {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.r2frida_auto_demangle),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = autoDemangleEnabled,
+                        onCheckedChange = onAutoDemangleChange
+                    )
+                }
+            }
+        } else null
     ) { export ->
         val addr = parseHexAddr(export.address)
         FridaItemWrapper(export.name, addr, "${export.type}: ${export.name}, Addr: ${export.address}", actions) {

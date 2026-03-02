@@ -703,6 +703,7 @@
     <string name="r2frida_search_symbols">Поиск символов…</string>
     <string name="r2frida_search_sections">Поиск секций…</string>
     <string name="r2frida_search_mappings">Поиск в карте памяти…</string>
+    <string name="r2frida_auto_demangle">Авто demangle</string>
     <string name="r2frida_overview_title">Инфо о сессии Frida</string>
     <string name="r2frida_script_hint">Пишите скрипт Frida здесь…</string>
     <string name="r2frida_script_run">Запустить скрипт</string>

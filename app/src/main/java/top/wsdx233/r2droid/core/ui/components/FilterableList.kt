@@ -28,6 +28,7 @@ fun <T> FilterableList(
     externalSearchQuery: String? = null,
     onExternalSearchQueryChange: ((String) -> Unit)? = null,
     externalListState: androidx.compose.foundation.lazy.LazyListState? = null,
+    headerTrailingContent: (@Composable () -> Unit)? = null,
     itemContent: @Composable (T) -> Unit
 ) {
     val actualPlaceholder = placeholder ?: stringResource(R.string.common_search)
@@ -70,6 +71,8 @@ fun <T> FilterableList(
                 modifier = Modifier.weight(1f)
             )
             
+            headerTrailingContent?.invoke()
+
             if (onRefresh != null) {
                 IconButton(onClick = onRefresh) {
                     Icon(

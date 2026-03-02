@@ -699,6 +699,7 @@
     <string name="r2frida_search_symbols">Search symbols…</string>
     <string name="r2frida_search_sections">Search sections…</string>
     <string name="r2frida_search_mappings">Search mappings…</string>
+    <string name="r2frida_auto_demangle">Auto demangle</string>
     <string name="r2frida_overview_title">Frida Session Info</string>
     <string name="r2frida_script_hint">Write Frida script here…</string>
     <string name="r2frida_script_run">Run Script</string>
