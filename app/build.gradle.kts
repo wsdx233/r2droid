@@ -143,5 +143,7 @@ dependencies {
 
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+    implementation("dev.chrisbanes.haze:haze-android:1.7.2")
+    implementation("dev.chrisbanes.haze:haze-materials-android:1.7.2")
     implementation("cat.ereza:customactivityoncrash:2.4.0")
 }

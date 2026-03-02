@@ -54,13 +54,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,9 +70,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalClipboardManager
+// import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -86,15 +87,22 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
+import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import top.wsdx233.r2droid.R
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
 @Composable
 fun AboutScreen(
     onBackClick: () -> Unit
@@ -102,8 +110,9 @@ fun AboutScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val scrollState = rememberScrollState()
     val uriHandler = LocalUriHandler.current
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
+    // val clipboardManager = LocalClipboardManager.current
+    // val context = LocalContext.current
+    val hazeState = rememberHazeState()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -128,14 +137,24 @@ fun AboutScreen(
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
-                )
+                    // containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                    // scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                ),
+                modifier = Modifier
+                    .hazeEffect(state = hazeState, style = HazeMaterials.ultraThin()) {
+                        noiseFactor = 0f
+                        blurRadius = 11.dp
+                        blurEnabled = true
+                        progressive = HazeProgressive.verticalGradient(startIntensity = 1f, endIntensity = 0f)
+                    }
+                .fillMaxWidth()
             )
         },
         contentWindowInsets = WindowInsets.navigationBars
     ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
             // Geeky Matrix/Grid Background
             GeekyBackground(
                 modifier = Modifier
@@ -149,7 +168,8 @@ fun AboutScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp)
+                    .hazeSource(state = hazeState),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 
@@ -305,7 +325,7 @@ fun getAppVersion(): String {
             context.packageManager.getPackageInfo(context.packageName, 0)
         }
         packageInfo.versionName ?: "Unknown"
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         "Unknown"
     }
 }
@@ -316,7 +336,8 @@ fun AppHeader() {
     val r2DroidText = stringResource(R.string.about_r2droid)
 
     // Rotating gradient animation
-    val infiniteTransition = rememberInfiniteTransition()
+    // val infiniteTransition = rememberInfiniteTransition()
+    /**
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -325,6 +346,15 @@ fun AppHeader() {
             repeatMode = RepeatMode.Restart
         ),
         label = "gradient_rotation"
+    )
+    **/
+
+    val secureRandom = remember { SecureRandom() }
+    var totalRotation by remember{ mutableFloatStateOf(0f) }
+    val animatedAngle by animateFloatAsState(
+        targetValue = totalRotation,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
+        label = "random_rotation"
     )
 
     Column(
@@ -355,12 +385,26 @@ fun AppHeader() {
                     .background(MaterialTheme.colorScheme.surface),
                  contentAlignment = Alignment.Center
             ) {
-                 Image(
-                     painter = painterResource(id = R.drawable.icon),
+                Image(
+                    painter = painterResource(id = R.drawable.icon),
                     contentDescription = stringResource(R.string.about_logo_desc),
                     modifier = Modifier
                         .size(90.dp)
                         .clip(CircleShape)
+                        .graphicsLayer {
+                            rotationZ = animatedAngle
+                        }
+                        .clickable {
+                        if (totalRotation % 360f != 0f) {
+                            val nextFullCircle = ((totalRotation / 360f).toInt() + 1) * 360f
+                            totalRotation = nextFullCircle
+                        } else {
+                            val laps = (2..3).random() * 360f
+                            val directions = floatArrayOf(0f, 90f, 180f, 270f)
+                            val targetDirection = directions[secureRandom.nextInt(directions.size)]
+                            totalRotation += (laps + targetDirection)
+                        }
+                    }
                 )
             }
         }
@@ -379,7 +423,7 @@ fun AppHeader() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        val context = LocalContext.current
+        // val context = LocalContext.current
         // version
         Text(text = "v${getAppVersion()}", style = MaterialTheme.typography.bodyMedium.copy(
             fontFamily = FontFamily.Monospace).copy(Color.Gray))
