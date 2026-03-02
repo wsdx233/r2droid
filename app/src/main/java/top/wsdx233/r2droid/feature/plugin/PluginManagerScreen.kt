@@ -1,6 +1,8 @@
 package top.wsdx233.r2droid.feature.plugin
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -39,11 +43,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.util.UriUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +78,22 @@ fun PluginManagerScreen(
     val isWorking by PluginManager.isWorking.collectAsState()
     val logs by PluginManager.logs.collectAsState()
     val installProgress by PluginManager.installProgress.collectAsState()
+    val developerConfig by PluginManager.developerConfig.collectAsState()
+
+    val zipPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            PluginManager.installFromZipUri(uri)
+        }
+    }
+
+    val workspacePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val path = UriUtils.getTreePath(context, uri) ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            PluginManager.setDeveloperWorkspaceDir(path)
+        }
+    }
 
     var sourceInput by remember { mutableStateOf("") }
     var selectedPage by remember { mutableStateOf<Pair<String, PluginPage>?>(null) }
@@ -170,13 +191,22 @@ fun PluginManagerScreen(
                     sourceInput = sourceInput,
                     onSourceInputChange = { sourceInput = it },
                     isWorking = isWorking,
+                    developerConfig = developerConfig,
                     onAdd = {
                         scope.launch {
                             PluginManager.addRepositorySource(sourceInput)
                             sourceInput = ""
                         }
                     },
-                    onRemove = { repo -> scope.launch { PluginManager.removeRepositorySource(repo) } }
+                    onRemove = { repo -> scope.launch { PluginManager.removeRepositorySource(repo) } },
+                    onInstallZip = { zipPickerLauncher.launch("application/zip") },
+                    onSetDeveloperMode = { enabled ->
+                        scope.launch { PluginManager.setDeveloperModeEnabled(enabled) }
+                    },
+                    onPickDeveloperWorkspace = { workspacePickerLauncher.launch(null) },
+                    onCreateDeveloperPlugin = { request ->
+                        scope.launch { PluginManager.createDeveloperPlugin(request) }
+                    }
                 )
 
                 else -> LogsTab(
@@ -414,9 +444,16 @@ private fun SourceManageTab(
     sourceInput: String,
     onSourceInputChange: (String) -> Unit,
     isWorking: Boolean,
+    developerConfig: PluginDeveloperConfig,
     onAdd: () -> Unit,
-    onRemove: (String) -> Unit
+    onRemove: (String) -> Unit,
+    onInstallZip: () -> Unit,
+    onSetDeveloperMode: (Boolean) -> Unit,
+    onPickDeveloperWorkspace: () -> Unit,
+    onCreateDeveloperPlugin: (DeveloperPluginCreateRequest) -> Unit
 ) {
+    var showCreateDialog by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -447,6 +484,74 @@ private fun SourceManageTab(
             }
         }
 
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = onInstallZip,
+                    enabled = !isWorking
+                ) {
+                    Text(stringResource(R.string.plugin_install_zip))
+                }
+            }
+        }
+
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.plugin_developer_mode),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Switch(
+                            checked = developerConfig.enabled,
+                            onCheckedChange = onSetDeveloperMode,
+                            enabled = !isWorking
+                        )
+                    }
+
+                    if (developerConfig.enabled) {
+                        Text(
+                            text = developerConfig.workspaceDir
+                                ?: stringResource(R.string.plugin_developer_workspace_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            TextButton(
+                                onClick = onPickDeveloperWorkspace,
+                                enabled = !isWorking
+                            ) {
+                                Text(stringResource(R.string.plugin_developer_select_workspace))
+                            }
+                            Button(
+                                onClick = { showCreateDialog = true },
+                                enabled = !isWorking && !developerConfig.workspaceDir.isNullOrBlank()
+                            ) {
+                                Text(stringResource(R.string.plugin_developer_create_plugin))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         items(repositories, key = { "repo_$it" }) { repo ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -469,6 +574,115 @@ private fun SourceManageTab(
             }
         }
     }
+
+    if (showCreateDialog) {
+        CreateDeveloperPluginDialog(
+            onDismiss = { showCreateDialog = false },
+            onConfirm = { request ->
+                onCreateDeveloperPlugin(request)
+                showCreateDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun CreateDeveloperPluginDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (DeveloperPluginCreateRequest) -> Unit
+) {
+    var type by remember { mutableStateOf(DeveloperPluginType.WEBVIEW) }
+    var id by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var version by remember { mutableStateOf("1.0.0") }
+    var description by remember { mutableStateOf("") }
+    var author by remember { mutableStateOf("") }
+
+    val typeLabel = when (type) {
+        DeveloperPluginType.WEBVIEW -> stringResource(R.string.plugin_developer_type_webview)
+        DeveloperPluginType.SCHEMA -> stringResource(R.string.plugin_developer_type_schema)
+        DeveloperPluginType.TERMINAL -> stringResource(R.string.plugin_developer_type_terminal)
+    }
+
+    val canConfirm = id.isNotBlank() && name.isNotBlank() && version.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.plugin_developer_create_plugin)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.plugin_developer_plugin_type, typeLabel),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = { type = DeveloperPluginType.WEBVIEW }) {
+                        Text(stringResource(R.string.plugin_developer_type_webview))
+                    }
+                    TextButton(onClick = { type = DeveloperPluginType.SCHEMA }) {
+                        Text(stringResource(R.string.plugin_developer_type_schema))
+                    }
+                    TextButton(onClick = { type = DeveloperPluginType.TERMINAL }) {
+                        Text(stringResource(R.string.plugin_developer_type_terminal))
+                    }
+                }
+
+                OutlinedTextField(
+                    value = id,
+                    onValueChange = { id = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.plugin_developer_plugin_id)) }
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.plugin_developer_plugin_name)) }
+                )
+                OutlinedTextField(
+                    value = version,
+                    onValueChange = { version = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.plugin_developer_plugin_version)) }
+                )
+                OutlinedTextField(
+                    value = author,
+                    onValueChange = { author = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.plugin_developer_plugin_author)) }
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text(stringResource(R.string.plugin_developer_plugin_description)) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        DeveloperPluginCreateRequest(
+                            type = type,
+                            id = id,
+                            name = name,
+                            version = version,
+                            description = description,
+                            author = author
+                        )
+                    )
+                },
+                enabled = canConfirm
+            ) {
+                Text(stringResource(R.string.plugin_developer_create_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.plugin_developer_create_cancel))
+            }
+        }
+    )
 }
 
 @Composable

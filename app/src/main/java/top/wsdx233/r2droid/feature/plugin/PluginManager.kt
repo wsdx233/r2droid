@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.plugin
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ import java.util.zip.ZipInputStream
 object PluginManager {
     private const val TAG = "PluginManager"
     private const val DEFAULT_REMOTE_INDEX = "https://raw.githubusercontent.com/wsdx233/r2droid-plugins/refs/heads/main/index.json"
+    private const val DEVELOPER_SOURCE_PREFIX = "developer://"
 
     private val initialized = AtomicBoolean(false)
     private lateinit var appContext: Context
@@ -63,13 +65,18 @@ object PluginManager {
     private val _installProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val installProgress = _installProgress.asStateFlow()
 
+    private val _developerConfig = MutableStateFlow(PluginDeveloperConfig())
+    val developerConfig = _developerConfig.asStateFlow()
+
     fun initialize(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
         appContext = context.applicationContext
         ioScope.launch {
             ensureStructure()
             loadRepositorySources()
+            loadDeveloperConfig()
             installBundledPluginsIfNeeded()
+            syncDeveloperWorkspacePlugins()
             reloadInstalledFromDisk()
             runStartupEntryScripts()
             refreshCatalog()
@@ -78,6 +85,8 @@ object PluginManager {
 
     suspend fun refreshCatalog() = withContext(Dispatchers.IO) {
         ensureInitialized()
+        syncDeveloperWorkspacePlugins()
+        reloadInstalledFromDisk()
         _isWorking.value = true
         _status.value = "Refreshing plugin index..."
         try {
@@ -280,6 +289,190 @@ object PluginManager {
         }
     }
 
+    suspend fun installFromZipUri(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        _isWorking.value = true
+        _status.value = "Installing plugin from ZIP..."
+
+        val tempZip = File(tempDir(), "import-${System.currentTimeMillis()}.zip")
+        val stagedDir = File(tempDir(), "import-${System.currentTimeMillis()}-staged")
+        var targetDir: File? = null
+        var backupDir: File? = null
+
+        runCatching {
+            appContext.contentResolver.openInputStream(uri)?.use { input ->
+                tempZip.parentFile?.mkdirs()
+                FileOutputStream(tempZip).use { output -> input.copyTo(output) }
+            } ?: throw IllegalStateException("failed to open zip uri")
+
+            stagedDir.deleteRecursively()
+            stagedDir.mkdirs()
+            unzipSafely(tempZip, stagedDir)
+
+            val manifestFile = File(stagedDir, "manifest.json")
+            if (!manifestFile.exists()) {
+                throw IllegalStateException("manifest not found: manifest.json")
+            }
+
+            val manifest = json.decodeFromString(PluginManifest.serializer(), manifestFile.readText())
+            val normalizedId = normalizePluginId(manifest.id)
+            if (normalizedId.isBlank()) {
+                throw IllegalStateException("invalid manifest.id")
+            }
+
+            targetDir = File(packagesDir(), normalizedId)
+            backupDir = File(packagesDir(), "$normalizedId-backup")
+
+            backupDir?.deleteRecursively()
+            if (targetDir?.exists() == true) {
+                if (targetDir?.renameTo(backupDir) != true) {
+                    throw IllegalStateException("failed to backup current plugin directory")
+                }
+            }
+
+            if (targetDir?.exists() == true) targetDir?.deleteRecursively()
+            if (stagedDir.renameTo(targetDir) != true) {
+                throw IllegalStateException("failed to move staged plugin to target")
+            }
+            backupDir?.deleteRecursively()
+
+            val digest = sha256(tempZip)
+            val states = readInstalledStates().toMutableList().apply {
+                removeAll { it.id == normalizedId }
+                add(
+                    InstalledPluginState(
+                        id = normalizedId,
+                        version = manifest.version,
+                        installDir = targetDir?.absolutePath ?: "",
+                        enabled = true,
+                        sourceUrl = uri.toString(),
+                        sha256 = digest,
+                        manifestPath = "manifest.json",
+                        installedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+            writeInstalledStates(states)
+            reloadInstalledFromDisk()
+            runInstallScriptIfPresent(normalizedId, reason = "install")
+            refreshCatalog()
+            appendLog("[install] $normalizedId@${manifest.version} from zip success")
+            _status.value = "Installed ${manifest.name}"
+        }.recoverCatching { throwable ->
+            val rollbackTarget = targetDir
+            val rollbackBackup = backupDir
+            if (rollbackTarget != null && rollbackBackup != null && !rollbackTarget.exists() && rollbackBackup.exists()) {
+                rollbackBackup.renameTo(rollbackTarget)
+            }
+            appendLog("[install] zip failed: ${throwable.message}")
+            throw throwable
+        }.onFailure {
+            _status.value = "Install failed: ${it.message}"
+        }.also {
+            tempZip.delete()
+            stagedDir.deleteRecursively()
+            _isWorking.value = false
+        }
+    }
+
+    suspend fun setDeveloperModeEnabled(enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        runCatching {
+            val next = _developerConfig.value.copy(enabled = enabled)
+            writeDeveloperConfig(next)
+            _developerConfig.value = next
+            refreshCatalog()
+        }
+    }
+
+    suspend fun setDeveloperWorkspaceDir(path: String?): Result<Unit> = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        runCatching {
+            val normalizedPath = path?.trim()?.ifBlank { null }
+            val next = _developerConfig.value.copy(workspaceDir = normalizedPath)
+            writeDeveloperConfig(next)
+            _developerConfig.value = next
+            refreshCatalog()
+        }
+    }
+
+    suspend fun createDeveloperPlugin(request: DeveloperPluginCreateRequest): Result<Unit> = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        _isWorking.value = true
+        _status.value = "Creating plugin ${request.id}..."
+
+        val pluginId = normalizePluginId(request.id)
+        var pluginDir: File? = null
+        var created = false
+
+        runCatching {
+            require(pluginId.isNotBlank()) { "invalid plugin id" }
+            require(request.name.isNotBlank()) { "plugin name is required" }
+            require(request.version.isNotBlank()) { "plugin version is required" }
+
+            val config = _developerConfig.value
+            require(config.enabled) { "developer mode is disabled" }
+            val workspacePath = config.workspaceDir?.trim().orEmpty()
+            require(workspacePath.isNotBlank()) { "developer workspace is not set" }
+
+            val workspaceDir = File(workspacePath)
+            require(workspaceDir.exists() && workspaceDir.isDirectory) { "developer workspace not found" }
+
+            pluginDir = File(workspaceDir, pluginId)
+            require(pluginDir?.exists() != true) { "plugin already exists: $pluginId" }
+            pluginDir?.mkdirs()
+
+            val entry = when (request.type) {
+                DeveloperPluginType.WEBVIEW -> {
+                    val uiDir = File(pluginDir, "ui").apply { mkdirs() }
+                    File(uiDir, "index.html").writeText(defaultWebviewHtml(request.name))
+                    PluginEntry(page = PluginPage(type = "webview", path = "ui/index.html"))
+                }
+
+                DeveloperPluginType.SCHEMA -> {
+                    File(pluginDir, "schema.json").writeText(defaultSchemaJson(request.name))
+                    PluginEntry(page = PluginPage(type = "schema", path = "schema.json"))
+                }
+
+                DeveloperPluginType.TERMINAL -> {
+                    PluginEntry(terminal = PluginTerminalEntry(command = "r2 -v", title = request.name))
+                }
+            }
+
+            val manifest = PluginManifest(
+                id = pluginId,
+                name = request.name.trim(),
+                version = request.version.trim(),
+                description = request.description.trim(),
+                author = request.author.trim(),
+                permissions = emptyList(),
+                entry = entry,
+                ui = PluginUiOptions(),
+                tabs = emptyList(),
+                projectTabs = emptyList()
+            )
+            File(pluginDir, "manifest.json").writeText(
+                json.encodeToString(PluginManifest.serializer(), manifest)
+            )
+
+            created = true
+            appendLog("[developer] created plugin $pluginId (${request.type.key})")
+            runCatching { refreshCatalog() }
+                .onFailure { appendLog("[developer] refresh failed after create: ${it.message}") }
+            _status.value = "Created plugin $pluginId"
+        }.recoverCatching { throwable ->
+            if (!created && pluginDir?.exists() == true) {
+                pluginDir?.deleteRecursively()
+            }
+            appendLog("[developer] create failed: ${throwable.message}")
+            throw throwable
+        }.onFailure {
+            _status.value = "Create plugin failed: ${it.message}"
+        }.also {
+            _isWorking.value = false
+        }
+    }
+
     fun clearLogs() {
         _logs.value = emptyList()
     }
@@ -345,6 +538,116 @@ object PluginManager {
             writeRepositorySources(sources)
         }
         _repositorySources.value = sources
+    }
+
+    private suspend fun loadDeveloperConfig() {
+        val file = developerConfigFile()
+        val config = runCatching {
+            if (!file.exists()) {
+                PluginDeveloperConfig()
+            } else {
+                json.decodeFromString(PluginDeveloperConfig.serializer(), file.readText())
+            }
+        }.getOrElse {
+            appendLog("[developer] read config failed: ${it.message}")
+            PluginDeveloperConfig()
+        }
+
+        val normalized = config.copy(
+            workspaceDir = config.workspaceDir?.trim()?.ifBlank { null }
+        )
+
+        _developerConfig.value = normalized
+        if (!file.exists() || runCatching { file.readText() }.getOrDefault("") != json.encodeToString(PluginDeveloperConfig.serializer(), normalized)) {
+            writeDeveloperConfig(normalized)
+        }
+    }
+
+    private fun writeDeveloperConfig(config: PluginDeveloperConfig) {
+        developerConfigFile().writeText(
+            json.encodeToString(PluginDeveloperConfig.serializer(), config)
+        )
+    }
+
+    private suspend fun syncDeveloperWorkspacePlugins() = withContext(Dispatchers.IO) {
+        val config = _developerConfig.value
+        val previous = readInstalledStates()
+        val next = previous
+            .filterNot { it.sourceUrl.startsWith(DEVELOPER_SOURCE_PREFIX) }
+            .toMutableList()
+
+        if (!config.enabled) {
+            val sortedPrev = previous.sortedBy { it.id }
+            val sortedNext = next.sortedBy { it.id }
+            if (sortedPrev != sortedNext) {
+                writeInstalledStates(sortedNext)
+            }
+            return@withContext
+        }
+
+        val workspacePath = config.workspaceDir?.trim().orEmpty()
+        if (workspacePath.isBlank()) {
+            val sortedPrev = previous.sortedBy { it.id }
+            val sortedNext = next.sortedBy { it.id }
+            if (sortedPrev != sortedNext) {
+                writeInstalledStates(sortedNext)
+            }
+            return@withContext
+        }
+
+        val workspaceDir = File(workspacePath)
+        if (!workspaceDir.exists() || !workspaceDir.isDirectory) {
+            appendLog("[developer] workspace not found: $workspacePath")
+            val sortedPrev = previous.sortedBy { it.id }
+            val sortedNext = next.sortedBy { it.id }
+            if (sortedPrev != sortedNext) {
+                writeInstalledStates(sortedNext)
+            }
+            return@withContext
+        }
+
+        val previousById = previous.associateBy { it.id }
+        val candidates = workspaceDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedBy { it.name.lowercase() }
+            .orEmpty()
+
+        candidates.forEach { pluginDir ->
+            val manifestFile = File(pluginDir, "manifest.json")
+            if (!manifestFile.exists()) return@forEach
+
+            val manifest = runCatching {
+                json.decodeFromString(PluginManifest.serializer(), manifestFile.readText())
+            }.getOrElse {
+                appendLog("[developer] skip ${pluginDir.name}: manifest parse failed (${it.message})")
+                return@forEach
+            }
+
+            val pluginId = normalizePluginId(manifest.id)
+            if (pluginId.isBlank()) {
+                appendLog("[developer] skip ${pluginDir.name}: invalid manifest.id")
+                return@forEach
+            }
+
+            val previousState = previousById[pluginId]
+            next.removeAll { it.id == pluginId }
+            next += InstalledPluginState(
+                id = pluginId,
+                version = manifest.version,
+                installDir = pluginDir.absolutePath,
+                enabled = previousState?.enabled ?: true,
+                sourceUrl = "$DEVELOPER_SOURCE_PREFIX${pluginDir.absolutePath}",
+                sha256 = runCatching { sha256Directory(pluginDir) }.getOrDefault(""),
+                manifestPath = "manifest.json",
+                installedAt = previousState?.installedAt ?: System.currentTimeMillis()
+            )
+        }
+
+        val sortedPrev = previous.sortedBy { it.id }
+        val sortedNext = next.sortedBy { it.id }
+        if (sortedPrev != sortedNext) {
+            writeInstalledStates(sortedNext)
+        }
     }
 
     private fun normalizeRepositorySource(source: String): String {
@@ -833,6 +1136,55 @@ object PluginManager {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    private fun defaultWebviewHtml(name: String): String {
+        return """
+            <!doctype html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>$name</title>
+              <style>
+                body { font-family: sans-serif; padding: 16px; background: #0d1117; color: #e6edf3; }
+                .card { border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h3>$name</h3>
+                <p>Developer plugin scaffold created successfully.</p>
+              </div>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun defaultSchemaJson(name: String): String {
+        return """
+            {
+              "widgets": [
+                {
+                  "type": "text",
+                  "text": "$name"
+                },
+                {
+                  "type": "button",
+                  "text": "Run ?V",
+                  "action": "r2",
+                  "command": "?V"
+                }
+              ]
+            }
+        """.trimIndent()
+    }
+
+    private fun normalizePluginId(raw: String): String {
+        return raw.trim()
+            .lowercase()
+            .replace(Regex("[^a-z0-9._-]"), "-")
+            .trim('-')
+    }
+
     private fun appendLog(line: String) {
         Log.d(TAG, line)
         val next = _logs.value.toMutableList()
@@ -883,5 +1235,6 @@ object PluginManager {
     private fun packagesDir(): File = File(rootDir(), "packages")
     private fun tempDir(): File = File(rootDir(), "tmp")
     private fun repositoriesFile(): File = File(rootDir(), "repositories.json")
+    private fun developerConfigFile(): File = File(rootDir(), "developer.json")
     private fun installedStateFile(): File = File(rootDir(), "installed.json")
 }

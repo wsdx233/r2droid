@@ -113,3 +113,30 @@ data class PluginScreenTabDescriptor(
     val target: String,
     val tab: PluginScreenTab
 )
+
+@Serializable
+data class PluginDeveloperConfig(
+    @SerialName("enabled") val enabled: Boolean = false,
+    @SerialName("workspaceDir") val workspaceDir: String? = null
+)
+
+enum class DeveloperPluginType(val key: String) {
+    WEBVIEW("webview"),
+    SCHEMA("schema"),
+    TERMINAL("terminal");
+
+    companion object {
+        fun fromKey(key: String): DeveloperPluginType {
+            return entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: WEBVIEW
+        }
+    }
+}
+
+data class DeveloperPluginCreateRequest(
+    val type: DeveloperPluginType,
+    val id: String,
+    val name: String,
+    val version: String,
+    val description: String,
+    val author: String
+)
