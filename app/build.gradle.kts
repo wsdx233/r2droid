@@ -70,11 +70,8 @@ android {
         viewBinding = true
     }
 
-    //noinspection WrongGradleMethod
     kotlin {
-        compilerOptions {
-            jvmToolchain(17)
-        }
+        jvmToolchain(17)
     }
 
     lint {
