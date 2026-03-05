@@ -941,7 +941,27 @@ data class GraphData(
                 val addr = block.optLong("addr", 0)
                 val opsArray = block.optJSONArray("ops")
                 val instructions = mutableListOf<GraphBlockInstruction>()
-                val jumpTargets = mutableSetOf<Long>()
+                val jumpTargets = linkedSetOf<Long>()
+
+                // Prefer block-level control-flow first (covers agj switch blocks and explicit jump/fail)
+                if (block.has("jump")) {
+                    jumpTargets.add(block.optLong("jump"))
+                }
+                if (block.has("fail")) {
+                    jumpTargets.add(block.optLong("fail"))
+                }
+
+                // Parse switch cases from block.switchop.cases[*].jump
+                block.optJSONObject("switchop")
+                    ?.optJSONArray("cases")
+                    ?.let { cases ->
+                        for (caseIndex in 0 until cases.length()) {
+                            val caseObj = cases.optJSONObject(caseIndex) ?: continue
+                            if (caseObj.has("jump")) {
+                                jumpTargets.add(caseObj.optLong("jump"))
+                            }
+                        }
+                    }
 
                 if (opsArray != null) {
                     for (j in 0 until opsArray.length()) {
@@ -953,8 +973,11 @@ data class GraphData(
                     }
                 }
 
-                // If no explicit jumps, the next block is the fallthrough
-                if (jumpTargets.isEmpty() && i + 1 < blocksArray.length()) {
+                val lastType = instructions.lastOrNull()?.type?.lowercase()
+                val isTerminal = lastType == "ret" || lastType == "jmp" || lastType == "ujmp"
+
+                // Only add implicit fallthrough when block is not terminal.
+                if (jumpTargets.isEmpty() && !isTerminal && i + 1 < blocksArray.length()) {
                     val nextAddr = blocksArray.getJSONObject(i + 1).optLong("addr", 0)
                     jumpTargets.add(nextAddr)
                 }
