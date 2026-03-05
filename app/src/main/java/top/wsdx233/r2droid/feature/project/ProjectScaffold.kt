@@ -874,6 +874,8 @@ fun ProjectScaffold(
                         MainCategory.List -> {
                             if (selectedListTabIndex < baseListTabs.size) {
                                 ProjectListView(
+                                    viewModel = viewModel,
+                                    disasmViewModel = disasmViewModel,
                                     tabIndex = selectedListTabIndex,
                                     overviewScrollState = listOverviewScrollState,
                                     searchResultListState = listSearchResultState,
@@ -906,6 +908,9 @@ fun ProjectScaffold(
                         MainCategory.Detail -> {
                             if (selectedDetailTabIndex < baseDetailTabs.size) {
                                 ProjectDetailView(
+                                    viewModel = viewModel,
+                                    hexViewModel = hexViewModel,
+                                    disasmViewModel = disasmViewModel,
                                     tabIndex = selectedDetailTabIndex
                                 )
                             } else {

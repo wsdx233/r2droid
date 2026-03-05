@@ -482,6 +482,11 @@ class ProjectViewModel @Inject constructor(
     }
 
     fun initialize() {
+        // 避免在分析流程进行中被会话切换触发的 Initialize 覆盖状态（导致界面闪回配置页）
+        if (_uiState.value is ProjectUiState.Analyzing) {
+            return
+        }
+
         val sessionChanged = onSessionSwitchedIfNeeded()
         val path = R2PipeManager.pendingFilePath
         val restoreFlags = R2PipeManager.pendingRestoreFlags
@@ -602,6 +607,9 @@ class ProjectViewModel @Inject constructor(
     fun startAnalysisSession(analysisCmd: String, writable: Boolean, startupFlags: String) {
          val currentState = _uiState.value
          if (currentState is ProjectUiState.Configuring) {
+             // 立即消费 pending 路径，避免 open() 过程中触发的 Initialize 将界面重置回配置/分析页
+             R2PipeManager.pendingFilePath = null
+
              viewModelScope.launch {
                  _uiState.value = ProjectUiState.Analyzing
                  
@@ -637,8 +645,6 @@ class ProjectViewModel @Inject constructor(
                          _uiState.value = it.copy(cursorAddress = currentOffset)
                      }
                      
-                     // Clear pending path so subsequent navigations (or rotations) rely on configured state
-                     R2PipeManager.pendingFilePath = null
                  } else {
                      _uiState.value = ProjectUiState.Error(openResult.exceptionOrNull()?.message ?: "Unknown error")
                  }
