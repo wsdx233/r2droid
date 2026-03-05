@@ -8,6 +8,7 @@
     <string name="home_open_file_desc">分析二进制文件</string>
     <string name="home_features_title">功能</string>
     <string name="home_features_desc">探索更多实用工具</string>
+    <string name="home_resume_session">打开现有会话</string>
     <string name="home_recent_projects">最近项目</string>
     <string name="home_no_recent_projects">暂无最近项目</string>
     <string name="home_settings">设置</string>
@@ -39,6 +40,15 @@
     <string name="project_exit_update_title">退出且不更新？</string>
     <string name="project_exit_update_message">自上次保存后有新的操作。退出前是否更新项目？</string>
     <string name="project_exit_update">更新</string>
+    <string name="session_drawer_open">打开会话侧栏</string>
+    <string name="session_new">新建会话</string>
+    <string name="session_close">关闭会话</string>
+    <string name="session_tools_title">实用工具</string>
+    <string name="tool_vapa">VA/PA</string>
+    <string name="tool_bitwise">位运算</string>
+    <string name="tool_assembler">汇编器</string>
+    <string name="tool_crypto">编码哈希</string>
+    <string name="tool_archref">架构速查</string>
     <string name="project_startup_flags">启动参数</string>
     <string name="project_startup_flags_hint">额外的 r2 参数 (例如 -w -n)</string>
     <string name="project_startup_flags_desc">这些参数将在恢复此项目时应用</string>

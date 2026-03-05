@@ -8,6 +8,7 @@
     <string name="home_open_file_desc">Select binary to analyze</string>
     <string name="home_features_title">Features</string>
     <string name="home_features_desc">Explore more tools</string>
+    <string name="home_resume_session">Open Existing Session</string>
     <string name="home_recent_projects">Recent Projects</string>
     <string name="home_saved_projects">Saved Projects</string>
     <string name="home_no_recent_projects">No recent projects</string>
@@ -51,6 +52,15 @@
     <string name="project_exit_update_title">Exit without updating?</string>
     <string name="project_exit_update_message">You have unsaved changes since the last save. Would you like to update the project before exiting?</string>
     <string name="project_exit_update">Update</string>
+    <string name="session_drawer_open">Open session drawer</string>
+    <string name="session_new">New Session</string>
+    <string name="session_close">Close Session</string>
+    <string name="session_tools_title">Utilities</string>
+    <string name="tool_vapa">VA/PA</string>
+    <string name="tool_bitwise">Bitwise</string>
+    <string name="tool_assembler">Assembler</string>
+    <string name="tool_crypto">Crypto</string>
+    <string name="tool_archref">Arch Ref</string>
     <string name="project_startup_flags">Startup Flags</string>
     <string name="project_startup_flags_hint">Additional r2 flags (e.g. -w -n)</string>
     <string name="project_startup_flags_desc">These flags will be applied when restoring this project</string>

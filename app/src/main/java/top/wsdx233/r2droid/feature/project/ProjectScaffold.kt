@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FormatPaint
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SmartToy
@@ -133,11 +134,13 @@ enum class MainCategory(@StringRes val titleRes: Int, val icon: ImageVector) {
 )
 @Composable
 fun ProjectScaffold(
+    sessionId: String,
     viewModel: ProjectViewModel,
-    hexViewModel: HexViewModel = hiltViewModel(),
-    disasmViewModel: DisasmViewModel = hiltViewModel(),
-    aiViewModel: AiViewModel = hiltViewModel(),
-    r2fridaViewModel: R2FridaViewModel = hiltViewModel(),
+    hexViewModel: HexViewModel = hiltViewModel(key = "hex-$sessionId"),
+    disasmViewModel: DisasmViewModel = hiltViewModel(key = "disasm-$sessionId"),
+    aiViewModel: AiViewModel = hiltViewModel(key = "ai-$sessionId"),
+    r2fridaViewModel: R2FridaViewModel = hiltViewModel(key = "frida-$sessionId"),
+    onOpenDrawer: () -> Unit = {},
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -332,6 +335,14 @@ fun ProjectScaffold(
         topBar = {
             Column {
             TopAppBar(
+                navigationIcon = {
+                    androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.Menu,
+                            contentDescription = stringResource(R.string.session_drawer_open)
+                        )
+                    }
+                },
                 title = { Text(stringResource(top.wsdx233.r2droid.R.string.app_name)) },
                 actions = {
                     if (selectedCategory == MainCategory.Detail) {

@@ -73,11 +73,6 @@ class HomeViewModel : ViewModel() {
     fun onFileSelected(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
-                // 如果之前的会话未关闭，先强制关闭（不等待 mutex，避免阻塞）
-                if (R2PipeManager.isConnected) {
-                    R2PipeManager.forceClose()
-                }
-
                 // Determine file path. 
                 // Since R2Pipe likely requires a real file path (native access),
                 // if it's a content URI, we might need to copy it to a temp file.
@@ -116,11 +111,6 @@ class HomeViewModel : ViewModel() {
                         context.getString(R.string.home_error_script_not_found)
                     ))
                     return@launch
-                }
-
-                // Close existing session if any（强制关闭，不等待 mutex）
-                if (R2PipeManager.isConnected) {
-                    R2PipeManager.forceClose()
                 }
 
                 // Set pending file path and restore script path

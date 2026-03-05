@@ -205,9 +205,6 @@ fun MainAppNavigation(
         if (pendingFileUri != null) {
             val filePath = IntentFileResolver.resolve(context, pendingFileUri)
             if (filePath != null) {
-                if (R2PipeManager.isConnected) {
-                    R2PipeManager.forceClose()
-                }
                 R2PipeManager.pendingFilePath = filePath
                 R2PipeManager.pendingRestoreFlags = null
                 currentScreen = AppScreen.Project
@@ -250,9 +247,6 @@ fun MainAppNavigation(
                 onNavigateToR2Frida = { currentScreen = AppScreen.R2Frida },
                 onNavigateToPlugins = { currentScreen = AppScreen.PluginManager },
                 onCustomStart = { command ->
-                    if (R2PipeManager.isConnected) {
-                        R2PipeManager.forceClose()
-                    }
                     val rawArgs = command.trim().removePrefix("r2 ").removePrefix("r2").trim()
                     R2PipeManager.pendingCustomCommand = rawArgs.ifBlank { "-" }
                     R2PipeManager.pendingFilePath = null
@@ -268,9 +262,6 @@ fun MainAppNavigation(
             top.wsdx233.r2droid.feature.r2frida.R2FridaScreen(
                 onBack = { currentScreen = AppScreen.Features },
                 onConnect = { command ->
-                    if (R2PipeManager.isConnected) {
-                        R2PipeManager.forceClose()
-                    }
                     R2PipeManager.pendingCustomCommand = command
                     R2PipeManager.pendingFilePath = null
                     R2PipeManager.pendingRestoreFlags = null

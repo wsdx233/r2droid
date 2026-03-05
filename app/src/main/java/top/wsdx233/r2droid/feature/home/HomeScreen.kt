@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,7 @@ import kotlinx.coroutines.flow.collectLatest
 import top.wsdx233.r2droid.core.data.model.SavedProject
 import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
 import top.wsdx233.r2droid.core.ui.adaptive.WindowWidthClass
+import top.wsdx233.r2droid.util.R2PipeManager
 
 @Composable
 fun HomeScreen(
@@ -77,6 +79,8 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf<SavedProject?>(null) }
+    val sessions by R2PipeManager.sessions.collectAsState()
+    val hasActiveSessions = sessions.isNotEmpty()
 
     // Initialize ViewModel with context
     LaunchedEffect(Unit) {
@@ -162,6 +166,8 @@ fun HomeScreen(
                 // Left pane: header + actions + bottom bar
                 HomeLeftPane(
                     modifier = Modifier.weight(0.4f),
+                    hasActiveSessions = hasActiveSessions,
+                    onOpenExistingSession = onNavigateToProject,
                     onOpenFile = { filePickerLauncher.launch("*/*") },
                     onFeatures = viewModel::onFeaturesClicked,
                     onSettings = viewModel::onSettingsClicked,
@@ -178,6 +184,8 @@ fun HomeScreen(
         } else {
             // --- Portrait / Phone: original single-column layout ---
             HomeCompactLayout(
+                hasActiveSessions = hasActiveSessions,
+                onOpenExistingSession = onNavigateToProject,
                 onOpenFile = { filePickerLauncher.launch("*/*") },
                 viewModel = viewModel,
                 context = context,
@@ -190,6 +198,8 @@ fun HomeScreen(
 @Composable
 private fun HomeLeftPane(
     modifier: Modifier,
+    hasActiveSessions: Boolean,
+    onOpenExistingSession: () -> Unit,
     onOpenFile: () -> Unit,
     onFeatures: () -> Unit,
     onSettings: () -> Unit,
@@ -197,13 +207,28 @@ private fun HomeLeftPane(
 ) {
     Column(modifier = modifier) {
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.displaySmall.copy(
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             )
-        )
+            if (hasActiveSessions) {
+                IconButton(onClick = onOpenExistingSession) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = stringResource(R.string.home_resume_session),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
         Text(
             text = stringResource(R.string.home_subtitle),
             style = MaterialTheme.typography.titleMedium.copy(
@@ -288,6 +313,8 @@ private fun HomeSavedProjectsPane(
 
 @Composable
 private fun HomeCompactLayout(
+    hasActiveSessions: Boolean,
+    onOpenExistingSession: () -> Unit,
     onOpenFile: () -> Unit,
     viewModel: HomeViewModel,
     context: Context,
@@ -300,13 +327,28 @@ private fun HomeCompactLayout(
             .padding(24.dp)
     ) {
         Spacer(modifier = Modifier.height(32.dp))
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.displayMedium.copy(
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             )
-        )
+            if (hasActiveSessions) {
+                IconButton(onClick = onOpenExistingSession) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = stringResource(R.string.home_resume_session),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
         Text(
             text = stringResource(R.string.home_subtitle),
             style = MaterialTheme.typography.titleMedium.copy(
