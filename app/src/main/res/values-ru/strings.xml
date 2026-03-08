@@ -745,6 +745,7 @@
     <string name="fsearch_value_hint">Значение (используйте ; для объединения, * для всего)</string>
     <string name="fsearch_searching">Поиск…</string>
     <string name="fsearch_result_count">%1$d результатов</string>
+    <string name="fsearch_result_meta">Лимит %1$d · Тайм-аут %2$d с</string>
     <string name="fsearch_no_results">Нет результатов</string>
     <string name="fsearch_advanced">Расширенные параметры</string>
     <string name="fsearch_type">Тип</string>
@@ -787,6 +788,9 @@
     <string name="fsearch_limit">Лимит</string>
     <string name="fsearch_limit_custom">Свой…</string>
     <string name="fsearch_limit_custom_title">Свой лимит результатов</string>
+    <string name="fsearch_timeout">Тайм-аут поиска (с)</string>
+    <string name="fsearch_timeout_hint">Применяется к поиску, уточнению и обновлению</string>
+    <string name="fsearch_timeout_invalid">Введите значение больше 0</string>
 
     <!-- Export Report -->
     <string name="export_report_title">Экспорт отчета об анализе</string>

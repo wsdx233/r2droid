@@ -1049,6 +1049,7 @@ fun ProjectScaffold(
                             val fridaSearchError by r2fridaViewModel.searchError.collectAsState()
                             val fridaFrozenAddresses by r2fridaViewModel.frozenAddresses.collectAsState()
                             val fridaMaxResults by r2fridaViewModel.maxResults.collectAsState()
+                            val fridaSearchTimeoutSeconds by r2fridaViewModel.searchTimeoutSeconds.collectAsState()
 
                             val fridaMonitors by r2fridaViewModel.monitors.collectAsState()
                             val fridaMonitorPrefill by r2fridaViewModel.monitorPrefillAddress.collectAsState()
@@ -1163,6 +1164,8 @@ fun ProjectScaffold(
                                         onRefreshValues = { r2fridaViewModel.refreshSearchValues() },
                                         maxResults = fridaMaxResults,
                                         onMaxResultsChange = { r2fridaViewModel.updateMaxResults(it) },
+                                        searchTimeoutSeconds = fridaSearchTimeoutSeconds,
+                                        onSearchTimeoutChange = { r2fridaViewModel.updateSearchTimeoutSeconds(it) },
                                         actions = fridaActions
                                     )
                                     11 -> FridaMonitorScreen(

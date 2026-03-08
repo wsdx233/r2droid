@@ -24,6 +24,7 @@ object SettingsManager {
     private const val KEY_KEEP_ALIVE = "keep_alive_notification"
     private const val KEY_FRIDA_HOST = "frida_host"
     private const val KEY_FRIDA_PORT = "frida_port"
+    private const val KEY_FRIDA_SEARCH_TIMEOUT_SECONDS = "frida_search_timeout_seconds"
     private const val KEY_MENU_AT_TOUCH = "menu_at_touch"
     private const val KEY_AI_ENABLED = "ai_enabled"
     private const val KEY_AI_OUTPUT_TRUNCATE_LIMIT = "ai_output_truncate_limit"
@@ -136,6 +137,10 @@ object SettingsManager {
     var fridaPort: String
         get() = prefs.getString(KEY_FRIDA_PORT, "27042") ?: "27042"
         set(value) { prefs.edit { putString(KEY_FRIDA_PORT, value) } }
+
+    var fridaSearchTimeoutSeconds: Int
+        get() = prefs.getInt(KEY_FRIDA_SEARCH_TIMEOUT_SECONDS, 10)
+        set(value) { prefs.edit { putInt(KEY_FRIDA_SEARCH_TIMEOUT_SECONDS, value.coerceAtLeast(1)) } }
 
     var menuAtTouch: Boolean
         get() = prefs.getBoolean(KEY_MENU_AT_TOUCH, true)

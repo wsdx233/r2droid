@@ -6,6 +6,11 @@ import top.wsdx233.r2droid.util.R2PipeManager
 
 class R2FridaRepository {
 
+    companion object {
+        private const val DEFAULT_SCRIPT_TIMEOUT_MS = 10_000L
+        private const val SCRIPT_POLL_INTERVAL_MS = 100L
+    }
+
     suspend fun getOverview(): Result<FridaInfo> = runCatching {
         val raw = seekJson(R2PipeManager.execute(":ij").getOrThrow())
         FridaInfo.fromJson(JSONObject(raw))
@@ -72,7 +77,8 @@ class R2FridaRepository {
         searchType: String, values: List<String>, compare: String,
         rangeMin: String, rangeMax: String,
         protection: String, regionsJson: String,
-        maxResults: Int = 50000
+        maxResults: Int = 50000,
+        timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
         val valuesJson = values.joinToString(",") { "\"${escapeJs(it)}\"" }
         val script = FridaCustomScripts.SEARCH_SCRIPT
@@ -84,7 +90,7 @@ class R2FridaRepository {
             .replace("__PROTECTION__", protection)
             .replace("__REGIONS_JSON__", regionsJson)
             .replace("__MAX_RESULTS__", maxResults.toString())
-        val json = runCustomScript(script, scriptDir, resultDir)
+        val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
 
@@ -95,7 +101,8 @@ class R2FridaRepository {
         scriptDir: String, resultDir: String,
         addrs: List<String>, oldValues: List<String>,
         searchType: String, filterMode: String, targetVal: String,
-        rangeMin: String, rangeMax: String, expression: String
+        rangeMin: String, rangeMax: String, expression: String,
+        timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
         val addrJson = addrs.joinToString(",") { "\"$it\"" }
         val oldValJson = oldValues.joinToString(",") { "\"${escapeJs(it)}\"" }
@@ -108,7 +115,7 @@ class R2FridaRepository {
             .replace("__RANGE_MIN__", rangeMin)
             .replace("__RANGE_MAX__", rangeMax)
             .replace("__EXPRESSION__", escapeJs(expression))
-        val json = runCustomScript(script, scriptDir, resultDir)
+        val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
 
@@ -142,13 +149,14 @@ class R2FridaRepository {
     /** Re-read current values at all result addresses. */
     suspend fun refreshValues(
         scriptDir: String, resultDir: String,
-        addrs: List<String>, searchType: String
+        addrs: List<String>, searchType: String,
+        timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
         val addrJson = addrs.joinToString(",") { "\"$it\"" }
         val script = FridaCustomScripts.REFRESH_VALUES_SCRIPT
             .replace("__ADDRESS_LIST__", "[$addrJson]")
             .replace("__SEARCH_TYPE__", searchType)
-        val json = runCustomScript(script, scriptDir, resultDir)
+        val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
 
@@ -185,7 +193,12 @@ class R2FridaRepository {
         R2PipeManager.execute(":eval ${FridaCustomScripts.STOP_MONITOR_DISABLE}")
     }
 
-    private suspend fun runCustomScript(scriptTpl: String, scriptDir: String, resultDir: String): String {
+    private suspend fun runCustomScript(
+        scriptTpl: String,
+        scriptDir: String,
+        resultDir: String,
+        timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
+    ): String {
         val ts = System.currentTimeMillis()
         val resultFile = java.io.File(resultDir, "frida_res_${ts}.json")
         val doneFile = java.io.File(resultDir, "frida_res_${ts}.json.done")
@@ -206,9 +219,10 @@ class R2FridaRepository {
         
         R2PipeManager.execute(":. ${scriptFile.absolutePath}").getOrThrow()
         
-        var retries = 100 // up to 10 seconds
+        val effectiveTimeoutMs = timeoutMs.coerceAtLeast(SCRIPT_POLL_INTERVAL_MS)
+        var retries = ((effectiveTimeoutMs + SCRIPT_POLL_INTERVAL_MS - 1) / SCRIPT_POLL_INTERVAL_MS).toInt()
         while (!doneFile.exists() && retries > 0) {
-            kotlinx.coroutines.delay(100)
+            kotlinx.coroutines.delay(SCRIPT_POLL_INTERVAL_MS)
             retries--
         }
         
@@ -222,7 +236,7 @@ class R2FridaRepository {
                 return content
             }
         }
-        throw Exception("Script execution timeout or failed to write result file")
+        throw Exception("Script execution timed out after ${effectiveTimeoutMs / 1000} seconds or failed to write result file")
     }
 
     private fun seekJson(raw: String): String {

@@ -798,6 +798,7 @@
     <string name="fsearch_value_hint">数值 (;联合搜索, *模糊搜索)</string>
     <string name="fsearch_searching">搜索中…</string>
     <string name="fsearch_result_count">%1$d 个结果</string>
+    <string name="fsearch_result_meta">上限 %1$d · 超时 %2$d 秒</string>
     <string name="fsearch_no_results">无结果</string>
     <string name="fsearch_advanced">高级选项</string>
     <string name="fsearch_type">类型</string>
@@ -840,6 +841,9 @@
     <string name="fsearch_limit">数量</string>
     <string name="fsearch_limit_custom">自定义…</string>
     <string name="fsearch_limit_custom_title">自定义结果数量</string>
+    <string name="fsearch_timeout">搜索超时（秒）</string>
+    <string name="fsearch_timeout_hint">应用于搜索、筛选与刷新</string>
+    <string name="fsearch_timeout_invalid">请输入大于 0 的秒数</string>
 
     <!-- Export Report -->
     <string name="export_report_title">导出分析报告</string>

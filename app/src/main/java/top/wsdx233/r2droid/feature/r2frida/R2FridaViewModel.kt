@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.launch
+import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.util.LogManager
 import top.wsdx233.r2droid.util.LogType
@@ -33,6 +34,7 @@ class R2FridaViewModel @Inject constructor(
 ) : ViewModel() {
     companion object {
         private const val TAG = "R2FridaViewModel"
+        private const val DEFAULT_SEARCH_TIMEOUT_SECONDS = 10
     }
 
     private val repo = R2FridaRepository()
@@ -114,6 +116,10 @@ class R2FridaViewModel @Inject constructor(
     // Max results limit
     private val _maxResults = MutableStateFlow(50000)
     val maxResults: StateFlow<Int> = _maxResults.asStateFlow()
+    private val _searchTimeoutSeconds = MutableStateFlow(
+        runCatching { SettingsManager.fridaSearchTimeoutSeconds }.getOrDefault(DEFAULT_SEARCH_TIMEOUT_SECONDS)
+    )
+    val searchTimeoutSeconds: StateFlow<Int> = _searchTimeoutSeconds.asStateFlow()
     // Frozen addresses: address -> value
     private val _frozenAddresses = MutableStateFlow<Map<String, String>>(emptyMap())
     val frozenAddresses: StateFlow<Map<String, String>> = _frozenAddresses.asStateFlow()
@@ -124,6 +130,11 @@ class R2FridaViewModel @Inject constructor(
     fun updateSelectedRegions(r: Set<MemoryRegion>) { _selectedRegions.value = r }
     fun clearSearchError() { _searchError.value = null }
     fun updateMaxResults(n: Int) { _maxResults.value = n }
+    fun updateSearchTimeoutSeconds(seconds: Int) {
+        val sanitized = seconds.coerceAtLeast(1)
+        _searchTimeoutSeconds.value = sanitized
+        runCatching { SettingsManager.fridaSearchTimeoutSeconds = sanitized }
+    }
 
     // --- Monitor ---
     private val _monitors = MutableStateFlow<List<MonitorInstance>>(emptyList())
@@ -421,7 +432,8 @@ class R2FridaViewModel @Inject constructor(
             repo.searchMemory(
                 context.cacheDir.absolutePath, getPublicExchangeDir(),
                 typeStr, values, compareStr, rangeMin, rangeMax, protection, "[]",
-                _maxResults.value
+                _maxResults.value,
+                getSearchTimeoutMs()
             ).onSuccess {
                 _searchResults.value = it
             }.onFailure {
@@ -460,7 +472,8 @@ class R2FridaViewModel @Inject constructor(
             repo.filterMemory(
                 context.cacheDir.absolutePath, getPublicExchangeDir(),
                 addrs, oldValues, typeStr, filterMode, targetVal,
-                rangeMin, rangeMax, expression
+                rangeMin, rangeMax, expression,
+                getSearchTimeoutMs()
             ).onSuccess {
                 _searchResults.value = it
             }.onFailure {
@@ -563,6 +576,9 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
+    private fun getSearchTimeoutMs(): Long =
+        _searchTimeoutSeconds.value.coerceAtLeast(1).toLong() * 1000L
+
     /** Re-read current values at all result addresses. */
     fun refreshSearchValues() {
         val current = _searchResults.value ?: return
@@ -583,7 +599,8 @@ class R2FridaViewModel @Inject constructor(
             }
             repo.refreshValues(
                 context.cacheDir.absolutePath, getPublicExchangeDir(),
-                addrs, typeStr
+                addrs, typeStr,
+                getSearchTimeoutMs()
             ).onSuccess {
                 _searchResults.value = it
             }.onFailure {

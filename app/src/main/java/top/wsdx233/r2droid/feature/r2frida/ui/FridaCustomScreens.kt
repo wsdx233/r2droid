@@ -13,14 +13,17 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -285,6 +288,8 @@ fun FridaSearchScreen(
     onRefreshValues: () -> Unit,
     maxResults: Int,
     onMaxResultsChange: (Int) -> Unit,
+    searchTimeoutSeconds: Int,
+    onSearchTimeoutChange: (Int) -> Unit,
     actions: ListItemActions
 ) {
     var searchInput by remember { mutableStateOf("") }
@@ -354,7 +359,9 @@ fun FridaSearchScreen(
             expression = expression,
             onRangeMinChange = { rangeMin = it },
             onRangeMaxChange = { rangeMax = it },
-            onExpressionChange = { expression = it }
+            onExpressionChange = { expression = it },
+            searchTimeoutSeconds = searchTimeoutSeconds,
+            onSearchTimeoutChange = onSearchTimeoutChange
         )
 
         // ── Error banner ──
@@ -374,10 +381,10 @@ fun FridaSearchScreen(
         if (isSearching) {
             CustomLoadingBox()
         } else if (results != null) {
-            Text(
-                stringResource(R.string.fsearch_result_count, results.size),
-                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelMedium
+            SearchResultSummaryCard(
+                resultCount = results.size,
+                maxResults = maxResults,
+                timeoutSeconds = searchTimeoutSeconds
             )
             if (results.isEmpty()) {
                 CustomEmptyBox()
@@ -421,6 +428,46 @@ fun FridaSearchScreen(
                 editingResult = null
             }
         )
+    }
+}
+
+@Composable
+private fun SearchResultSummaryCard(
+    resultCount: Int,
+    maxResults: Int,
+    timeoutSeconds: Int
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.fsearch_result_count, resultCount),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    stringResource(R.string.fsearch_result_meta, maxResults, timeoutSeconds),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                )
+            }
+        }
     }
 }
 
@@ -552,8 +599,16 @@ private fun AdvancedOptionsSection(
     expression: String,
     onRangeMinChange: (String) -> Unit,
     onRangeMaxChange: (String) -> Unit,
-    onExpressionChange: (String) -> Unit
+    onExpressionChange: (String) -> Unit,
+    searchTimeoutSeconds: Int,
+    onSearchTimeoutChange: (Int) -> Unit
 ) {
+    val timeoutInput = rememberSaveable(searchTimeoutSeconds) {
+        mutableStateOf(searchTimeoutSeconds.toString())
+    }
+    val timeoutValue = timeoutInput.value.toIntOrNull()
+    val timeoutError = timeoutInput.value.isNotEmpty() && (timeoutValue == null || timeoutValue <= 0)
+
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
         tonalElevation = 1.dp,
@@ -627,6 +682,38 @@ private fun AdvancedOptionsSection(
                             fontSize = 13.sp,
                             fontFamily = FontFamily.Monospace
                         )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.fsearch_timeout),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    OutlinedTextField(
+                        value = timeoutInput.value,
+                        onValueChange = { newValue ->
+                            if (newValue.all(Char::isDigit)) {
+                                timeoutInput.value = newValue
+                                newValue.toIntOrNull()?.takeIf { it > 0 }?.let(onSearchTimeoutChange)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("10") },
+                        singleLine = true,
+                        isError = timeoutError,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                    Text(
+                        text = if (timeoutError) stringResource(R.string.fsearch_timeout_invalid)
+                        else stringResource(R.string.fsearch_timeout_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (timeoutError) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                     )
                     Spacer(Modifier.height(8.dp))
                 }

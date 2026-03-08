@@ -796,6 +796,7 @@
     <string name="fsearch_value_hint">Value (use ; for union, * for all)</string>
     <string name="fsearch_searching">Searching…</string>
     <string name="fsearch_result_count">%1$d results</string>
+    <string name="fsearch_result_meta">Limit %1$d · Timeout %2$ds</string>
     <string name="fsearch_no_results">No results</string>
     <string name="fsearch_advanced">Advanced Options</string>
     <string name="fsearch_type">Type</string>
@@ -838,6 +839,9 @@
     <string name="fsearch_limit">Limit</string>
     <string name="fsearch_limit_custom">Custom…</string>
     <string name="fsearch_limit_custom_title">Custom Result Limit</string>
+    <string name="fsearch_timeout">Search Timeout (s)</string>
+    <string name="fsearch_timeout_hint">Applies to search, refine, and refresh</string>
+    <string name="fsearch_timeout_invalid">Enter a value greater than 0</string>
 
     <!-- Export Report -->
     <string name="export_report_title">Export Analysis Report</string>
