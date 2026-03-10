@@ -94,6 +94,7 @@ fun ProjectScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.82f)) {
                 Column(
