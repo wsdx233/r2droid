@@ -307,6 +307,8 @@
     <string name="proj_nav_scroll_to_selection">Scroll to Selection</string>
     <string name="proj_nav_refresh_all">Refresh All Views</string>
     <string name="proj_nav_refreshed_toast">Views refreshed</string>
+    <string name="proj_strings_options">String Options</string>
+    <string name="proj_strings_full_range">Full Range</string>
     <string name="proj_command_panel_title">Execute r2 Command</string>
     <string name="proj_interrupt_stop">Stop current operation</string>
     

@@ -298,6 +298,8 @@
     <string name="proj_nav_scroll_to_selection">Перейти к выделению</string>
     <string name="proj_nav_refresh_all">Обновить все виды</string>
     <string name="proj_nav_refreshed_toast">Виды обновлены</string>
+    <string name="proj_strings_options">Параметры строк</string>
+    <string name="proj_strings_full_range">Полный диапазон</string>
     <string name="proj_command_panel_title">Выполнить команду r2</string>
     <string name="proj_interrupt_stop">Остановить текущую операцию</string>
     

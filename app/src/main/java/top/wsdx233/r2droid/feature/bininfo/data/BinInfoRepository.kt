@@ -82,8 +82,9 @@ class BinInfoRepository @Inject constructor(
         }
     }
 
-    suspend fun getStrings(): Result<List<StringInfo>> {
-        return r2DataSource.executeJson("izj").mapCatching { output ->
+    suspend fun getStrings(useFullRange: Boolean = false): Result<List<StringInfo>> {
+        val command = if (useFullRange) "izzj" else "izj"
+        return r2DataSource.executeJson(command).mapCatching { output ->
             if (output.isBlank()) return@mapCatching emptyList()
             val jsonArray = JSONArray(output)
             val list = mutableListOf<StringInfo>()
@@ -98,9 +99,10 @@ class BinInfoRepository @Inject constructor(
      * 流式同步字符串到 Room 数据库。
      * 使用 JsonReader 逐条解析，每 5000 条批量写入，避免内存爆炸。
      */
-    suspend fun syncStringsToDb(): Result<Unit> {
+    suspend fun syncStringsToDb(useFullRange: Boolean = false): Result<Unit> {
+        val command = if (useFullRange) "izzj" else "izj"
         stringDao.clearAll()
-        return r2DataSource.executeStream("izj") { inputStream ->
+        return r2DataSource.executeStream(command) { inputStream ->
             val reader = JsonReader(InputStreamReader(inputStream, "UTF-8"))
             reader.isLenient = true
             val buffer = mutableListOf<StringEntity>()

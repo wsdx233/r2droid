@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -613,6 +615,42 @@ fun ProjectScaffold(
                             }
                             androidx.compose.material3.IconButton(onClick = { showJumpDialog = true }) {
                                 Icon(Icons.AutoMirrored.Filled.MenuOpen, contentDescription = stringResource(R.string.menu_jump))
+                            }
+                        }
+                    } else if (selectedCategory == MainCategory.List && selectedListTabIndex == 6) {
+                        var showStringsMenu by remember { mutableStateOf(false) }
+                        val stringsUseFullRange by viewModel.stringsUseFullRange.collectAsState()
+                        Box {
+                            androidx.compose.material3.IconButton(onClick = { showStringsMenu = true }) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    contentDescription = stringResource(R.string.proj_strings_options)
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = showStringsMenu,
+                                onDismissRequest = { showStringsMenu = false }
+                            ) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(stringResource(R.string.proj_strings_full_range))
+                                            Checkbox(
+                                                checked = stringsUseFullRange,
+                                                onCheckedChange = null,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        showStringsMenu = false
+                                        viewModel.setStringsUseFullRange(!stringsUseFullRange)
+                                    }
+                                )
                             }
                         }
                     }

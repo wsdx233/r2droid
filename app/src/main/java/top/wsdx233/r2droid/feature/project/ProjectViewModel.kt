@@ -196,6 +196,9 @@ class ProjectViewModel @Inject constructor(
     private val _stringsSyncing = MutableStateFlow(false)
     val stringsSyncing: StateFlow<Boolean> = _stringsSyncing.asStateFlow()
 
+    private val _stringsUseFullRange = MutableStateFlow(false)
+    val stringsUseFullRange: StateFlow<Boolean> = _stringsUseFullRange.asStateFlow()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val stringsPagingData: Flow<PagingData<StringEntity>> = _stringsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
@@ -206,6 +209,12 @@ class ProjectViewModel @Inject constructor(
 
     fun updateStringsSearchQuery(query: String) {
         _stringsSearchQuery.value = query
+    }
+
+    fun setStringsUseFullRange(enabled: Boolean) {
+        if (_stringsUseFullRange.value == enabled) return
+        _stringsUseFullRange.value = enabled
+        loadStrings(forceRefresh = true)
     }
 
     // === Sections Paging ===
@@ -885,7 +894,7 @@ class ProjectViewModel @Inject constructor(
 
         viewModelScope.launch {
             _stringsSyncing.value = true
-            val result = binInfoRepository.syncStringsToDb()
+            binInfoRepository.syncStringsToDb(useFullRange = _stringsUseFullRange.value)
             _stringsSyncing.value = false
             val currentState = _uiState.value
             if (currentState is ProjectUiState.Success) {
