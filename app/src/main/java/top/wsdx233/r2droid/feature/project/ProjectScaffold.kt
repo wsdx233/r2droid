@@ -739,22 +739,22 @@ fun ProjectScaffold(
                                 )
                             }
                         }
-                        visibleProjectActions.forEach { descriptor ->
-                            IconButton(
-                                onClick = {
-                                    sheetScope.launch {
-                                        executePluginProjectAction(
-                                            context = context,
-                                            descriptor = descriptor
-                                        )
-                                    }
+                    }
+                    visibleProjectActions.forEach { descriptor ->
+                        IconButton(
+                            onClick = {
+                                sheetScope.launch {
+                                    executePluginProjectAction(
+                                        context = context,
+                                        descriptor = descriptor
+                                    )
                                 }
-                            ) {
-                                Icon(
-                                    imageVector = pluginProjectActionIcon(descriptor.action.icon),
-                                    contentDescription = descriptor.action.title.ifBlank { descriptor.action.key }
-                                )
                             }
+                        ) {
+                            Icon(
+                                imageVector = pluginProjectActionIcon(descriptor.action.icon),
+                                contentDescription = descriptor.action.title.ifBlank { descriptor.action.key }
+                            )
                         }
                     }
                 }
