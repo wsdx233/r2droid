@@ -399,6 +399,11 @@ fun ProjectScaffold(
     val visibleProjectActions = pluginProjectActions.filter { descriptor ->
         isPluginProjectActionVisible(descriptor, currentPluginActionTabAliases)
     }
+    val disasmMultiSelect by disasmViewModel.multiSelectState.collectAsState()
+    val isDisasmSelectionMode =
+        selectedCategory == MainCategory.Detail &&
+            selectedDetailTabIndex == 1 &&
+            disasmMultiSelect.active
 
     val quickJumpToDetail: ((Long) -> Unit)? = when (SettingsManager.defaultJumpTarget) {
         "hex", "disasm" -> { addr: Long ->
@@ -424,38 +429,50 @@ fun ProjectScaffold(
             Column {
             TopAppBar(
                 navigationIcon = {
-                    androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
-                        Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Filled.Menu,
-                            contentDescription = stringResource(R.string.session_drawer_open)
+                    if (!isDisasmSelectionMode) {
+                        androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Filled.Menu,
+                                contentDescription = stringResource(R.string.session_drawer_open)
+                            )
+                        }
+                    }
+                },
+                title = {
+                    if (!isDisasmSelectionMode) {
+                        Text(
+                            text = stringResource(top.wsdx233.r2droid.R.string.app_name),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 },
-                title = { Text(stringResource(top.wsdx233.r2droid.R.string.app_name)) },
                 actions = {
                     if (selectedCategory == MainCategory.Detail) {
                         val canGoBack by viewModel.canGoBack.collectAsState()
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .combinedClickable(
-                                    enabled = canGoBack,
-                                    onClick = { viewModel.onEvent(ProjectEvent.NavigateBack) },
-                                    onLongClick = { viewModel.showHistoryDialog() },
-                                    indication = androidx.compose.material3.ripple(
-                                        bounded = false,
-                                        radius = 24.dp
+                        if (!isDisasmSelectionMode) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .combinedClickable(
+                                        enabled = canGoBack,
+                                        onClick = { viewModel.onEvent(ProjectEvent.NavigateBack) },
+                                        onLongClick = { viewModel.showHistoryDialog() },
+                                        indication = androidx.compose.material3.ripple(
+                                            bounded = false,
+                                            radius = 24.dp
+                                        ),
+                                        interactionSource = remember { MutableInteractionSource() }
                                     ),
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.proj_nav_go_back),
-                                tint = if (canGoBack) MaterialTheme.colorScheme.onSurface
-                                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            )
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.proj_nav_go_back),
+                                    tint = if (canGoBack) MaterialTheme.colorScheme.onSurface
+                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            }
                         }
                         if (selectedDetailTabIndex in 0..3) {
                             Box(
@@ -578,7 +595,6 @@ fun ProjectScaffold(
                             }
                         }
                         // Multi-select actions for disasm tab
-                        val disasmMultiSelect by disasmViewModel.multiSelectState.collectAsState()
                         if (selectedDetailTabIndex == 1 && disasmMultiSelect.active) {
                             val msClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                             val msScope = rememberCoroutineScope()

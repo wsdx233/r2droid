@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -90,9 +91,22 @@ fun ProjectScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val sessions by R2PipeManager.sessions.collectAsState()
     val activeSessionId by R2PipeManager.activeSessionId.collectAsState()
     var pendingStartTriggered by remember { mutableStateOf(false) }
+
+    // 在 Activity 接管 configChanges 后，横竖屏切换只会触发重组。
+    // 显式关闭抽屉，避免尺寸变化时 ModalNavigationDrawer 误表现为打开状态。
+    androidx.compose.runtime.LaunchedEffect(
+        configuration.orientation,
+        configuration.screenWidthDp,
+        configuration.screenHeightDp
+    ) {
+        if (drawerState.isOpen) {
+            drawerState.close()
+        }
+    }
 
     var selectedUtility by remember { mutableStateOf<UtilityTool?>(null) }
     var toolResultDialog by remember { mutableStateOf<String?>(null) }
