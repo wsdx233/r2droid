@@ -7,6 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import top.wsdx233.r2droid.util.AppVariant
 import top.wsdx233.r2droid.util.ProotInstaller
 import java.io.File
 
@@ -50,6 +51,17 @@ object SettingsManager {
 
     fun initialize(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (AppVariant.forceProotMode) {
+            prefs.edit {
+                putBoolean(KEY_USE_PROOT_MODE, true)
+                if (AppVariant.forceManualProotSetup) {
+                    putString(KEY_PROOT_BUILD_MODE, "manual")
+                }
+                if (prefs.getString(KEY_PROOT_ROOTFS_ALIAS, null).isNullOrBlank()) {
+                    putString(KEY_PROOT_ROOTFS_ALIAS, "ubuntu")
+                }
+            }
+        }
         _darkModeFlow.value = prefs.getString(KEY_DARK_MODE, "system") ?: "system"
         _autoCheckUpdatesFlow.value = prefs.getBoolean(KEY_AUTO_CHECK_UPDATES, true)
     }
@@ -174,8 +186,12 @@ object SettingsManager {
         set(value) { prefs.edit { putBoolean(KEY_USE_HTTP_MODE, value) } }
 
     var useProotMode: Boolean
-        get() = prefs.getBoolean(KEY_USE_PROOT_MODE, false)
-        set(value) { prefs.edit { putBoolean(KEY_USE_PROOT_MODE, value) } }
+        get() = if (AppVariant.forceProotMode) true else prefs.getBoolean(KEY_USE_PROOT_MODE, false)
+        set(value) {
+            prefs.edit {
+                putBoolean(KEY_USE_PROOT_MODE, if (AppVariant.forceProotMode) true else value)
+            }
+        }
 
     var httpPort: Int
         get() = prefs.getInt(KEY_HTTP_PORT, 9090)
@@ -203,8 +219,15 @@ object SettingsManager {
 
     // "auto", "manual", "custom"
     var prootBuildMode: String
-        get() = prefs.getString(KEY_PROOT_BUILD_MODE, "auto") ?: "auto"
-        set(value) { prefs.edit { putString(KEY_PROOT_BUILD_MODE, value) } }
+        get() = when {
+            AppVariant.forceManualProotSetup -> "manual"
+            else -> prefs.getString(KEY_PROOT_BUILD_MODE, "auto") ?: "auto"
+        }
+        set(value) {
+            prefs.edit {
+                putString(KEY_PROOT_BUILD_MODE, if (AppVariant.forceManualProotSetup) "manual" else value)
+            }
+        }
 
     var prootCustomCommand: String
         get() = prefs.getString(KEY_PROOT_CUSTOM_COMMAND, "") ?: ""

@@ -75,7 +75,8 @@ fun HomeScreen(
     onNavigateToProject: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToFeatures: () -> Unit
+    onNavigateToFeatures: () -> Unit,
+    onNavigateToProotSetup: () -> Unit
 ) {
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf<SavedProject?>(null) }
@@ -107,6 +108,9 @@ fun HomeScreen(
                 }
                 is HomeUiEvent.NavigateToFeatures -> {
                     onNavigateToFeatures()
+                }
+                is HomeUiEvent.NavigateToProotSetup -> {
+                    onNavigateToProotSetup()
                 }
                 is HomeUiEvent.ShowError -> {
                     Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()

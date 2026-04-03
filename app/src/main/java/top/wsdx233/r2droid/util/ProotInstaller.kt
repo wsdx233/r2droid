@@ -151,13 +151,17 @@ object ProotInstaller {
         }
     }
 
-    private fun resolveAutoRootfsOption(context: Context): ProotRootfsOption {
-        return ProotRootfsCatalog.resolve(context, "ubuntu")
+    private fun resolveAutoRootfsOption(context: Context, rootfsAlias: String): ProotRootfsOption {
+        return ProotRootfsCatalog.resolve(context, rootfsAlias)
     }
 
-    suspend fun install(context: Context, forceReinstall: Boolean = false): Result<Unit> {
+    suspend fun install(
+        context: Context,
+        rootfsAlias: String = "ubuntu",
+        forceReinstall: Boolean = false
+    ): Result<Unit> {
         val appContext = context.applicationContext
-        val rootfsOption = resolveAutoRootfsOption(appContext)
+        val rootfsOption = resolveAutoRootfsOption(appContext, rootfsAlias)
         return installMutex.withLock {
             withContext(Dispatchers.IO) {
                 runCatching {
@@ -458,15 +462,12 @@ object ProotInstaller {
                     patch \
                     pkg-config \
                     pkgconf \
-                    python3 \
-                    python3-pip \
                     unzip \
                     wget \
                     xz-utils \
                     build-essential \
                     libssl-dev \
-                    libzip-dev \
-                    openjdk-21-jre-headless
+                    libzip-dev
             """.trimIndent()),
             Triple(0.86f, "Installing radare2 from source...", """
                 set -e

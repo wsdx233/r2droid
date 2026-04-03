@@ -68,6 +68,38 @@ android {
     buildFeatures {
         compose = true
         viewBinding = true
+        buildConfig = true
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") {
+            dimension = "distribution"
+            buildConfigField("boolean", "PROOT_ONLY_BUILD", "false")
+            buildConfigField("boolean", "FORCE_PROOT_MODE", "false")
+            buildConfigField("boolean", "FORCE_MANUAL_PROOT_SETUP", "false")
+            buildConfigField("boolean", "BUNDLED_R2_AVAILABLE", "true")
+        }
+        create("prootOnly") {
+            dimension = "distribution"
+            applicationIdSuffix = ".proot"
+            buildConfigField("boolean", "PROOT_ONLY_BUILD", "true")
+            buildConfigField("boolean", "FORCE_PROOT_MODE", "true")
+            buildConfigField("boolean", "FORCE_MANUAL_PROOT_SETUP", "false")
+            buildConfigField("boolean", "BUNDLED_R2_AVAILABLE", "false")
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("src/shared/assets")
+        }
+        getByName("full") {
+            assets.srcDirs("src/full/assets")
+        }
+        getByName("prootOnly") {
+            assets.srcDirs("src/prootOnly/assets")
+        }
     }
 
     kotlin {

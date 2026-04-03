@@ -97,6 +97,9 @@ object R2Runtime {
                 environment = spec.environment.entries.map { (key, value) -> "$key=$value" }.toTypedArray()
             )
         }
+        if (useProot && AppVariant.forceProotMode) {
+            return buildProotSetupHintTerminalLaunch(context)
+        }
 
         val workDir = File(context.filesDir, "radare2/bin").absolutePath
         File(workDir).mkdirs()
@@ -339,6 +342,19 @@ object R2Runtime {
                 "TMPDIR=${hostTmpDir.absolutePath}",
                 "PROOT_TMP_DIR=${hostTmpDir.absolutePath}"
             )
+        )
+    }
+
+    private fun buildProotSetupHintTerminalLaunch(context: Context): TerminalLaunchSpec {
+        val workDir = context.filesDir.absolutePath
+        return TerminalLaunchSpec(
+            executable = "/system/bin/sh",
+            workingDirectory = workDir,
+            args = arrayOf(
+                "-c",
+                "echo 'Proot environment is not installed yet. Finish setup in Settings first.'; exec /system/bin/sh"
+            ),
+            environment = arrayOf("TERM=xterm-256color")
         )
     }
 }

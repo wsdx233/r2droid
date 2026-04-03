@@ -51,6 +51,13 @@ object R2Installer {
         runCatching { ProotInstaller.ensureRuntimeBinary(context) }
             .onFailure { Log.w(TAG, "Failed to install bundled proot binary", it) }
 
+        if (!AppVariant.bundledR2Available) {
+            Log.d(TAG, "Bundled radare2 assets are disabled for this build variant; skipping host r2 installation")
+            _installState.value = InstallState(isInstalling = false)
+            initialized = true
+            return@withContext
+        }
+
         if (targetDir.exists()) {
             // 检测已安装的 r2 版本
             _installState.value = InstallState(true, context.getString(R.string.install_checking_version), 0f)

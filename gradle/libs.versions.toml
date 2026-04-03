@@ -1,7 +1,7 @@
 [versions]
 agp = "9.0.1"
 commonsCompress = "1.28.0"
-xz = "1.10"
+xz = "1.12"
 coreKtx = "1.17.0"
 editorBom = "0.24.5"
 desugar_jdk_libs = "2.1.5"

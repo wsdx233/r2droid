@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -29,9 +30,11 @@ import top.wsdx233.r2droid.feature.about.AboutScreen
 import top.wsdx233.r2droid.feature.home.HomeScreen
 import top.wsdx233.r2droid.feature.install.InstallScreen
 import top.wsdx233.r2droid.feature.permission.PermissionScreen
+import top.wsdx233.r2droid.feature.prootsetup.ProotSetupScreen
 import top.wsdx233.r2droid.feature.settings.SettingsScreen
 import top.wsdx233.r2droid.feature.plugin.PluginManagerScreen
 import top.wsdx233.r2droid.ui.theme.R2droidTheme
+import top.wsdx233.r2droid.util.AppVariant
 import top.wsdx233.r2droid.util.IntentFileResolver
 import top.wsdx233.r2droid.util.PermissionManager
 import top.wsdx233.r2droid.util.R2Installer
@@ -142,7 +145,8 @@ enum class AppScreen {
     Settings,
     Features,
     R2Frida,
-    PluginManager
+    PluginManager,
+    ProotSetup
 }
 
 @Composable
@@ -201,19 +205,49 @@ fun MainAppNavigation(
     pendingFileUri: Uri? = null,
     onPendingFileUriConsumed: () -> Unit = {}
 ) {
-    var currentScreen by remember {
-        mutableStateOf(if (R2PipeManager.isConnected) AppScreen.Project else AppScreen.Home)
-    }
     val context = LocalContext.current
+    var currentScreen by remember {
+        mutableStateOf(
+            when {
+                R2PipeManager.isConnected -> AppScreen.Project
+                AppVariant.shouldGuideProotInstall(context) -> AppScreen.ProotSetup
+                else -> AppScreen.Home
+            }
+        )
+    }
 
     // 处理从外部 Intent 传入的文件 URI
+    fun resolveNextScreenAfterProotSetup(mode: String): AppScreen {
+        if (mode != "auto") {
+            R2PipeManager.pendingFilePath = null
+            R2PipeManager.pendingCustomCommand = null
+            R2PipeManager.pendingRestoreFlags = null
+            R2PipeManager.pendingProjectId = null
+            return AppScreen.Home
+        }
+        return if (
+            R2PipeManager.pendingFilePath != null ||
+            R2PipeManager.pendingCustomCommand != null ||
+            R2PipeManager.pendingRestoreFlags != null
+        ) {
+            AppScreen.Project
+        } else {
+            AppScreen.Home
+        }
+    }
+
     LaunchedEffect(pendingFileUri) {
         if (pendingFileUri != null) {
             val filePath = IntentFileResolver.resolve(context, pendingFileUri)
             if (filePath != null) {
                 R2PipeManager.pendingFilePath = filePath
                 R2PipeManager.pendingRestoreFlags = null
-                currentScreen = AppScreen.Project
+                currentScreen = if (AppVariant.shouldGuideProotInstall(context)) {
+                    Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
+                    AppScreen.ProotSetup
+                } else {
+                    AppScreen.Project
+                }
             }
             onPendingFileUriConsumed()
         }
@@ -225,7 +259,8 @@ fun MainAppNavigation(
                 onNavigateToProject = { currentScreen = AppScreen.Project },
                 onNavigateToAbout = { currentScreen = AppScreen.About },
                 onNavigateToSettings = { currentScreen = AppScreen.Settings },
-                onNavigateToFeatures = { currentScreen = AppScreen.Features }
+                onNavigateToFeatures = { currentScreen = AppScreen.Features },
+                onNavigateToProotSetup = { currentScreen = AppScreen.ProotSetup }
             )
         }
         AppScreen.About -> {
@@ -257,7 +292,12 @@ fun MainAppNavigation(
                     R2PipeManager.pendingCustomCommand = rawArgs.ifBlank { "-" }
                     R2PipeManager.pendingFilePath = null
                     R2PipeManager.pendingRestoreFlags = null
-                    currentScreen = AppScreen.Project
+                    if (AppVariant.shouldGuideProotInstall(context)) {
+                        Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
+                        currentScreen = AppScreen.ProotSetup
+                    } else {
+                        currentScreen = AppScreen.Project
+                    }
                 }
             )
         }
@@ -271,7 +311,12 @@ fun MainAppNavigation(
                     R2PipeManager.pendingCustomCommand = command
                     R2PipeManager.pendingFilePath = null
                     R2PipeManager.pendingRestoreFlags = null
-                    currentScreen = AppScreen.Project
+                    if (AppVariant.shouldGuideProotInstall(context)) {
+                        Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
+                        currentScreen = AppScreen.ProotSetup
+                    } else {
+                        currentScreen = AppScreen.Project
+                    }
                 }
             )
         }
@@ -283,6 +328,15 @@ fun MainAppNavigation(
             }
             ProjectScreen(
                 onNavigateBack = { currentScreen = AppScreen.Home }
+            )
+        }
+        AppScreen.ProotSetup -> {
+            BackHandler {
+                currentScreen = AppScreen.Home
+            }
+            ProotSetupScreen(
+                onBackClick = { currentScreen = AppScreen.Home },
+                onContinue = { mode -> currentScreen = resolveNextScreenAfterProotSetup(mode) }
             )
         }
         AppScreen.PluginManager -> {

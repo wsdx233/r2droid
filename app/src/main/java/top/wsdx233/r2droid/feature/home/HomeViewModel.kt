@@ -25,6 +25,7 @@ sealed class HomeUiEvent {
     data object NavigateToAbout : HomeUiEvent()
     data object NavigateToSettings : HomeUiEvent()
     data object NavigateToFeatures : HomeUiEvent()
+    data object NavigateToProotSetup : HomeUiEvent()
     data class ShowError(val message: String) : HomeUiEvent()
     data class ShowMessage(val message: String) : HomeUiEvent()
 }
@@ -73,15 +74,20 @@ class HomeViewModel : ViewModel() {
     fun onFileSelected(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
-                // Determine file path. 
+                // Determine file path.
                 // Since R2Pipe likely requires a real file path (native access),
                 // if it's a content URI, we might need to copy it to a temp file.
                 val filePath = resolvePath(context, uri)
 
                 if (filePath != null) {
                     R2PipeManager.pendingFilePath = filePath
-                    R2PipeManager.pendingRestoreFlags = null // Regular open, no restore
-                    _uiEvent.send(HomeUiEvent.NavigateToProject)
+                    R2PipeManager.pendingRestoreFlags = null
+                    if (SettingsManager.useProotMode && !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(context)) {
+                        _uiEvent.send(HomeUiEvent.ShowMessage(context.getString(R.string.proot_setup_required_message)))
+                        _uiEvent.send(HomeUiEvent.NavigateToProotSetup)
+                    } else {
+                        _uiEvent.send(HomeUiEvent.NavigateToProject)
+                    }
                 } else {
                     _uiEvent.send(HomeUiEvent.ShowError(context.getString(R.string.home_error_resolve_path)))
                 }
@@ -118,7 +124,12 @@ class HomeViewModel : ViewModel() {
                 R2PipeManager.pendingRestoreFlags = project.scriptPath  // Store script path only
                 R2PipeManager.pendingProjectId = project.id
 
-                _uiEvent.send(HomeUiEvent.NavigateToProject)
+                if (SettingsManager.useProotMode && !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(context)) {
+                    _uiEvent.send(HomeUiEvent.ShowMessage(context.getString(R.string.proot_setup_required_message)))
+                    _uiEvent.send(HomeUiEvent.NavigateToProotSetup)
+                } else {
+                    _uiEvent.send(HomeUiEvent.NavigateToProject)
+                }
             } catch (e: Exception) {
                 _uiEvent.send(HomeUiEvent.ShowError(
                     e.message ?: context.getString(R.string.home_error_unknown)
