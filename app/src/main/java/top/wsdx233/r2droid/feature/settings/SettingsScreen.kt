@@ -487,7 +487,7 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val prootInstallState by ProotInstaller.state.collectAsState()
     val prootToggleChecked = useProotMode || prootInstallState.isWorking
-    val prootRootfsOptions = remember(context) { ProotRootfsCatalog.load(context) }
+    var prootRootfsOptions by remember(context) { mutableStateOf(ProotRootfsCatalog.load(context)) }
     val selectedProotRootfs = remember(prootRootfsAlias, prootRootfsOptions) {
         prootRootfsOptions.firstOrNull { it.alias == prootRootfsAlias }
             ?: prootRootfsOptions.firstOrNull()
@@ -500,6 +500,10 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadPersistedTreeAccess(context)
+    }
+
+    LaunchedEffect(context) {
+        prootRootfsOptions = ProotRootfsCatalog.refresh(context)
     }
 
     

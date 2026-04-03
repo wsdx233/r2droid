@@ -2,7 +2,15 @@ package top.wsdx233.r2droid.util
 
 import android.content.Context
 import android.os.Build
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -31,6 +39,9 @@ data class ProotRootfsOption(
 
 object ProotRootfsCatalog {
     private const val ASSET_PLUGIN_DIR = "proot-distro/distro-plugins"
+    private const val GITHUB_CONTENTS_API = "https://api.github.com/repos/termux/proot-distro/contents/distro-plugins?ref=master"
+    private const val CACHE_DIR_NAME = "proot-distro-plugins"
+    private val json = Json { ignoreUnknownKeys = true }
 
     fun defaultOption(): ProotRootfsOption = ProotRootfsOption(
         alias = DEFAULT_PROOT_ROOTFS_ALIAS,
@@ -45,34 +56,114 @@ object ProotRootfsCatalog {
 
     fun load(context: Context): List<ProotRootfsOption> {
         val arch = currentArch()
-        val assetManager = context.assets
-        val pluginFiles = runCatching { assetManager.list(ASSET_PLUGIN_DIR)?.toList().orEmpty() }
-            .getOrDefault(emptyList())
-            .filter { it.endsWith(".sh") }
-            .sorted()
+        val cachedEntries = loadFromCache(context, arch)
+        if (cachedEntries.isNotEmpty()) return cachedEntries
 
-        if (pluginFiles.isEmpty()) {
-            return listOf(defaultOption())
-        }
+        val assetEntries = loadFromAssets(context, arch)
+        return if (assetEntries.isEmpty()) listOf(defaultOption()) else assetEntries
+    }
 
-        val entries = pluginFiles.mapNotNull { fileName ->
-            runCatching {
-                assetManager.open("$ASSET_PLUGIN_DIR/$fileName").bufferedReader().use { reader ->
-                    parsePlugin(fileName.removeSuffix(".sh"), arch, reader.readText())
+    suspend fun refresh(context: Context): List<ProotRootfsOption> = withContext(Dispatchers.IO) {
+        runCatching {
+            val arch = currentArch()
+            val remotePlugins = fetchRemotePluginSources()
+            cacheRemotePluginSources(context, remotePlugins)
+            normalizeEntries(
+                remotePlugins.mapNotNull { (fileName, content) ->
+                    parsePlugin(fileName.removeSuffix(".sh"), arch, content)
                 }
-            }.getOrNull()
+            ).ifEmpty { load(context) }
+        }.getOrElse {
+            load(context)
         }
-            .filter { it.distroType.isBlank() || it.distroType == "normal" }
-            .distinctBy { it.alias }
-            .sortedWith(compareByDescending<ProotRootfsOption> { it.isRecommended }.thenBy { it.displayName.lowercase() })
-
-        return if (entries.isEmpty()) listOf(defaultOption()) else entries
     }
 
     fun resolve(context: Context, alias: String?): ProotRootfsOption {
         val normalizedAlias = alias?.trim().orEmpty()
         return load(context).firstOrNull { it.alias == normalizedAlias }
             ?: defaultOption()
+    }
+
+    private fun loadFromAssets(context: Context, arch: String): List<ProotRootfsOption> {
+        val assetManager = context.assets
+        val pluginFiles = runCatching { assetManager.list(ASSET_PLUGIN_DIR)?.toList().orEmpty() }
+            .getOrDefault(emptyList())
+            .filter { it.endsWith(".sh") }
+            .sorted()
+
+        return normalizeEntries(
+            pluginFiles.mapNotNull { fileName ->
+                runCatching {
+                    assetManager.open("$ASSET_PLUGIN_DIR/$fileName").bufferedReader().use { reader ->
+                        parsePlugin(fileName.removeSuffix(".sh"), arch, reader.readText())
+                    }
+                }.getOrNull()
+            }
+        )
+    }
+
+    private fun loadFromCache(context: Context, arch: String): List<ProotRootfsOption> {
+        val cacheDir = File(context.filesDir, CACHE_DIR_NAME)
+        if (!cacheDir.isDirectory) return emptyList()
+        return normalizeEntries(
+            cacheDir.listFiles()
+                .orEmpty()
+                .filter { it.isFile && it.name.endsWith(".sh") }
+                .sortedBy { it.name }
+                .mapNotNull { file -> parsePlugin(file.name.removeSuffix(".sh"), arch, file.readText()) }
+        )
+    }
+
+    private fun normalizeEntries(entries: List<ProotRootfsOption>): List<ProotRootfsOption> {
+        return entries
+            .filter { it.distroType.isBlank() || it.distroType == "normal" }
+            .distinctBy { it.alias }
+            .sortedWith(compareByDescending<ProotRootfsOption> { it.isRecommended }.thenBy { it.displayName.lowercase() })
+    }
+
+    private fun fetchRemotePluginSources(): List<Pair<String, String>> {
+        val listRequest = (URL(GITHUB_CONTENTS_API).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "R2Droid")
+        }
+
+        val pluginEntries = try {
+            val body = listRequest.inputStream.bufferedReader().readText()
+            json.parseToJsonElement(body).jsonArray.mapNotNull { item ->
+                val obj = item.jsonObject
+                val name = obj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                val type = obj["type"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                val downloadUrl = obj["download_url"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                if (type == "file" && name.endsWith(".sh")) name to downloadUrl else null
+            }
+        } finally {
+            listRequest.disconnect()
+        }
+
+        return pluginEntries.mapNotNull { (name, downloadUrl) ->
+            runCatching {
+                val fileRequest = (URL(downloadUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15_000
+                    readTimeout = 15_000
+                    setRequestProperty("User-Agent", "R2Droid")
+                }
+                try {
+                    name to fileRequest.inputStream.bufferedReader().readText()
+                } finally {
+                    fileRequest.disconnect()
+                }
+            }.getOrNull()
+        }
+    }
+
+    private fun cacheRemotePluginSources(context: Context, plugins: List<Pair<String, String>>) {
+        val cacheDir = File(context.filesDir, CACHE_DIR_NAME)
+        cacheDir.mkdirs()
+        plugins.forEach { (name, content) ->
+            File(cacheDir, name).writeText(content)
+        }
     }
 
     private fun parsePlugin(alias: String, arch: String, content: String): ProotRootfsOption? {
