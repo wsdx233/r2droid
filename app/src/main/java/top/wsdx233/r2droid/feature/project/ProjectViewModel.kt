@@ -48,6 +48,7 @@ sealed interface ProjectEvent {
     object RefreshAllViews : ProjectEvent
     data class LoadSections(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadSymbols(val forceRefresh: Boolean = false) : ProjectEvent
+    data class LoadExports(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadImports(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadRelocations(val forceRefresh: Boolean = false) : ProjectEvent
     data class LoadStrings(val forceRefresh: Boolean = false) : ProjectEvent
@@ -79,6 +80,7 @@ sealed class ProjectUiState {
         val binInfo: BinInfo? = null,
         val sections: List<Section>? = null,
         val symbols: List<Symbol>? = null,
+        val exports: List<ExportInfo>? = null,
         val imports: List<ImportInfo>? = null,
         val relocations: List<Relocation>? = null,
         val strings: List<StringInfo>? = null,
@@ -247,6 +249,14 @@ class ProjectViewModel @Inject constructor(
 
     fun updateSymbolsSearchQuery(query: String) { _symbolsSearchQuery.value = query }
 
+    // === Exports ===
+    private val _exportsSearchQuery = MutableStateFlow("")
+    val exportsSearchQuery: StateFlow<String> = _exportsSearchQuery.asStateFlow()
+    private val _exportsLoading = MutableStateFlow(false)
+    val exportsLoading: StateFlow<Boolean> = _exportsLoading.asStateFlow()
+
+    fun updateExportsSearchQuery(query: String) { _exportsSearchQuery.value = query }
+
     // === Imports Paging ===
     private val _importsSearchQuery = MutableStateFlow("")
     val importsSearchQuery: StateFlow<String> = _importsSearchQuery.asStateFlow()
@@ -364,6 +374,7 @@ class ProjectViewModel @Inject constructor(
             is ProjectEvent.RefreshAllViews -> refreshAllViews()
             is ProjectEvent.LoadSections -> loadSections(event.forceRefresh)
             is ProjectEvent.LoadSymbols -> loadSymbols(event.forceRefresh)
+            is ProjectEvent.LoadExports -> loadExports(event.forceRefresh)
             is ProjectEvent.LoadImports -> loadImports(event.forceRefresh)
             is ProjectEvent.LoadRelocations -> loadRelocations(event.forceRefresh)
             is ProjectEvent.LoadStrings -> loadStrings(event.forceRefresh)
@@ -793,6 +804,7 @@ class ProjectViewModel @Inject constructor(
 
                 loadSections(forceRefresh = true)
                 if (previousState?.symbols != null) loadSymbols(forceRefresh = true)
+                if (previousState?.exports != null) loadExports(forceRefresh = true)
                 if (previousState?.imports != null) loadImports(forceRefresh = true)
                 if (previousState?.relocations != null) loadRelocations(forceRefresh = true)
                 if (previousState?.strings != null) loadStrings(forceRefresh = true)
@@ -854,6 +866,24 @@ class ProjectViewModel @Inject constructor(
             val currentState = _uiState.value
             if (currentState is ProjectUiState.Success) {
                 _uiState.value = currentState.copy(symbols = emptyList())
+            }
+        }
+    }
+
+    fun loadExports(forceRefresh: Boolean = false) {
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        if (!forceRefresh && current.exports != null) return
+
+        viewModelScope.launch {
+            _exportsLoading.value = true
+            val result = binInfoRepository.getExports()
+            _exportsLoading.value = false
+            val currentState = _uiState.value
+            if (currentState is ProjectUiState.Success) {
+                _uiState.value = currentState.copy(exports = result.getOrElse {
+                    Log.e("ProjectViewModel", "Failed to load exports", it)
+                    emptyList()
+                })
             }
         }
     }

@@ -60,6 +60,7 @@ import top.wsdx233.r2droid.core.data.db.RelocationEntity
 import top.wsdx233.r2droid.core.data.db.SectionEntity
 import top.wsdx233.r2droid.core.data.db.StringEntity
 import top.wsdx233.r2droid.core.data.db.SymbolEntity
+import top.wsdx233.r2droid.core.data.model.ExportInfo
 import top.wsdx233.r2droid.core.data.model.FunctionInfo
 import top.wsdx233.r2droid.core.data.model.ImportInfo
 import top.wsdx233.r2droid.core.data.model.Relocation
@@ -267,6 +268,92 @@ fun SymbolItem(symbol: Symbol, actions: ListItemActions) {
                     InfoTag(symbol.type)
                 }
                 AddressBadge(symbol.vAddr, accent)
+            }
+        }
+    }
+}
+
+@Composable
+fun ExportList(
+    exports: List<ExportInfo>,
+    actions: ListItemActions,
+    onRefresh: (() -> Unit)? = null,
+    searchQuery: String? = null,
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    listState: LazyListState? = null
+) {
+    FilterableList(
+        items = exports,
+        filterPredicate = { item, query ->
+            val displayName = item.realname ?: item.name
+            displayName.contains(query, ignoreCase = true) ||
+                item.name.contains(query, ignoreCase = true) ||
+                (item.flagname?.contains(query, ignoreCase = true) == true)
+        },
+        placeholder = stringResource(R.string.search_exports_hint),
+        onRefresh = onRefresh,
+        externalSearchQuery = searchQuery,
+        onExternalSearchQueryChange = onSearchQueryChange,
+        externalListState = listState
+    ) { item ->
+        ExportItem(item, actions)
+    }
+}
+
+@Composable
+fun ExportItem(exportInfo: ExportInfo, actions: ListItemActions) {
+    val accent = MaterialTheme.colorScheme.tertiary
+    val displayName = exportInfo.realname ?: exportInfo.name
+    UnifiedListItemWrapper(
+        title = displayName,
+        address = exportInfo.vAddr,
+        fullText = "Export: ${exportInfo.name}, Type: ${exportInfo.type}, Bind: ${exportInfo.bind}, Size: ${exportInfo.size}, VAddr: 0x${exportInfo.vAddr.toString(16)}",
+        actions = actions,
+        shape = RoundedCornerShape(12.dp),
+        elevation = 1.dp
+    ) {
+        TintedItemSurface(accent, shape = RoundedCornerShape(12.dp)) {
+            Row(
+                modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = accent,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (exportInfo.name != displayName) {
+                        Text(
+                            text = exportInfo.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (!exportInfo.flagname.isNullOrBlank() && exportInfo.flagname != exportInfo.name) {
+                        Text(
+                            text = exportInfo.flagname,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        InfoTag(exportInfo.type)
+                        if (exportInfo.bind.isNotBlank()) InfoTag(exportInfo.bind)
+                        if (exportInfo.size > 0) InfoTag("${exportInfo.size}B")
+                    }
+                }
+                AddressBadge(exportInfo.vAddr, accent)
             }
         }
     }

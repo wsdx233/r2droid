@@ -70,6 +70,18 @@ class BinInfoRepository @Inject constructor(
         }
     }
 
+    suspend fun getExports(): Result<List<ExportInfo>> {
+        return r2DataSource.executeJson("iEj").mapCatching { output ->
+            if (output.isBlank()) return@mapCatching emptyList()
+            val jsonArray = JSONArray(output)
+            val list = mutableListOf<ExportInfo>()
+            for (i in 0 until jsonArray.length()) {
+                list.add(ExportInfo.fromJson(jsonArray.getJSONObject(i)))
+            }
+            list
+        }
+    }
+
     suspend fun getRelocations(): Result<List<Relocation>> {
         return r2DataSource.executeJson("irj").mapCatching { output ->
              if (output.isBlank()) return@mapCatching emptyList()

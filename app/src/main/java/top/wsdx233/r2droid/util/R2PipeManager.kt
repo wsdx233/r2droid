@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.radare.r2pipe.R2PipeSession
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
-import java.io.InputStream
 import java.io.File
+import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -42,8 +43,7 @@ object R2PipeManager {
 
     data class R2Session(
         val sessionId: String,
-        val r2pipe: R2pipe?,
-        val r2pipeHttp: R2pipeHttp?,
+        val pipe: R2PipeSession,
         val isHttpMode: Boolean,
         val httpPort: Int? = null,
         val projectPath: String?,
@@ -148,25 +148,15 @@ object R2PipeManager {
     // 公开的不可变状态流，UI 层应观察此属性
     val state: StateFlow<State> = _state.asStateFlow()
 
-    private fun pipeCmd(session: R2Session, command: String): String {
-        return if (session.isHttpMode) session.r2pipeHttp!!.cmd(command) else session.r2pipe!!.cmd(command)
-    }
+    private fun pipeCmd(session: R2Session, command: String): String = session.pipe.cmd(command)
 
-    private fun pipeCmdStream(session: R2Session, command: String): InputStream {
-        return if (session.isHttpMode) session.r2pipeHttp!!.cmdStream(command) else session.r2pipe!!.cmdStream(command)
-    }
+    private fun pipeCmdStream(session: R2Session, command: String): InputStream = session.pipe.cmdStream(command)
 
-    private fun pipeIsRunning(session: R2Session): Boolean {
-        return if (session.isHttpMode) session.r2pipeHttp?.isProcessRunning() == true else session.r2pipe?.isProcessRunning() == true
-    }
+    private fun pipeIsRunning(session: R2Session): Boolean = session.pipe.isRunning()
 
     private fun closeSessionPipe(session: R2Session, force: Boolean) {
         try {
-            if (session.isHttpMode) {
-                if (force) session.r2pipeHttp?.forceQuit() else session.r2pipeHttp?.quit()
-            } else {
-                if (force) session.r2pipe?.forceQuit() else session.r2pipe?.quit()
-            }
+            if (force) session.pipe.forceClose() else session.pipe.close()
         } catch (_: Exception) {
         }
         session.isConnected.set(false)
@@ -207,23 +197,28 @@ object R2PipeManager {
         val appCtx = context.applicationContext
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-        val http = if (useHttp) {
-            R2pipeHttp(
-                appCtx,
+        val pipe = if (useHttp) {
+            AndroidR2PipeSupport.openHttp(
+                context = appCtx,
                 filePath = filePath,
                 flags = flags,
                 rawArgs = rawArgs,
-                port = resolvedHttpPort ?: SettingsManager.httpPort
+                port = resolvedHttpPort ?: SettingsManager.httpPort,
+                logTag = "R2PipeHttp"
             )
-        } else null
-        val stdio = if (!useHttp) {
-            R2pipe(appCtx, filePath = filePath, flags = flags, rawArgs = rawArgs)
-        } else null
+        } else {
+            AndroidR2PipeSupport.openStdio(
+                context = appCtx,
+                filePath = filePath,
+                flags = flags,
+                rawArgs = rawArgs,
+                logTag = "R2Pipe"
+            )
+        }
 
         val session = R2Session(
             sessionId = sid,
-            r2pipe = stdio,
-            r2pipeHttp = http,
+            pipe = pipe,
             isHttpMode = useHttp,
             httpPort = resolvedHttpPort,
             projectPath = filePath,
@@ -480,7 +475,7 @@ object R2PipeManager {
      */
     fun interrupt() {
         val session = activeSession() ?: return
-        if (session.isHttpMode) session.r2pipeHttp?.interrupt() else session.r2pipe?.interrupt()
+        session.pipe.interrupt()
     }
 
     /**

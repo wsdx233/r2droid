@@ -38,8 +38,8 @@ This plan outlines the changes made to implement the Settings Screen enhancement
     - Updated `copyContentUriToCache` to use the custom project home directory if set.
 
 ### 6. R2 Configuration
-- **File**: `app/src/main/java/top/wsdx233/r2droid/util/R2pipe.kt`
-    - Verified `HOME` environment variable points to `filesDir/radare2/bin`, ensuring `radare2` loads the custom `.radare2rc` file.
+- **File**: `app/src/main/java/top/wsdx233/r2droid/util/R2Runtime.kt`
+    - Verified the direct-launch environment sets `HOME=filesDir/radare2/bin`, ensuring `radare2` loads the custom `.radare2rc` file.
 
 ## Verification
 - **.radare2rc**: Creating/editing via Settings -> applied to `filesDir/radare2/bin/.radare2rc` -> loaded by r2pipe (via `HOME` env var).

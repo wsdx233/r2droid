@@ -266,6 +266,7 @@
 
     <string name="search_sections_hint">Поиск по секциям...</string>
     <string name="search_symbols_hint">Поиск по символам...</string>
+    <string name="search_exports_hint">Поиск по экспортам...</string>
     <string name="search_imports_hint">Поиск по импортам...</string>
     <string name="search_relocations_hint">Поиск по релокациям...</string>
     <string name="search_strings_hint">Поиск по строкам...</string>
@@ -321,6 +322,7 @@
     <string name="proj_tab_overview">Обзор</string>
     <string name="proj_tab_sections">Секции</string>
     <string name="proj_tab_symbols">Символы</string>
+    <string name="proj_tab_exports">Экспорты</string>
     <string name="proj_tab_imports">Импорты</string>
     <string name="proj_tab_relocs">Релокации</string>
     <string name="proj_tab_strings">Строки</string>

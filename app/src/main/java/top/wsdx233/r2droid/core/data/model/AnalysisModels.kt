@@ -214,6 +214,36 @@ data class ImportInfo(
     }
 }
 
+data class ExportInfo(
+    val name: String,
+    val flagname: String? = null,
+    val realname: String? = null,
+    val ordinal: Int,
+    val bind: String,
+    val size: Long,
+    val type: String,
+    val vAddr: Long,
+    val pAddr: Long,
+    val isImported: Boolean
+) {
+    companion object {
+        fun fromJson(json: JSONObject): ExportInfo {
+            return ExportInfo(
+                name = json.optString("name", ""),
+                flagname = json.optString("flagname", "").ifEmpty { null },
+                realname = json.optString("realname", "").ifEmpty { null },
+                ordinal = json.optInt("ordinal", 0),
+                bind = json.optString("bind", ""),
+                size = json.optLong("size", 0),
+                type = json.optString("type", ""),
+                vAddr = json.optLong("vaddr", 0),
+                pAddr = json.optLong("paddr", 0),
+                isImported = json.optBoolean("is_imported", false)
+            )
+        }
+    }
+}
+
 data class Relocation(
     val name: String,
     val type: String,

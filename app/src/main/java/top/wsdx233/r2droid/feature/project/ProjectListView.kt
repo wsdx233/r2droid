@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.feature.bininfo.ui.ExportList
 import top.wsdx233.r2droid.feature.bininfo.ui.OverviewCard
 import top.wsdx233.r2droid.feature.bininfo.ui.PagingSectionList
 import top.wsdx233.r2droid.feature.bininfo.ui.PagingSymbolList
@@ -43,6 +44,7 @@ fun ProjectListView(
     searchResultListState: LazyListState? = null,
     sectionsListState: LazyListState? = null,
     symbolsListState: LazyListState? = null,
+    exportsListState: LazyListState? = null,
     importsListState: LazyListState? = null,
     relocationsListState: LazyListState? = null,
     stringsListState: LazyListState? = null,
@@ -113,10 +115,11 @@ fun ProjectListView(
         when (tabIndex) {
             2 -> viewModel.onEvent(ProjectEvent.LoadSections())
             3 -> viewModel.onEvent(ProjectEvent.LoadSymbols())
-            4 -> viewModel.onEvent(ProjectEvent.LoadImports())
-            5 -> viewModel.onEvent(ProjectEvent.LoadRelocations())
-            6 -> viewModel.onEvent(ProjectEvent.LoadStrings())
-            7 -> viewModel.onEvent(ProjectEvent.LoadFunctions())
+            4 -> viewModel.onEvent(ProjectEvent.LoadExports())
+            5 -> viewModel.onEvent(ProjectEvent.LoadImports())
+            6 -> viewModel.onEvent(ProjectEvent.LoadRelocations())
+            7 -> viewModel.onEvent(ProjectEvent.LoadStrings())
+            8 -> viewModel.onEvent(ProjectEvent.LoadFunctions())
         }
     }
 
@@ -159,6 +162,19 @@ fun ProjectListView(
                 listState = symbolsListState)
         }
         4 -> {
+            val loading by viewModel.exportsLoading.collectAsState()
+            val query by viewModel.exportsSearchQuery.collectAsState()
+            if (state.exports == null || loading) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            else ExportList(
+                exports = state.exports,
+                actions = listItemActions,
+                onRefresh = { viewModel.onEvent(ProjectEvent.LoadExports(forceRefresh = true)) },
+                searchQuery = query,
+                onSearchQueryChange = { viewModel.updateExportsSearchQuery(it) },
+                listState = exportsListState
+            )
+        }
+        5 -> {
             val syncing by viewModel.importsSyncing.collectAsState()
             val query by viewModel.importsSearchQuery.collectAsState()
             if (state.imports == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -168,7 +184,7 @@ fun ProjectListView(
                 onSearchQueryChange = { viewModel.updateImportsSearchQuery(it) },
                 listState = importsListState)
         }
-        5 -> {
+        6 -> {
             val syncing by viewModel.relocationsSyncing.collectAsState()
             val query by viewModel.relocationsSearchQuery.collectAsState()
             if (state.relocations == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -178,7 +194,7 @@ fun ProjectListView(
                 onSearchQueryChange = { viewModel.updateRelocationsSearchQuery(it) },
                 listState = relocationsListState)
         }
-        6 -> {
+        7 -> {
             val stringsSyncing by viewModel.stringsSyncing.collectAsState()
             val stringsSearchQuery by viewModel.stringsSearchQuery.collectAsState()
             if (state.strings == null || stringsSyncing) {
@@ -194,7 +210,7 @@ fun ProjectListView(
                 )
             }
         }
-        7 -> {
+        8 -> {
             val syncing by viewModel.functionsSyncing.collectAsState()
             val query by viewModel.functionsSearchQuery.collectAsState()
             if (state.functions == null || syncing) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

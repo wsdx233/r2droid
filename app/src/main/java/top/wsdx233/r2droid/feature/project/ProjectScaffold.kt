@@ -204,6 +204,7 @@ fun ProjectScaffold(
     val listSearchResultState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listSectionsState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listSymbolsState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listExportsState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listImportsState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listRelocationsState = androidx.compose.foundation.lazy.rememberLazyListState()
     val listStringsState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -258,7 +259,7 @@ fun ProjectScaffold(
 
     val baseListTabs = listOf(
         R.string.proj_tab_overview, R.string.proj_tab_search, R.string.proj_tab_sections, R.string.proj_tab_symbols,
-        R.string.proj_tab_imports, R.string.proj_tab_relocs, R.string.proj_tab_strings, R.string.proj_tab_functions
+        R.string.proj_tab_exports, R.string.proj_tab_imports, R.string.proj_tab_relocs, R.string.proj_tab_strings, R.string.proj_tab_functions
     )
     val pluginListTabs by rememberPluginTabsForTarget("list")
     val listTabTitles = buildList {
@@ -353,7 +354,7 @@ fun ProjectScaffold(
                 allTitles = listTabTitles,
                 baseKeys = listOf(
                     "list.overview", "list.search", "list.sections", "list.symbols",
-                    "list.imports", "list.relocations", "list.strings", "list.functions"
+                    "list.exports", "list.imports", "list.relocations", "list.strings", "list.functions"
                 ),
                 baseSize = baseListTabs.size,
                 pluginKeys = pluginListTabs.map { it.tab.key }
@@ -719,7 +720,7 @@ fun ProjectScaffold(
                                 Icon(Icons.AutoMirrored.Filled.MenuOpen, contentDescription = stringResource(R.string.menu_jump))
                             }
                         }
-                    } else if (selectedCategory == MainCategory.List && selectedListTabIndex == 6) {
+                    } else if (selectedCategory == MainCategory.List && selectedListTabIndex == 7) {
                         var showStringsMenu by remember { mutableStateOf(false) }
                         val stringsUseFullRange by viewModel.stringsUseFullRange.collectAsState()
                         Box {
@@ -1038,6 +1039,7 @@ fun ProjectScaffold(
                                     searchResultListState = listSearchResultState,
                                     sectionsListState = listSectionsState,
                                     symbolsListState = listSymbolsState,
+                                    exportsListState = listExportsState,
                                     importsListState = listImportsState,
                                     relocationsListState = listRelocationsState,
                                     stringsListState = listStringsState,

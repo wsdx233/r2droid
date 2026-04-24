@@ -19,5 +19,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Randroid"
 include(":app")
+include(":r2pipe-kotlin")
 include(":terminal-emulator")
 include(":terminal-view")

@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets
  * No Android dependency — usable in plain JUnit tests.
  *
  * Protocol:  send  "command\n"   →  receive  "output\0"
- * This is the same -q0 protocol used by the Android R2pipe class.
+ * This is the same -q0 protocol used by the app's Kotlin r2pipe integration.
  */
 class HostR2Pipe(
     private val process: Process,

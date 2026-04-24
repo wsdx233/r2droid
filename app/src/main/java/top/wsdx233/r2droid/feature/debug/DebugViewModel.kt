@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.wsdx233.r2droid.util.R2pipe
+import org.radare.r2pipe.R2PipeSession
+import top.wsdx233.r2droid.util.AndroidR2PipeSupport
 import java.io.File
 
 class DebugViewModel : ViewModel() {
@@ -26,8 +27,8 @@ class DebugViewModel : ViewModel() {
     private val _isExecuting = MutableStateFlow(false)
     val isExecuting: StateFlow<Boolean> = _isExecuting.asStateFlow()
 
-    // R2pipe 实例，保持常驻
-    private var r2Session: R2pipe? = null
+    // R2Pipe 会话，保持常驻
+    private var r2Session: R2PipeSession? = null
 
     // 标记是否已经初始化
     private var isInitialized = false
@@ -41,14 +42,18 @@ class DebugViewModel : ViewModel() {
      * 在界面首次加载或首次执行命令时调用
      */
     private suspend fun ensureSessionInitialized(context: Context) {
-        if (r2Session != null && r2Session!!.isProcessRunning()) return
+        if (r2Session != null && r2Session!!.isRunning()) return
 
         withContext(Dispatchers.IO) {
             try {
                 _outputText.value = "正在初始化 Radare2 引擎..."
 
                 val targetFile = File(context.filesDir, "radare2/bin/r2").absolutePath
-                r2Session = R2pipe.open(context, targetFile)
+                r2Session = AndroidR2PipeSupport.openStdio(
+                    context = context.applicationContext,
+                    filePath = targetFile,
+                    logTag = "DebugR2Pipe"
+                )
 
                 // 修复 sleigh 路径
                 val sleighPath = File(context.filesDir, "r2work/radare2/plugins/r2ghidra_sleigh").absolutePath
@@ -114,6 +119,6 @@ class DebugViewModel : ViewModel() {
     // ViewModel 销毁时清理进程
     override fun onCleared() {
         super.onCleared()
-        r2Session?.quit()
+        r2Session?.close()
     }
 }

@@ -153,6 +153,7 @@ dependencies {
     implementation(libs.commons.compress)
     implementation(libs.xz)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(project(":r2pipe-kotlin"))
     implementation(project(":terminal-view"))
     implementation(project(":terminal-emulator"))
 

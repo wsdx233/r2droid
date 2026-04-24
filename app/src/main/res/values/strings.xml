@@ -291,6 +291,7 @@
 
     <string name="search_sections_hint">Search Sections...</string>
     <string name="search_symbols_hint">Search Symbols...</string>
+    <string name="search_exports_hint">Search Exports...</string>
     <string name="search_imports_hint">Search Imports...</string>
     <string name="search_relocations_hint">Search Relocations...</string>
     <string name="search_strings_hint">Search Strings...</string>
@@ -345,6 +346,7 @@
     <string name="proj_tab_overview">Overview</string>
     <string name="proj_tab_sections">Sections</string>
     <string name="proj_tab_symbols">Symbols</string>
+    <string name="proj_tab_exports">Exports</string>
     <string name="proj_tab_imports">Imports</string>
     <string name="proj_tab_relocs">Relocs</string>
     <string name="proj_tab_strings">Strings</string>
