@@ -77,7 +77,7 @@ class KeepAliveService : Service() {
         builder
         .setContentTitle(getString(R.string.keep_alive_notification_title))
         .setContentText(getString(R.string.keep_alive_notification_text))
-        .setSmallIcon(R.drawable.icon)
+        .setSmallIcon(R.drawable.ic_stat_r2droid)
         // .setLargeIcon(appIcon)
         .setContentIntent(pi)
         .setOngoing(true) // must ongoing
