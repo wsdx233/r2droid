@@ -1,22 +1,31 @@
 package org.radare.r2pipe
 
 import java.io.BufferedInputStream
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.ByteBuffer
+import java.nio.channels.Channels
+import java.nio.channels.ReadableByteChannel
 import java.nio.charset.StandardCharsets
 import kotlin.concurrent.thread
+import kotlin.math.min
 
 class R2Pipe private constructor(
     private val process: Process,
     private val stdout: BufferedInputStream,
+    private val stdoutChannel: ReadableByteChannel,
     private val stdin: OutputStream,
     private val logger: R2PipeLogger?,
     private val processKiller: ProcessKiller
 ) : R2PipeSession {
     @Volatile
     private var running = true
+
+    private val readBuffer: ByteBuffer = ByteBuffer.allocateDirect(READ_BUFFER_SIZE)
+    private var resultBuffer: ByteBuffer = ByteBuffer.allocateDirect(INITIAL_RESULT_BUFFER_SIZE)
+    private var overflowChunks: MutableList<ByteArray>? = null
+    private var overflowSize: Int = 0
 
     init {
         startDrainThread(
@@ -125,30 +134,106 @@ class R2Pipe private constructor(
     }
 
     private fun readUntilNull(): String {
-        val result = ByteArrayOutputStream()
-        val buffer = ByteArray(BUFFER_SIZE)
+        resetResultBuffer()
         while (true) {
-            val count = stdout.read(buffer)
+            readBuffer.clear()
+            val count = stdoutChannel.read(readBuffer)
             if (count == -1) {
                 running = false
-                if (result.size() > 0) {
-                    return String(result.toByteArray(), StandardCharsets.UTF_8)
+                if (currentResultSize() > 0) {
+                    return finishResult()
                 }
                 throw IOException("R2 process terminated unexpectedly (EOF)")
             }
-            val nullIndex = firstNullIndex(buffer, count)
+
+            readBuffer.flip()
+            val nullIndex = firstNullIndex(readBuffer)
             if (nullIndex >= 0) {
-                result.write(buffer, 0, nullIndex)
+                val originalLimit = readBuffer.limit()
+                readBuffer.limit(nullIndex)
+                appendResult(readBuffer)
+                readBuffer.limit(originalLimit)
                 break
             }
-            result.write(buffer, 0, count)
+            appendResult(readBuffer)
         }
-        return String(result.toByteArray(), StandardCharsets.UTF_8)
+        return finishResult()
+    }
+
+    private fun resetResultBuffer() {
+        resultBuffer.clear()
+        overflowChunks = null
+        overflowSize = 0
+    }
+
+    private fun currentResultSize(): Int = resultBuffer.position() + overflowSize
+
+    private fun appendResult(source: ByteBuffer) {
+        val length = source.remaining()
+        if (length == 0) return
+
+        val needed = resultBuffer.position() + length
+        if (overflowChunks == null && needed <= MAX_RETAINED_RESULT_BUFFER_SIZE) {
+            ensureResultCapacity(needed)
+            resultBuffer.put(source)
+            return
+        }
+
+        val chunks = overflowChunks ?: mutableListOf<ByteArray>().also { overflowChunks = it }
+        while (source.hasRemaining()) {
+            val chunkSize = min(source.remaining(), OVERFLOW_CHUNK_SIZE)
+            val chunk = ByteArray(chunkSize)
+            source.get(chunk)
+            chunks += chunk
+            overflowSize += chunkSize
+        }
+    }
+
+    private fun ensureResultCapacity(needed: Int) {
+        if (needed <= resultBuffer.capacity()) return
+
+        var newSize = resultBuffer.capacity()
+        while (newSize < needed && newSize < MAX_RETAINED_RESULT_BUFFER_SIZE) {
+            newSize *= 2
+        }
+        newSize = min(newSize, MAX_RETAINED_RESULT_BUFFER_SIZE)
+
+        val newBuffer = ByteBuffer.allocateDirect(newSize)
+        resultBuffer.flip()
+        newBuffer.put(resultBuffer)
+        resultBuffer = newBuffer
+    }
+
+    private fun finishResult(): String {
+        val retainedSize = resultBuffer.position()
+        val totalSize = retainedSize.toLong() + overflowSize.toLong()
+        if (totalSize == 0L) return ""
+        if (totalSize > Int.MAX_VALUE) {
+            throw IOException("R2 command output is too large: $totalSize bytes")
+        }
+
+        val bytes = ByteArray(totalSize.toInt())
+        resultBuffer.flip()
+        resultBuffer.get(bytes, 0, retainedSize)
+
+        var offset = retainedSize
+        overflowChunks?.forEach { chunk ->
+            System.arraycopy(chunk, 0, bytes, offset, chunk.size)
+            offset += chunk.size
+        }
+        overflowChunks = null
+        overflowSize = 0
+
+        return String(bytes, StandardCharsets.UTF_8)
     }
 
     private fun closeStreams() {
         try {
             stdin.close()
+        } catch (_: Exception) {
+        }
+        try {
+            stdoutChannel.close()
         } catch (_: Exception) {
         }
         try {
@@ -189,20 +274,45 @@ class R2Pipe private constructor(
             builder.environment().putAll(launchSpec.environment)
             builder.redirectErrorStream(false)
             val process = builder.start()
-            return R2Pipe(
-                process = process,
-                stdout = BufferedInputStream(process.inputStream, BUFFER_SIZE),
-                stdin = process.outputStream,
-                logger = logger,
-                processKiller = processKiller
-            )
+            val stdout = BufferedInputStream(process.inputStream, STREAM_BUFFER_SIZE)
+            val stdoutChannel = Channels.newChannel(stdout)
+            return try {
+                R2Pipe(
+                    process = process,
+                    stdout = stdout,
+                    stdoutChannel = stdoutChannel,
+                    stdin = process.outputStream,
+                    logger = logger,
+                    processKiller = processKiller
+                )
+            } catch (e: Exception) {
+                try {
+                    stdoutChannel.close()
+                } catch (_: Exception) {
+                }
+                try {
+                    stdout.close()
+                } catch (_: Exception) {
+                }
+                try {
+                    process.outputStream.close()
+                } catch (_: Exception) {
+                }
+                processKiller.terminate(process, true)
+                throw e
+            }
         }
 
-        private const val BUFFER_SIZE = 64 * 1024
+        private const val STREAM_BUFFER_SIZE = 64 * 1024
+        private const val READ_BUFFER_SIZE = 256 * 1024
+        private const val INITIAL_RESULT_BUFFER_SIZE = 512 * 1024
+        private const val MAX_RETAINED_RESULT_BUFFER_SIZE = 4 * 1024 * 1024
+        private const val OVERFLOW_CHUNK_SIZE = 256 * 1024
 
-        private fun firstNullIndex(buffer: ByteArray, count: Int): Int {
-            for (index in 0 until count) {
-                if (buffer[index].toInt() == 0) {
+        private fun firstNullIndex(buffer: ByteBuffer): Int {
+            val limit = buffer.limit()
+            for (index in 0 until limit) {
+                if (buffer.get(index).toInt() == 0) {
                     return index
                 }
             }

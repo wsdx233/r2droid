@@ -390,9 +390,13 @@ object R2PipeManager {
                 try {
                     session.state.value = State.Executing(cmd)
                     publishActiveStateFrom(sessionId)
+                    LogManager.log(LogType.COMMAND, cmd)
 
                     val output = pipeCmd(session, cmd)
 
+                    if (output.isNotBlank()) {
+                        LogManager.log(LogType.OUTPUT, output)
+                    }
                     session.isDirtyAfterSave = true
                     session.state.value = State.Success(cmd, output)
                     publishActiveStateFrom(sessionId)
@@ -431,8 +435,9 @@ object R2PipeManager {
                 try {
                     session.state.value = State.Executing(cmd)
                     publishActiveStateFrom(sessionId)
+                    LogManager.log(LogType.COMMAND, cmd)
                     val stream = pipeCmdStream(session, cmd)
-                    val result = block(stream)
+                    val result = stream.use { block(it) }
                     session.isDirtyAfterSave = true
                     session.state.value = State.Success(cmd, "Stream completed")
                     publishActiveStateFrom(sessionId)
