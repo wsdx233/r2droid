@@ -1,7 +1,7 @@
 ![R2droid](preview/icon.png)
 # R2Droid
 
-![Kotlin](https://img.shields.io/badge/Kotlin-2.3.20-purple.svg)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-purple.svg)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material3-blue.svg)
 ![Radare2](https://img.shields.io/badge/Engine-Radare2-orange.svg)
 
@@ -35,7 +35,7 @@
 
 ## 🚀 Current TODO
 
-- [ ] Plugin manager UI for optional toolchain/extensions.
+- [x] Plugin manager UI for optional toolchain/extensions.
 - [ ] Debug backend expansion and UX polish for native/frida debugging paths.
 - [ ] More analysis automation templates (AI + report presets + action macros).
 
