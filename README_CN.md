@@ -1,7 +1,7 @@
 ![R2droid](preview/icon.png)
 # R2Droid
 
-![Kotlin](https://img.shields.io/badge/Kotlin-2.3.20-purple.svg)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-purple.svg)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material3-blue.svg)
 ![Radare2](https://img.shields.io/badge/Engine-Radare2-orange.svg)
 
@@ -35,7 +35,7 @@
 
 ## 🚀 当前 TODO
 
-- [ ] 插件管理器 UI（扩展工具链/插件管理）。
+- [x] 插件管理器 UI（扩展工具链/插件管理）。
 - [ ] 调试后端扩展与 native/frida 调试路径体验完善。
 - [ ] 更多分析自动化模板（AI + 报告预设 + 动作宏）。
 

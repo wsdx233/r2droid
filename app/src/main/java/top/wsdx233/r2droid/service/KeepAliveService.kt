@@ -89,7 +89,7 @@ class KeepAliveService : Service() {
             // Android 16+ Live Updates
             if (Build.VERSION.SDK_INT >= 36) {
                 b.setRequestPromotedOngoing(true)
-                b.setShortCriticalText("R2droid")
+                b.setShortCriticalText("R2Droid")
             }
         }
         .build()

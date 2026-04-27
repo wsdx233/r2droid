@@ -221,13 +221,13 @@
     <string name="binary_load_address">加载地址</string>
     <string name="binary_line_numbers">行号信息</string>
     <string name="binary_local_symbols">本地符号</string>
-    <string name="binary_nx">NX</string>
+    <string name="binary_nx">数据执行保护</string>
     <string name="binary_calling_convention">调用约定</string>
     <string name="binary_pic">位置无关代码</string>
-    <string name="binary_relocations">重定位</string>
-    <string name="binary_relro">RELRO</string>
+    <string name="binary_relocations">重定位信息</string>
+    <string name="binary_relro">完全只读重定位</string>
     <string name="binary_rpath">运行库路径</string>
-    <string name="binary_sanitize">启用 Sanitizer</string>
+    <string name="binary_sanitize">地址消毒器启用</string>
     <string name="binary_static_label">静态链接</string>
     <string name="binary_stripped">已剥离符号</string>
     <string name="binary_virtual_addressing">虚拟地址</string>
