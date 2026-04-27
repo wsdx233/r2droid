@@ -947,11 +947,132 @@ object PluginManager {
             else -> PluginProotInstaller.isReady(appContext)
         }
         if (!runtimeReady) return false
-        return prootSetupMarker(plugin).exists()
+
+        // New marker lives in the proot runtime instead of the plugin install dir.
+        // Bundled plugins may be re-synced on app start, which can delete plugin-local data
+        // and caused the setup dialog to appear again even though /opt deps were still there.
+        val runtimeMarker = prootSetupMarker(plugin, config)
+        if (runtimeMarker.exists()) return true
+
+        // Backward compatibility with older plugin-local marker. If found, migrate it so
+        // future bundled-plugin syncs do not lose the setup state.
+        if (legacyProotSetupMarker(plugin).exists()) {
+            writeProotSetupMarker(plugin, config, reason = "migrated-legacy-marker")
+            return true
+        }
+
+        // Last-resort recovery for users who already installed deps but lost the marker
+        // (e.g. after plugin asset updates). This is intentionally conservative: it only
+        // returns true when all observable artifacts declared by the manifest are present.
+        if (hasObservableProotSetupArtifacts(config, environment)) {
+            writeProotSetupMarker(plugin, config, reason = "recovered-from-artifacts")
+            return true
+        }
+
+        return false
     }
 
-    private fun prootSetupMarker(plugin: InstalledPlugin): File {
+    private fun prootSetupMarker(plugin: InstalledPlugin, config: PluginProotConfig): File {
+        val safeId = plugin.state.id.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        return File(
+            PluginProotInstaller.getRuntimeDir(appContext),
+            "plugin-setups/$safeId-${prootSetupFingerprint(config)}.complete"
+        )
+    }
+
+    private fun legacyProotSetupMarker(plugin: InstalledPlugin): File {
         return File(plugin.state.installDir, "data/.proot-setup-${plugin.state.version}.complete")
+    }
+
+    private fun writeProotSetupMarker(plugin: InstalledPlugin, config: PluginProotConfig, reason: String) {
+        val text = buildString {
+            appendLine("plugin=${plugin.state.id}")
+            appendLine("pluginVersion=${plugin.state.version}")
+            appendLine("setupFingerprint=${prootSetupFingerprint(config)}")
+            appendLine("reason=$reason")
+            appendLine("completedAt=${System.currentTimeMillis()}")
+        }
+        prootSetupMarker(plugin, config).apply {
+            parentFile?.mkdirs()
+            writeText(text)
+        }
+        // Keep writing the old marker too for external/manual checks and downgrade safety.
+        legacyProotSetupMarker(plugin).apply {
+            parentFile?.mkdirs()
+            writeText(text)
+        }
+    }
+
+    private fun prootSetupFingerprint(config: PluginProotConfig): String {
+        val material = buildString {
+            appendLine(config.environment.trim().lowercase().ifBlank { "plugin" })
+            appendLine(config.rootfsAlias.trim().ifBlank { "ubuntu" })
+            config.aptPackages.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted().forEach { appendLine("apt=$it") }
+            config.r2pmPackages.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted().forEach { appendLine("r2pm=$it") }
+            config.python?.let { python ->
+                appendLine("python.name=${python.name.trim().ifBlank { "default" }}")
+                python.packages.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted().forEach { appendLine("pip=$it") }
+                appendLine("python.requirements=${python.requirements?.trim().orEmpty()}")
+            }
+            config.setupCommands.map { it.trim() }.filter { it.isNotBlank() }.forEach { appendLine("setup=$it") }
+        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
+        return digest.take(8).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun hasObservableProotSetupArtifacts(config: PluginProotConfig, environment: String): Boolean {
+        val rootfs = when (environment) {
+            "main", "r2", "radare2" -> ProotInstaller.getRootfsDir(appContext)
+            else -> PluginProotInstaller.getRootfsDir(appContext)
+        }
+        if (!rootfs.isDirectory) return false
+
+        var hasChecks = false
+
+        config.python?.let { python ->
+            hasChecks = true
+            val safe = python.name.trim().ifBlank { "default" }.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+            val venv = File(rootfs, "opt/r2droid-plugin-venvs/$safe")
+            if (!File(venv, "pyvenv.cfg").isFile && !File(venv, "bin/python").exists()) return false
+        }
+
+        val setupPaths = observableSetupPaths(config.setupCommands)
+        if (setupPaths.isNotEmpty()) {
+            hasChecks = true
+            for (guestPath in setupPaths) {
+                val normalized = guestPath.trim().removePrefix("/")
+                if (normalized.isBlank() || !File(rootfs, normalized).exists()) return false
+            }
+        }
+
+        // If the plugin declares only the base proot runtime and no observable per-plugin
+        // artifact, the runtime readiness check above is sufficient.
+        val hasOnlyRuntimeRequirement = config.aptPackages.isEmpty() &&
+            config.r2pmPackages.isEmpty() &&
+            config.python == null &&
+            config.setupCommands.none { it.isNotBlank() }
+        return hasChecks || hasOnlyRuntimeRequirement
+    }
+
+    private fun observableSetupPaths(commands: List<String>): List<String> {
+        val paths = linkedSetOf<String>()
+        val gitCloneTarget = Regex("""\bgit\s+clone\b[^\n;&|]*\s+(/opt/[A-Za-z0-9_./+-]+)""")
+        val dirChecks = Regex("""-d\s+[\"']?(/opt/[A-Za-z0-9_./+-]+)[\"']?""")
+        commands.forEach { command ->
+            gitCloneTarget.findAll(command).forEach { match ->
+                val target = match.groupValues.getOrNull(1).orEmpty().trim().trim('"', '\'')
+                if (target.isNotBlank()) paths += target
+                if (target.isNotBlank()) paths += "$target/.git"
+            }
+            dirChecks.findAll(command).forEach { match ->
+                match.groupValues.getOrNull(1)
+                    ?.trim()
+                    ?.trim('"', '\'')
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { paths += it }
+            }
+        }
+        return paths.toList()
     }
 
     private suspend fun runProotSetupIfPresent(pluginId: String, reason: String) {
@@ -1030,10 +1151,7 @@ object PluginManager {
                 }
             }
         }
-        prootSetupMarker(plugin).apply {
-            parentFile?.mkdirs()
-            writeText("version=${plugin.state.version}\ncompletedAt=${System.currentTimeMillis()}\n")
-        }
+        writeProotSetupMarker(plugin, config, reason = reason)
         PluginProotInstaller.markDone("${manifest.name} proot environment is ready.")
         appendLog("[proot][$reason] $pluginId setup completed")
     }

@@ -484,6 +484,14 @@ fun ProjectScaffold(
 
     val isVisited: (Long) -> Boolean = { addr -> visitedAddresses.contains(addr) }
 
+    val jumpToDisasmFromPlugin: (Long) -> Unit = { addr ->
+        markVisited(addr)
+        selectBuiltinCategory(MainCategory.Detail)
+        selectedDetailTabIndex = 1
+        viewModel.currentDetailTab = 1
+        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
+    }
+
     Scaffold(
         topBar = {
             Column {
@@ -1114,7 +1122,8 @@ fun ProjectScaffold(
                             descriptor = selectedPluginNavigation,
                             selectedTabIndex = selectedPluginNavigationTabIndex,
                             isR2Frida = isR2Frida,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onJumpToDisasm = jumpToDisasmFromPlugin
                         )
                     } else {
                     when (selectedCategory) {
@@ -1149,7 +1158,8 @@ fun ProjectScaffold(
                                 RenderPluginInjectedTab(
                                     pluginTab = pluginTab,
                                     isR2Frida = isR2Frida,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    onJumpToDisasm = jumpToDisasmFromPlugin
                                 )
                             }
                         }
@@ -1166,7 +1176,8 @@ fun ProjectScaffold(
                                 RenderPluginInjectedTab(
                                     pluginTab = pluginTab,
                                     isR2Frida = isR2Frida,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    onJumpToDisasm = jumpToDisasmFromPlugin
                                 )
                             }
                         }
@@ -1198,7 +1209,8 @@ fun ProjectScaffold(
                                             PluginPageRenderer(
                                                 pluginId = pluginTab.pluginId,
                                                 page = pluginTab.tab.page,
-                                                modifier = Modifier.fillMaxSize()
+                                                modifier = Modifier.fillMaxSize(),
+                                                onJumpToDisasm = jumpToDisasmFromPlugin
                                             )
                                         } else {
                                             Text(
@@ -1222,7 +1234,8 @@ fun ProjectScaffold(
                                 RenderPluginInjectedTab(
                                     pluginTab = pluginTab,
                                     isR2Frida = isR2Frida,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    onJumpToDisasm = jumpToDisasmFromPlugin
                                 )
                             }
                         }
@@ -1434,7 +1447,8 @@ fun ProjectScaffold(
                                 RenderPluginInjectedTab(
                                     pluginTab = pluginTab,
                                     isR2Frida = isR2Frida,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    onJumpToDisasm = jumpToDisasmFromPlugin
                                 )
                             }
                         }
@@ -1515,7 +1529,8 @@ private fun rememberPluginTabsForTarget(target: String): androidx.compose.runtim
 private fun RenderPluginInjectedTab(
     pluginTab: PluginScreenTabDescriptor?,
     isR2Frida: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onJumpToDisasm: ((Long) -> Unit)? = null
 ) {
     if (pluginTab == null) {
         Text(
@@ -1532,7 +1547,8 @@ private fun RenderPluginInjectedTab(
         PluginPageRenderer(
             pluginId = pluginTab.pluginId,
             page = pluginTab.tab.page,
-            modifier = modifier
+            modifier = modifier,
+            onJumpToDisasm = onJumpToDisasm
         )
     } else {
         Text(
@@ -1547,7 +1563,8 @@ private fun RenderPluginNavigation(
     descriptor: PluginNavigationDescriptor,
     selectedTabIndex: Int,
     isR2Frida: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onJumpToDisasm: ((Long) -> Unit)? = null
 ) {
     val visibleTabs = descriptor.navigation.tabs.filter { isPluginVisible(it.visibleWhen, isR2Frida) }
     val tab = visibleTabs.getOrNull(selectedTabIndex)
@@ -1563,7 +1580,8 @@ private fun RenderPluginNavigation(
     PluginPageRenderer(
         pluginId = descriptor.pluginId,
         page = tab.page,
-        modifier = modifier
+        modifier = modifier,
+        onJumpToDisasm = onJumpToDisasm
     )
 }
 

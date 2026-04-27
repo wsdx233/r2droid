@@ -154,6 +154,7 @@ fun FeaturesScreen(
                 onClick = { showCustomStartDialog = true }
             )
 
+
             FeatureCard(
                 title = stringResource(R.string.feature_terminal_title),
                 description = stringResource(R.string.feature_terminal_desc),

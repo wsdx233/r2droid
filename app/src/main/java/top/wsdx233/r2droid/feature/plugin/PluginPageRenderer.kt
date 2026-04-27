@@ -61,13 +61,19 @@ import java.io.FileOutputStream
 fun PluginPageRenderer(
     pluginId: String,
     page: PluginPage,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onJumpToDisasm: ((Long) -> Unit)? = null
 ) {
     when (page.type.lowercase()) {
         "schema" -> SchemaPluginPage(pluginId = pluginId, path = page.path, modifier = modifier)
         "native" -> SchemaPluginPage(pluginId = pluginId, path = page.path, modifier = modifier)
         "terminal" -> TerminalCommandPluginPage(pluginId = pluginId, modifier = modifier)
-        else -> WebViewPluginPage(pluginId = pluginId, path = page.path, modifier = modifier)
+        else -> WebViewPluginPage(
+            pluginId = pluginId,
+            path = page.path,
+            modifier = modifier,
+            onJumpToDisasm = onJumpToDisasm
+        )
     }
 }
 
@@ -126,7 +132,8 @@ private fun TerminalCommandPluginPage(
 private fun WebViewPluginPage(
     pluginId: String,
     path: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onJumpToDisasm: ((Long) -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pageFile = PluginManager.resolvePluginFile(pluginId, path)
@@ -166,8 +173,9 @@ private fun WebViewPluginPage(
 
     val scope = rememberCoroutineScope()
     var showPluginProotDialog by remember(pluginId) { mutableStateOf(false) }
-    val bridge = remember(pluginId) {
+    val bridge = remember(pluginId, context, onJumpToDisasm) {
         PluginWebBridge(
+            context = context,
             pluginId = pluginId,
             onPickFileRequest = { requestId ->
                 pendingFileRequestId = requestId
@@ -180,7 +188,8 @@ private fun WebViewPluginPage(
             onPrepareProotRequest = { force ->
                 showPluginProotDialog = true
                 scope.launch { PluginManager.prepareProotForPlugin(pluginId, force = force) }
-            }
+            },
+            onJumpToDisasmRequest = onJumpToDisasm
         )
     }
     val includeCurrentActivity = remember(pluginId) {
@@ -655,10 +664,12 @@ private fun parseContentAlignment(value: String?): Alignment {
 }
 
 private class PluginWebBridge(
+    private val context: Context,
     private val pluginId: String,
     private val onPickFileRequest: (String) -> Unit,
     private val onPickDirectoryRequest: (String) -> Unit,
-    private val onPrepareProotRequest: (Boolean) -> Unit
+    private val onPrepareProotRequest: (Boolean) -> Unit,
+    private val onJumpToDisasmRequest: ((Long) -> Unit)? = null
 ) {
     @JavascriptInterface
     fun r2(command: String): String {
@@ -918,6 +929,63 @@ private class PluginWebBridge(
 
     @JavascriptInterface
     fun projectInfo(): String = projectsInfo()
+
+    @JavascriptInterface
+    fun openPath(path: String): String {
+        return runCatching {
+            val file = File(path)
+            require(file.exists()) { "path not found: $path" }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val mime = if (file.isDirectory) {
+                "resource/folder"
+            } else {
+                android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(file.extension.lowercase())
+                    ?: "application/octet-stream"
+            }
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(intent, file.name.ifBlank { path }).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            "ok"
+        }.getOrElse { "Error: ${it.message}" }
+    }
+
+    @JavascriptInterface
+    fun jumpToDisasm(address: String): String {
+        val addr = parseAddress(address)
+            ?: return "Error: invalid address: $address"
+        val callback = onJumpToDisasmRequest
+            ?: return "Error: jumpToDisasm is not available in this context"
+        return runBlocking {
+            withContext(Dispatchers.Main) {
+                callback(addr)
+            }
+            "ok"
+        }
+    }
+
+    @JavascriptInterface
+    fun jumpToAddress(address: String): String = jumpToDisasm(address)
+
+    private fun parseAddress(value: String): Long? {
+        val trimmed = value.trim().removePrefix("+")
+        if (trimmed.isBlank()) return null
+        return runCatching {
+            when {
+                trimmed.startsWith("0x", ignoreCase = true) -> trimmed.substring(2).toLong(16)
+                else -> trimmed.toLong()
+            }
+        }.getOrNull()
+    }
 }
 
 @Serializable
