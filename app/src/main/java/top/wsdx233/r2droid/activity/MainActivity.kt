@@ -22,6 +22,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
@@ -33,6 +36,7 @@ import top.wsdx233.r2droid.feature.permission.PermissionScreen
 import top.wsdx233.r2droid.feature.prootsetup.ProotSetupScreen
 import top.wsdx233.r2droid.feature.settings.SettingsScreen
 import top.wsdx233.r2droid.feature.plugin.PluginManagerScreen
+import top.wsdx233.r2droid.feature.tutorial.OnboardingTutorial
 import top.wsdx233.r2droid.ui.theme.R2droidTheme
 import top.wsdx233.r2droid.util.AppVariant
 import top.wsdx233.r2droid.util.IntentFileResolver
@@ -215,6 +219,60 @@ fun MainAppNavigation(
             }
         )
     }
+    var showTutorialPrompt by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentScreen, pendingFileUri) {
+        if (
+            currentScreen == AppScreen.Home &&
+            pendingFileUri == null &&
+            OnboardingTutorial.shouldShowFirstPrompt(context)
+        ) {
+            showTutorialPrompt = true
+        }
+    }
+
+    if (showTutorialPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                OnboardingTutorial.declineFirstPrompt()
+                showTutorialPrompt = false
+            },
+            title = { Text(androidx.compose.ui.res.stringResource(top.wsdx233.r2droid.R.string.tutorial_prompt_title)) },
+            text = { Text(androidx.compose.ui.res.stringResource(top.wsdx233.r2droid.R.string.tutorial_prompt_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val result = OnboardingTutorial.start(context)
+                        showTutorialPrompt = false
+                        result.onSuccess {
+                            currentScreen = AppScreen.Project
+                        }.onFailure { error ->
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    top.wsdx233.r2droid.R.string.tutorial_unavailable,
+                                    error.message ?: "unknown"
+                                ),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text(androidx.compose.ui.res.stringResource(top.wsdx233.r2droid.R.string.tutorial_prompt_start))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        OnboardingTutorial.declineFirstPrompt()
+                        showTutorialPrompt = false
+                    }
+                ) {
+                    Text(androidx.compose.ui.res.stringResource(top.wsdx233.r2droid.R.string.tutorial_prompt_later))
+                }
+            }
+        )
+    }
 
     // 处理从外部 Intent 传入的文件 URI
     fun resolveNextScreenAfterProotSetup(mode: String): AppScreen {
@@ -276,7 +334,22 @@ fun MainAppNavigation(
                 currentScreen = AppScreen.Home
             }
             SettingsScreen(
-                onBackClick = { currentScreen = AppScreen.Home }
+                onBackClick = { currentScreen = AppScreen.Home },
+                onStartTutorial = {
+                    val result = OnboardingTutorial.start(context)
+                    result.onSuccess {
+                        currentScreen = AppScreen.Project
+                    }.onFailure { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                top.wsdx233.r2droid.R.string.tutorial_unavailable,
+                                error.message ?: "unknown"
+                            ),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
             )
         }
         AppScreen.Features -> {

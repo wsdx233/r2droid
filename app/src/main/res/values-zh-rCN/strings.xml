@@ -53,6 +53,41 @@
     <string name="project_startup_flags">启动参数</string>
     <string name="project_startup_flags_hint">额外的 r2 参数 (例如 -w -n)</string>
     <string name="project_startup_flags_desc">这些参数将在恢复此项目时应用</string>
+
+    <!-- First-run Tutorial -->
+    <string name="tutorial_prompt_title">需要一个交互式新手教程吗？</string>
+    <string name="tutorial_prompt_message">R2Droid 可以打开一份 radare2 自带 r2 二进制的临时只读副本，并依次引导你学习概览、筛选、跳转、Hex、反编译、反汇编以及从底部上滑打开的指令面板。教程可随时跳过。</string>
+    <string name="tutorial_prompt_start">开始教程</string>
+    <string name="tutorial_prompt_later">暂不需要</string>
+    <string name="tutorial_unavailable">教程无法启动：%1$s</string>
+    <string name="tutorial_demo_binary_missing">未找到 radare2 示例二进制</string>
+    <string name="tutorial_progress">步骤 %1$d/%2$d</string>
+    <string name="tutorial_previous">上一步</string>
+    <string name="tutorial_next">下一步</string>
+    <string name="tutorial_done">完成</string>
+    <string name="tutorial_skip">跳过</string>
+    <string name="tutorial_step_welcome_title">安全的示例会话</string>
+    <string name="tutorial_step_welcome_body">本教程会分析已安装 r2 二进制的临时副本。启动时不会使用 -w，并启用缓存写入，因此你可以安全地熟悉主要操作流程。</string>
+    <string name="tutorial_step_navigation_title">主导航与二级标签</string>
+    <string name="tutorial_step_navigation_body">底部栏（大屏为左侧栏）用于切换列表、详情、项目以及已启用时的 AI。上方/底部的二级标签用于切换概览、函数、Hex、反汇编、命令等页面。</string>
+    <string name="tutorial_step_overview_title">查看二进制概览</string>
+    <string name="tutorial_step_overview_body">概览页会显示架构、位数、文件类型、哈希、入口点、节区和文件头等信息。带地址的项目通常可以复制，或通过动作跳转到 Hex/反汇编。</string>
+    <string name="tutorial_step_filter_title">筛选列表</string>
+    <string name="tutorial_step_filter_body">Functions、Strings、Sections、Symbols、Imports、Relocations 等列表顶部都有搜索框。输入名称或地址片段即可筛选；点击条目可跳转或打开更多操作。</string>
+    <string name="tutorial_step_jump_title">跳转与历史</string>
+    <string name="tutorial_step_jump_body">在详情页点击右上角跳转按钮，可以输入地址、符号或 r2 表达式。定位按钮会回到当前光标，返回按钮可按地址历史回退。</string>
+    <string name="tutorial_step_hex_title">Hex 查看与编辑</string>
+    <string name="tutorial_step_hex_body">Hex 页会按需流式加载大文件字节。点击字节移动光标，再次点击或长按可复制、查 xrefs、执行自定义命令或修改；真正写入需要重新以写模式打开。</string>
+    <string name="tutorial_step_decompiler_title">反编译视图</string>
+    <string name="tutorial_step_decompiler_body">反编译页会加载当前函数伪代码。可通过构建/设置图标切换 r2ghidra、r2dec、native、AIBeautify，并调整行号、自动换行、缩放重置或导出。</string>
+    <string name="tutorial_step_disasm_title">反汇编操作</string>
+    <string name="tutorial_step_disasm_body">反汇编页支持快速滚动、点击指令、上下文菜单、交叉引用、函数信息、变量、重命名、补丁辅助、多选以及可选调试控制。</string>
+    <string name="tutorial_step_command_panel_title">上滑指令面板</string>
+    <string name="tutorial_step_command_panel_body">手机上可从底部导航栏向上滑动打开快速 r2 指令面板。可以尝试 iI、afl、pd 10 等命令；项目 → 命令页提供完整命令历史。</string>
+    <string name="tutorial_step_project_title">项目工具、日志与会话</string>
+    <string name="tutorial_step_project_body">项目页包含会话设置、命令历史、日志、重连/保存动作和插件工具。左上角菜单可以打开会话抽屉和常用工具计算器。</string>
+    <string name="tutorial_step_finish_title">你已经准备好了</string>
+    <string name="tutorial_step_finish_body">基础操作已经过了一遍。你可以继续在这个临时示例会话中练习，也可以回到首页打开自己的二进制文件。</string>
     <!-- About Screen -->
     <string name="about_title">关于</string>
     <string name="about_back_desc">返回</string>
@@ -106,6 +141,8 @@
     <string name="settings_reset_all">恢复默认设置</string>
     <string name="settings_reset_all_desc">将所有设置恢复为默认值</string>
     <string name="settings_reset_all_confirm">所有设置将恢复为默认值，是否继续？</string>
+    <string name="settings_tutorial_title">交互式新手教程</string>
+    <string name="settings_tutorial_desc">使用临时只读的 r2 示例二进制重新播放引导流程</string>
 
     <!-- Decompiler Settings -->
     <string name="settings_decompiler">反编译器</string>

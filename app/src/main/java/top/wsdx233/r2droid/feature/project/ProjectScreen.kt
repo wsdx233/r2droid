@@ -71,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.feature.tutorial.OnboardingTutorial
 import top.wsdx233.r2droid.util.AppCacheCleaner
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.net.URLDecoder
@@ -94,6 +95,7 @@ fun ProjectScreen(
     val configuration = LocalConfiguration.current
     val sessions by R2PipeManager.sessions.collectAsState()
     val activeSessionId by R2PipeManager.activeSessionId.collectAsState()
+    val tutorialDemoSessionId by OnboardingTutorial.demoSessionId.collectAsState()
     var pendingStartTriggered by remember { mutableStateOf(false) }
 
     // 在 Activity 接管 configChanges 后，横竖屏切换只会触发重组。
@@ -227,6 +229,12 @@ fun ProjectScreen(
                 viewModel.onEvent(ProjectEvent.Initialize)
             }
 
+            androidx.compose.runtime.LaunchedEffect(activeSessionId, uiState) {
+                if (uiState is ProjectUiState.Success) {
+                    OnboardingTutorial.attachDemoSessionIfNeeded(activeSessionId)
+                }
+            }
+
     // Handle project restoration or custom command
     androidx.compose.runtime.LaunchedEffect(uiState, R2PipeManager.pendingCustomCommand, R2PipeManager.pendingRestoreFlags) {
         if (uiState is ProjectUiState.Analyzing && !pendingStartTriggered) {
@@ -249,6 +257,7 @@ fun ProjectScreen(
     androidx.activity.compose.BackHandler(
         enabled = !drawerState.isOpen &&
                 uiState is ProjectUiState.Success &&
+                activeSessionId != tutorialDemoSessionId &&
                 !R2PipeManager.isR2FridaSession &&
                 (R2PipeManager.currentProjectId == null || R2PipeManager.isDirtyAfterSave)
     ) {
@@ -384,12 +393,22 @@ fun ProjectScreen(
 
             when (val state = uiState) {
                 is ProjectUiState.Configuring -> {
-                    AnalysisConfigScreen(
-                        filePath = state.filePath,
-                        onStartAnalysis = { cmd, writable, flags ->
-                            viewModel.onEvent(ProjectEvent.StartAnalysisSession(cmd, writable, flags))
+                    val tutorialAutoStart = OnboardingTutorial.isAutoStartPendingFor(state.filePath)
+                    androidx.compose.runtime.LaunchedEffect(state.filePath) {
+                        if (OnboardingTutorial.consumeAutoStartFor(state.filePath)) {
+                            viewModel.onEvent(ProjectEvent.StartAnalysisSession("aaa", writable = false, flags = "-e io.cache=true"))
                         }
-                    )
+                    }
+                    if (tutorialAutoStart) {
+                        AnalysisProgressScreen(logs = logs, isRestoring = false)
+                    } else {
+                        AnalysisConfigScreen(
+                            filePath = state.filePath,
+                            onStartAnalysis = { cmd, writable, flags ->
+                                viewModel.onEvent(ProjectEvent.StartAnalysisSession(cmd, writable, flags))
+                            }
+                        )
+                    }
                 }
                 is ProjectUiState.Analyzing -> {
                     AnalysisProgressScreen(logs = logs, isRestoring = R2PipeManager.pendingRestoreFlags != null)

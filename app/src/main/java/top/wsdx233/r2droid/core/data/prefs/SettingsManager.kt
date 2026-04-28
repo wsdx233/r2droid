@@ -37,6 +37,8 @@ object SettingsManager {
     private const val KEY_ANALYSIS_BENCHMARK_AT = "analysis_benchmark_at"
     private const val KEY_DEFAULT_JUMP_TARGET = "default_jump_target"
     private const val KEY_AUTO_CHECK_UPDATES = "auto_check_updates"
+    private const val KEY_TUTORIAL_PROMPTED = "tutorial_prompted"
+    private const val KEY_TUTORIAL_COMPLETED = "tutorial_completed"
     private const val KEY_PROOT_BUILD_MODE = "proot_build_mode"
     private const val KEY_PROOT_CUSTOM_COMMAND = "proot_custom_command"
     private const val KEY_PROOT_ROOTFS_ALIAS = "proot_rootfs_alias"
@@ -216,6 +218,14 @@ object SettingsManager {
             prefs.edit { putBoolean(KEY_AUTO_CHECK_UPDATES, value) }
             _autoCheckUpdatesFlow.value = value
         }
+
+    var tutorialPrompted: Boolean
+        get() = prefs.getBoolean(KEY_TUTORIAL_PROMPTED, false)
+        set(value) { prefs.edit { putBoolean(KEY_TUTORIAL_PROMPTED, value) } }
+
+    var tutorialCompleted: Boolean
+        get() = prefs.getBoolean(KEY_TUTORIAL_COMPLETED, false)
+        set(value) { prefs.edit { putBoolean(KEY_TUTORIAL_COMPLETED, value) } }
 
     // "auto", "manual", "custom"
     var prootBuildMode: String

@@ -65,6 +65,41 @@
     <string name="project_startup_flags">Startup Flags</string>
     <string name="project_startup_flags_hint">Additional r2 flags (e.g. -w -n)</string>
     <string name="project_startup_flags_desc">These flags will be applied when restoring this project</string>
+
+    <!-- First-run Tutorial -->
+    <string name="tutorial_prompt_title">Need a quick interactive tour?</string>
+    <string name="tutorial_prompt_message">R2Droid can open a temporary read-only copy of radare2\'s own r2 binary and guide you through overview, filtering, jumping, Hex, decompiler, disassembly, and the swipe-up command panel. You can skip at any time.</string>
+    <string name="tutorial_prompt_start">Start Tutorial</string>
+    <string name="tutorial_prompt_later">No, thanks</string>
+    <string name="tutorial_unavailable">Tutorial cannot start: %1$s</string>
+    <string name="tutorial_demo_binary_missing">radare2 demo binary was not found</string>
+    <string name="tutorial_progress">Step %1$d/%2$d</string>
+    <string name="tutorial_previous">Back</string>
+    <string name="tutorial_next">Next</string>
+    <string name="tutorial_done">Done</string>
+    <string name="tutorial_skip">Skip</string>
+    <string name="tutorial_step_welcome_title">Safe demo session</string>
+    <string name="tutorial_step_welcome_body">This tutorial analyzes a temporary copy of the installed r2 binary. It is opened without -w, with cached writes enabled, so you can explore safely while learning the main workflow.</string>
+    <string name="tutorial_step_navigation_title">Main navigation and tabs</string>
+    <string name="tutorial_step_navigation_body">Use the bottom bar (or the left rail on large screens) to switch between List, Detail, Project, and AI if enabled. The secondary tab row switches sub-pages such as Overview, Functions, Hex, Disassembly, and Command.</string>
+    <string name="tutorial_step_overview_title">Binary overview</string>
+    <string name="tutorial_step_overview_body">The Overview tab summarizes architecture, bits, file type, hashes, entry points, sections, and headers. Address-like items can be copied or opened in Hex/Disassembly from their context actions.</string>
+    <string name="tutorial_step_filter_title">Filtering lists</string>
+    <string name="tutorial_step_filter_body">Lists such as Functions, Strings, Sections, Symbols, Imports, and Relocations include a search box at the top. Type part of a name or address to filter; tap an item to jump or open more actions.</string>
+    <string name="tutorial_step_jump_title">Jumping around</string>
+    <string name="tutorial_step_jump_body">In Detail pages, use the top-right Jump button to enter an address, symbol, or r2 expression. The locate button recenters the current cursor, and the back button returns through your address history.</string>
+    <string name="tutorial_step_hex_title">Hex viewer and editor</string>
+    <string name="tutorial_step_hex_body">The Hex tab streams bytes for large files. Tap a byte to move the cursor; tap again or long-press for copy, xrefs, custom command, or modify actions. Real patching requires reopening in write mode.</string>
+    <string name="tutorial_step_decompiler_title">Decompiler view</string>
+    <string name="tutorial_step_decompiler_body">The Decompile tab loads pseudo-code for the current function. Use the build/settings icon to switch r2ghidra, r2dec, native, or AIBeautify and to toggle line numbers, word wrap, zoom reset, or export.</string>
+    <string name="tutorial_step_disasm_title">Disassembly operations</string>
+    <string name="tutorial_step_disasm_body">The Disassembly tab supports fast scrolling, tapping instructions, context menus, xrefs, function info, variables, renaming, patch helpers, multi-select, and optional debugger controls.</string>
+    <string name="tutorial_step_command_panel_title">Swipe-up command panel</string>
+    <string name="tutorial_step_command_panel_body">On phones, swipe up from the bottom navigation bar to open this quick r2 command panel. Try commands like iI, afl, or pd 10. The Project → Command tab offers a full command history view.</string>
+    <string name="tutorial_step_project_title">Project tools, logs, and sessions</string>
+    <string name="tutorial_step_project_body">Project pages contain session settings, command history, logs, reconnect/save actions, and plugin tools. The top-left menu opens the session drawer and utility calculators.</string>
+    <string name="tutorial_step_finish_title">You\'re ready</string>
+    <string name="tutorial_step_finish_body">The basics are covered. Continue practicing in this temporary demo session, or return home and open your own binary when you are ready.</string>
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>
@@ -82,6 +117,8 @@
     <string name="settings_max_log_entries_desc">Maximum number of log entries to keep</string>
     <string name="settings_clear_cache">Clear Cache</string>
     <string name="settings_clear_cache_desc">Remove temporary files and radare2 cache data</string>
+    <string name="settings_tutorial_title">Interactive Tutorial</string>
+    <string name="settings_tutorial_desc">Replay the guided tour with a temporary read-only r2 demo binary</string>
     <string name="settings_cache_cleared">Cache cleared (%1$s)</string>
     <string name="settings_cache_cleared_partial">Temporary cache cleared (%1$s). Shared cache was kept for running projects.</string>
     <string name="settings_cache_clear_failed">Failed to clear cache</string>

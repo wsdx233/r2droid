@@ -54,6 +54,41 @@
     <string name="project_startup_flags">Флаги запуска</string>
     <string name="project_startup_flags_hint">Доп. флаги r2 (например, -w -n)</string>
     <string name="project_startup_flags_desc">Эти флаги будут применены при восстановлении этого проекта</string>
+
+    <!-- First-run Tutorial -->
+    <string name="tutorial_prompt_title">Нужен быстрый интерактивный тур?</string>
+    <string name="tutorial_prompt_message">R2Droid может открыть временную read-only копию собственного бинарника r2 из radare2 и провести вас через обзор, фильтрацию, переходы, Hex, декомпилятор, дизассемблер и панель команд, открываемую свайпом вверх. Тур можно пропустить в любой момент.</string>
+    <string name="tutorial_prompt_start">Начать тур</string>
+    <string name="tutorial_prompt_later">Нет, спасибо</string>
+    <string name="tutorial_unavailable">Не удалось запустить тур: %1$s</string>
+    <string name="tutorial_demo_binary_missing">Демо-бинарник radare2 не найден</string>
+    <string name="tutorial_progress">Шаг %1$d/%2$d</string>
+    <string name="tutorial_previous">Назад</string>
+    <string name="tutorial_next">Далее</string>
+    <string name="tutorial_done">Готово</string>
+    <string name="tutorial_skip">Пропустить</string>
+    <string name="tutorial_step_welcome_title">Безопасная демо-сессия</string>
+    <string name="tutorial_step_welcome_body">Этот тур анализирует временную копию установленного бинарника r2. Она открывается без -w и с включённым кэшем записи, поэтому вы можете безопасно изучить основной рабочий процесс.</string>
+    <string name="tutorial_step_navigation_title">Основная навигация и вкладки</string>
+    <string name="tutorial_step_navigation_body">Используйте нижнюю панель (или левую панель на больших экранах), чтобы переключаться между списками, деталями, проектом и ИИ, если он включён. Вторичная строка вкладок переключает страницы вроде Overview, Functions, Hex, Disassembly и Command.</string>
+    <string name="tutorial_step_overview_title">Обзор бинарного файла</string>
+    <string name="tutorial_step_overview_body">Вкладка Overview показывает архитектуру, битность, тип файла, хеши, точки входа, секции и заголовки. Элементы с адресами обычно можно копировать или открывать в Hex/Disassembly через контекстные действия.</string>
+    <string name="tutorial_step_filter_title">Фильтрация списков</string>
+    <string name="tutorial_step_filter_body">В списках Functions, Strings, Sections, Symbols, Imports и Relocations сверху есть поле поиска. Введите часть имени или адреса для фильтрации; нажмите на элемент, чтобы перейти к нему или открыть дополнительные действия.</string>
+    <string name="tutorial_step_jump_title">Переходы и история</string>
+    <string name="tutorial_step_jump_body">На страницах Detail используйте кнопку Jump справа сверху, чтобы ввести адрес, символ или выражение r2. Кнопка позиционирования центрирует текущий курсор, а кнопка назад проходит по истории адресов.</string>
+    <string name="tutorial_step_hex_title">Hex-просмотр и редактирование</string>
+    <string name="tutorial_step_hex_body">Вкладка Hex потоково подгружает байты больших файлов. Нажмите на байт, чтобы переместить курсор; повторное нажатие или долгое нажатие открывает копирование, xrefs, произвольную команду и действия изменения. Для реального патчинга нужно переоткрыть файл в режиме записи.</string>
+    <string name="tutorial_step_decompiler_title">Режим декомпилятора</string>
+    <string name="tutorial_step_decompiler_body">Вкладка Decompile загружает псевдокод текущей функции. Через иконку сборки/настроек можно переключать r2ghidra, r2dec, native или AIBeautify, а также включать номера строк, перенос слов, сброс масштаба и экспорт.</string>
+    <string name="tutorial_step_disasm_title">Операции дизассемблера</string>
+    <string name="tutorial_step_disasm_body">Вкладка Disassembly поддерживает быструю прокрутку, выбор инструкций, контекстные меню, xrefs, информацию о функциях, переменные, переименование, помощники патчинга, множественный выбор и дополнительные элементы управления отладчиком.</string>
+    <string name="tutorial_step_command_panel_title">Панель команд свайпом вверх</string>
+    <string name="tutorial_step_command_panel_body">На телефонах свайпните вверх от нижней навигационной панели, чтобы открыть быструю панель команд r2. Попробуйте команды вроде iI, afl или pd 10. Вкладка Project → Command показывает полноценную историю команд.</string>
+    <string name="tutorial_step_project_title">Инструменты проекта, логи и сессии</string>
+    <string name="tutorial_step_project_body">Страницы Project содержат настройки сессии, историю команд, логи, действия переподключения/сохранения и инструменты плагинов. Меню слева сверху открывает список сессий и служебные калькуляторы.</string>
+    <string name="tutorial_step_finish_title">Вы готовы</string>
+    <string name="tutorial_step_finish_body">Основы пройдены. Продолжайте практиковаться в этой временной демо-сессии или вернитесь на главный экран и откройте свой бинарный файл.</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">Настройки</string>
@@ -72,6 +107,8 @@
     <string name="settings_max_log_entries_desc">Максимальное количество сохраняемых логов</string>
     <string name="settings_clear_cache">Очистить кэш</string>
     <string name="settings_clear_cache_desc">Удалить временные файлы и данные кэша radare2</string>
+    <string name="settings_tutorial_title">Интерактивный тур</string>
+    <string name="settings_tutorial_desc">Повторить пошаговый тур с временным read-only демо-бинарником r2</string>
     <string name="settings_cache_cleared">Кэш очищен (%1$s)</string>
     <string name="settings_cache_cleared_partial">Временный кэш очищен (%1$s), общий кэш сохранён для запущенных проектов.</string>
     <string name="settings_cache_clear_failed">Не удалось очистить кэш</string>

@@ -135,6 +135,8 @@ import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
 import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.feature.r2frida.ui.*
 import top.wsdx233.r2droid.feature.terminal.ui.CommandScreen
+import top.wsdx233.r2droid.feature.tutorial.OnboardingTutorial
+import top.wsdx233.r2droid.feature.tutorial.TutorialOverlay
 import top.wsdx233.r2droid.feature.plugin.PluginManager
 import top.wsdx233.r2droid.feature.plugin.PluginNavigationDescriptor
 import top.wsdx233.r2droid.feature.plugin.PluginPageRenderer
@@ -211,6 +213,11 @@ fun ProjectScaffold(
     val isR2Frida = R2PipeManager.isR2FridaSession
     val isAiEnabled = SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
+    val tutorialState by OnboardingTutorial.state.collectAsState()
+
+    androidx.activity.compose.BackHandler(enabled = tutorialState.active) {
+        OnboardingTutorial.skip()
+    }
 
     // Hoisted list-category scroll states (survive category switches)
     val listOverviewScrollState = rememberScrollState()
@@ -246,6 +253,42 @@ fun ProjectScaffold(
     var sheetOutput by remember { mutableStateOf("") }
     var sheetExecuting by remember { mutableStateOf(false) }
     val sheetScope = rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(tutorialState.active, tutorialState.stepIndex) {
+        if (!tutorialState.active) return@LaunchedEffect
+        val step = OnboardingTutorial.steps.getOrNull(tutorialState.stepIndex) ?: return@LaunchedEffect
+        selectedPluginNavigationKey = null
+        when (step.target.area) {
+            OnboardingTutorial.Area.List -> {
+                selectBuiltinCategory(MainCategory.List)
+                selectedListTabIndex = step.target.tabIndex.coerceIn(0, 8)
+            }
+            OnboardingTutorial.Area.Detail -> {
+                selectBuiltinCategory(MainCategory.Detail)
+                selectedDetailTabIndex = step.target.tabIndex.coerceIn(0, 3)
+                viewModel.currentDetailTab = selectedDetailTabIndex
+                val successState = uiState as? ProjectUiState.Success
+                val entryPoint = successState?.binInfo?.entryPoints
+                    ?.firstOrNull { it.vAddr != 0L }
+                    ?.vAddr
+                if (successState != null && successState.cursorAddress == 0L && entryPoint != null) {
+                    viewModel.onEvent(ProjectEvent.JumpToAddress(entryPoint))
+                }
+            }
+            OnboardingTutorial.Area.Project -> {
+                selectBuiltinCategory(MainCategory.Project)
+                selectedProjectTabIndex = step.target.tabIndex.coerceIn(0, 2)
+            }
+        }
+        if (step.target.showCommandSheet) {
+            step.target.commandPrefill?.let { command ->
+                if (sheetCommand.isBlank()) sheetCommand = command
+            }
+            showCommandSheet = true
+        } else {
+            showCommandSheet = false
+        }
+    }
 
     // R2Pipe busy state for progress indicator
     val r2State by R2PipeManager.state.collectAsState()
@@ -1512,6 +1555,15 @@ fun ProjectScaffold(
         } catch (e: Exception) {
             android.widget.Toast.makeText(exportContext, e.message, android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    if (tutorialState.active && uiState is ProjectUiState.Success) {
+        TutorialOverlay(
+            state = tutorialState,
+            onPrevious = { OnboardingTutorial.previous() },
+            onNext = { OnboardingTutorial.next() },
+            onSkip = { OnboardingTutorial.skip() }
+        )
     }
 }
 

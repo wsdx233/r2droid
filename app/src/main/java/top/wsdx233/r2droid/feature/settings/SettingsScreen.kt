@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
@@ -429,6 +430,8 @@ class SettingsViewModel : ViewModel() {
         SettingsManager.prootRootfsAlias = "ubuntu"
         SettingsManager.httpPort = 9090
         SettingsManager.defaultJumpTarget = "ask"
+        SettingsManager.tutorialPrompted = false
+        SettingsManager.tutorialCompleted = false
         _fontPath.value = null
         _language.value = "system"
         _projectHome.value = null
@@ -459,7 +462,8 @@ class SettingsViewModel : ViewModel() {
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel(),
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onStartTutorial: () -> Unit = {}
 ) {
     val r2rcContent by viewModel.r2rcContent.collectAsState()
     val fontPath by viewModel.fontPath.collectAsState()
@@ -671,6 +675,15 @@ fun SettingsScreen(
                             }
                         }
                     }
+                )
+            }
+
+            item {
+                SettingsItem(
+                    title = stringResource(R.string.settings_tutorial_title),
+                    subtitle = stringResource(R.string.settings_tutorial_desc),
+                    icon = Icons.Default.PlayArrow,
+                    onClick = onStartTutorial
                 )
             }
 
