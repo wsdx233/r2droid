@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Legacy launchers keep the original full vector icon. -->
+    <item name="app_icon" type="mipmap">@drawable/icon</item>
+    <item name="app_round_icon" type="mipmap">@drawable/icon</item>
+</resources>

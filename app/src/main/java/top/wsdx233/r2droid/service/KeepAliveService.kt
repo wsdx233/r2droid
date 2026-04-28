@@ -63,7 +63,12 @@ class KeepAliveService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        val largeIcon = ContextCompat.getDrawable(this, R.drawable.icon)?.toNotificationBitmap()
+        // Some OEM "fluid cloud" / promoted-notification surfaces may pick the large/app
+        // icon and then force it through a monochrome mask. The full launcher icon has an
+        // opaque rounded-square background, so that path becomes a solid white blob. Keep
+        // the notification large icon glyph-only too; it is colored for normal notification
+        // shade rendering, while mask-based surfaces still only see the transparent >_ shape.
+        val largeIcon = ContextCompat.getDrawable(this, R.drawable.ic_live_large_icon)?.toNotificationBitmap()
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationCompat.Builder(this, CHANNEL_ID)

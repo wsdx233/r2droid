@@ -6,15 +6,15 @@
 
     <!--
         Monochrome notification/live-activity icon.
-        Do not draw a terminal frame/background here: some OEM notification
-        renderers ignore vector holes/fill rules and turn framed icons into a
-        solid white block. Keep only the foreground >_ glyph.
+        Keep only the foreground >_ glyph so monochrome renderers do not turn
+        the launcher background into a solid white block. Size is kept inside
+        a modest safe area for circular/pill fluid-cloud masks.
     -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,5.8L13.2,12 4,18.2v-4.1L7.7,12 4,9.9z" />
+        android:pathData="M4.75,6.6L13.7,12 4.75,17.4v-3.6L8.4,12 4.75,10.2z" />
 
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M13.5,15.2h6.5v2.8h-6.5z" />
+        android:pathData="M13.8,15.05h6.2v2.65h-6.2z" />
 </vector>

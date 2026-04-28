@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Colored, transparent-background counterpart of ic_stat_r2droid_live for large-icon slots. -->
+    <path
+        android:fillColor="#40C47A"
+        android:pathData="M4.75,6.6L13.7,12 4.75,17.4v-3.6L8.4,12 4.75,10.2z" />
+
+    <path
+        android:fillColor="#40C47A"
+        android:pathData="M13.8,15.05h6.2v2.65h-6.2z" />
+</vector>

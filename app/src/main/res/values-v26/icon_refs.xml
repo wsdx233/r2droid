@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive icon is required so OEM live-activity/fluid-cloud surfaces can use the monochrome layer. -->
+    <item name="app_icon" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="app_round_icon" type="mipmap">@mipmap/ic_launcher_round</item>
+</resources>

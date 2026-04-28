@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Keep the original full icon artwork, but place it inside the adaptive-icon safe area.
+        The adaptive background uses the same base color, so the inset is not visible while
+        circular/squircle launchers no longer crop the original edge-to-edge artwork.
+    -->
+    <item
+        android:left="16dp"
+        android:top="16dp"
+        android:right="16dp"
+        android:bottom="16dp"
+        android:drawable="@drawable/icon" />
+</layer-list>

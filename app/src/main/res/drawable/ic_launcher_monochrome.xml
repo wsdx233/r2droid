@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Glyph-only mask with padding for themed icons and OEM fluid-cloud/live surfaces. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21.4,29.7L61.7,54 21.4,78.3v-16.2L37.8,54 21.4,45.9z" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M62.1,67.7h27.9v11.9h-27.9z" />
+</vector>
