@@ -7,9 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-// import android.graphics.drawable.Icon
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import top.wsdx233.r2droid.R
 
 class KeepAliveService : Service() {
@@ -60,7 +63,7 @@ class KeepAliveService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        // val appIcon = Icon.createWithResource(this, R.drawable.icon)
+        val largeIcon = ContextCompat.getDrawable(this, R.drawable.icon)?.toNotificationBitmap()
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationCompat.Builder(this, CHANNEL_ID)
@@ -77,8 +80,9 @@ class KeepAliveService : Service() {
         builder
         .setContentTitle(getString(R.string.keep_alive_notification_title))
         .setContentText(getString(R.string.keep_alive_notification_text))
-        .setSmallIcon(R.drawable.ic_stat_r2droid)
-        // .setLargeIcon(appIcon)
+        .setSmallIcon(R.drawable.ic_stat_r2droid_live)
+        .apply { largeIcon?.let(::setLargeIcon) }
+        .setColor(0xFF40C47A.toInt())
         .setContentIntent(pi)
         .setOngoing(true) // must ongoing
         .setStyle(bigTextStyle) // Key: Meet the real-time update style requirements
@@ -101,4 +105,15 @@ class KeepAliveService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun Drawable.toNotificationBitmap(): Bitmap {
+        val size = (48 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val oldBounds = copyBounds()
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+        bounds = oldBounds
+        return bitmap
+    }
 }
