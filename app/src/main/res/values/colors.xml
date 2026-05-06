@@ -7,7 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    
+    <color name="transparent">#00000000</color>
+
     <!-- Hex Viewer Colors (Light Mode) -->
     <color name="hex_header_background">#FFE0E0E0</color>
     <color name="hex_content_background">#FFF0F0F0</color>
