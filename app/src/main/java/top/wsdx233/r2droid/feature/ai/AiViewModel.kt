@@ -20,6 +20,7 @@ import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.feature.ai.data.ChatSession
+import top.wsdx233.r2droid.feature.ai.data.ChatSessionMetadata
 import top.wsdx233.r2droid.feature.ai.data.R2ActionExecutor
 import top.wsdx233.r2droid.feature.ai.data.ActionResult
 import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
@@ -60,7 +61,7 @@ data class AiUiState(
     val error: String? = null,
     val config: AiProviderConfig = AiProviderConfig(),
     val systemPrompt: String = AiSettingsManager.DEFAULT_SYSTEM_PROMPT,
-    val chatSessions: List<ChatSession> = emptyList(),
+    val chatSessions: List<ChatSessionMetadata> = emptyList(),
     val currentChatId: String? = null,
     val pendingApproval: PendingApproval? = null,
     val thinkingLevel: ThinkingLevel = ThinkingLevel.Auto,
@@ -437,7 +438,7 @@ class AiViewModel @Inject constructor(
     }
 
     private fun loadChat(sessionId: String) {
-        val session = _uiState.value.chatSessions.find { it.id == sessionId } ?: return
+        val session = AiSettingsManager.loadSession(sessionId) ?: return
         stopGeneration()
         _uiState.update {
             it.copy(

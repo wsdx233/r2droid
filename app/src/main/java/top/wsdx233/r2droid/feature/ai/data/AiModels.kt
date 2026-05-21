@@ -56,6 +56,13 @@ enum class ThinkingLevel(val labelResKey: String, val apiEffort: String?) {
 }
 
 @Serializable
+data class ChatSessionMetadata(
+    val id: String,
+    val title: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class ChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String,

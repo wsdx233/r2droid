@@ -65,7 +65,7 @@ import top.wsdx233.r2droid.feature.ai.AiEvent
 import top.wsdx233.r2droid.feature.ai.AiViewModel
 import top.wsdx233.r2droid.feature.ai.data.AiExecutionMode
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
-import top.wsdx233.r2droid.feature.ai.data.ChatSession
+import top.wsdx233.r2droid.feature.ai.data.ChatSessionMetadata
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -480,7 +480,7 @@ fun AiChatScreen(viewModel: AiViewModel) {
 
 @Composable
 private fun ChatHistoryDialog(
-    sessions: List<ChatSession>,
+    sessions: List<ChatSessionMetadata>,
     onDismiss: () -> Unit,
     onOpen: (String) -> Unit,
     onDeleteRequest: (String) -> Unit

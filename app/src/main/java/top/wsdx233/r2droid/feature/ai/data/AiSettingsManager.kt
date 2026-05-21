@@ -17,16 +17,18 @@ object AiSettingsManager {
     private const val KEY_PROMPT_DISASM_POLISH = "prompt_disasm_polish"
 
     private lateinit var prefs: SharedPreferences
+    private lateinit var chatHistoryStore: AiChatHistoryStore
     private val json = Json { ignoreUnknownKeys = true }
 
     private val _configFlow = MutableStateFlow(AiProviderConfig())
     val configFlow = _configFlow.asStateFlow()
 
-    private val _sessionsFlow = MutableStateFlow<List<ChatSession>>(emptyList())
+    private val _sessionsFlow = MutableStateFlow<List<ChatSessionMetadata>>(emptyList())
     val sessionsFlow = _sessionsFlow.asStateFlow()
 
     fun initialize(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        chatHistoryStore = AiChatHistoryStore(context)
         _configFlow.value = loadConfig()
         _sessionsFlow.value = loadSessions()
     }
@@ -104,32 +106,54 @@ object AiSettingsManager {
 
     // region Chat Sessions
 
-    private fun loadSessions(): List<ChatSession> {
-        val raw = prefs.getString(KEY_CHAT_SESSIONS, null) ?: return emptyList()
-        return try {
-            json.decodeFromString(raw)
-        } catch (_: Exception) {
-            emptyList()
+    private fun loadSessions(): List<ChatSessionMetadata> {
+        val indexedSessions = chatHistoryStore.loadIndex()
+        val legacyRaw = prefs.getString(KEY_CHAT_SESSIONS, null)
+
+        if (legacyRaw != null && indexedSessions.isEmpty()) {
+            val migrated = chatHistoryStore.importLegacySessions(legacyRaw)
+            if (migrated != null) {
+                prefs.edit { remove(KEY_CHAT_SESSIONS) }
+                return migrated
+            }
+            return emptyList()
         }
+
+        if (legacyRaw != null) {
+            prefs.edit { remove(KEY_CHAT_SESSIONS) }
+        }
+        chatHistoryStore.deleteSessionsNotIn(indexedSessions.map { it.id }.toSet())
+        return indexedSessions
     }
 
-    private fun saveSessions(sessions: List<ChatSession>) {
-        prefs.edit { putString(KEY_CHAT_SESSIONS, json.encodeToString(sessions)) }
+    private fun saveSessions(sessions: List<ChatSessionMetadata>) {
+        chatHistoryStore.saveIndex(sessions)
         _sessionsFlow.value = sessions
     }
 
+    fun loadSession(sessionId: String): ChatSession? {
+        return chatHistoryStore.loadSession(sessionId)
+    }
+
     fun saveSession(session: ChatSession) {
+        chatHistoryStore.saveSession(session)
+        val metadata = ChatSessionMetadata(
+            id = session.id,
+            title = session.title,
+            timestamp = session.timestamp
+        )
         val sessions = _sessionsFlow.value.toMutableList()
         val idx = sessions.indexOfFirst { it.id == session.id }
         if (idx >= 0) {
-            sessions[idx] = session
+            sessions[idx] = metadata
         } else {
-            sessions.add(0, session)
+            sessions.add(0, metadata)
         }
         saveSessions(sessions)
     }
 
     fun deleteSession(sessionId: String) {
+        chatHistoryStore.deleteSession(sessionId)
         saveSessions(_sessionsFlow.value.filter { it.id != sessionId })
     }
 
