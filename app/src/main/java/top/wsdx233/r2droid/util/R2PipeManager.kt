@@ -508,16 +508,14 @@ object R2PipeManager {
 
     /**
      * 辅助方法：执行 JSON 命令
-     * 自动确保命令以 'j' 结尾
+     * 调用者传入完整 JSON 命令；原样执行并返回未经解析的响应。
      */
     suspend fun executeJson(sessionId: String, cmd: String, markDirty: Boolean = false): Result<String> {
-        val jsonCmd = if (cmd.endsWith("j")) cmd else "${cmd}j"
-        return execute(sessionId, jsonCmd, markDirty)
+        return execute(sessionId, cmd, markDirty)
     }
 
     suspend fun executeJson(cmd: String, markDirty: Boolean = false): Result<String> {
-        val jsonCmd = if (cmd.endsWith("j")) cmd else "${cmd}j"
-        return execute(jsonCmd, markDirty)
+        return execute(cmd, markDirty)
     }
 
     /**

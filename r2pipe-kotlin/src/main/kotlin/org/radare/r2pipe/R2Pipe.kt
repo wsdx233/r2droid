@@ -4,17 +4,16 @@ import java.io.BufferedInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.PushbackInputStream
 import java.nio.ByteBuffer
-import java.nio.channels.Channels
-import java.nio.channels.ReadableByteChannel
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.min
 
 class R2Pipe private constructor(
     private val process: Process,
-    private val stdout: BufferedInputStream,
-    private val stdoutChannel: ReadableByteChannel,
+    private val stdout: PushbackInputStream,
     private val stdin: OutputStream,
     private val logger: R2PipeLogger?,
     private val processKiller: ProcessKiller
@@ -22,7 +21,13 @@ class R2Pipe private constructor(
     @Volatile
     private var running = true
 
-    private val readBuffer: ByteBuffer = ByteBuffer.allocateDirect(READ_BUFFER_SIZE)
+    private val closed = AtomicBoolean(false)
+    private val commandLock = Any()
+
+    @Volatile
+    private var activeStream: NullDelimitedInputStream? = null
+
+    private val readBuffer: ByteBuffer = ByteBuffer.allocate(NullDelimitedInputStream.READ_BUFFER_SIZE)
     private var resultBuffer: ByteBuffer = ByteBuffer.allocateDirect(INITIAL_RESULT_BUFFER_SIZE)
     private var overflowChunks: MutableList<ByteArray>? = null
     private var overflowSize: Int = 0
@@ -37,26 +42,26 @@ class R2Pipe private constructor(
         awaitReadyMarker()
     }
 
-    override fun cmd(command: String): String {
-        ensureRunning()
-        return try {
-            discardAvailableInput()
+    override fun cmd(command: String): String = synchronized(commandLock) {
+        ensureCommandAvailable(command)
+        try {
+            val stream = beginResponse()
             writeCommand(command)
-            readUntilNull()
+            readUntilNull(stream)
         } catch (e: Exception) {
-            running = false
+            forceClose()
             throw RuntimeException("Cmd execution failed: ${e.message}", e)
         }
     }
 
-    override fun cmdStream(command: String): InputStream {
-        ensureRunning()
-        return try {
-            discardAvailableInput()
+    override fun cmdStream(command: String): InputStream = synchronized(commandLock) {
+        ensureCommandAvailable(command)
+        try {
+            val stream = beginResponse()
             writeCommand(command)
-            NullDelimitedInputStream(stdout)
+            stream
         } catch (e: Exception) {
-            running = false
+            forceClose()
             throw RuntimeException("Cmd stream failed: ${e.message}", e)
         }
     }
@@ -70,21 +75,11 @@ class R2Pipe private constructor(
     }
 
     override fun forceClose() {
-        running = false
-        closeStreams()
-        processKiller.terminate(process, true)
+        shutdown(force = true)
     }
 
     override fun close() {
-        if (!running) return
-        try {
-            writeCommand("q")
-        } catch (_: Exception) {
-        } finally {
-            running = false
-            closeStreams()
-            processKiller.terminate(process, false)
-        }
+        shutdown(force = !running || activeStream != null)
     }
 
     override fun isRunning(): Boolean {
@@ -98,9 +93,41 @@ class R2Pipe private constructor(
         }
     }
 
-    private fun ensureRunning() {
+    private fun ensureCommandAvailable(command: String) {
         if (!isRunning()) {
             throw IllegalStateException("R2 process is not running")
+        }
+        check(activeStream == null) { "The previous R2 response stream is still active" }
+        require('\u0000' !in command) {
+            "Stdio commands must not contain NUL bytes"
+        }
+    }
+
+    private fun beginResponse(): NullDelimitedInputStream {
+        return NullDelimitedInputStream(
+            source = stdout,
+            onComplete = { synchronized(commandLock) { activeStream = null } },
+            onIncomplete = ::forceClose
+        ).also { activeStream = it }
+    }
+
+    private fun shutdown(force: Boolean) {
+        running = false
+        if (!closed.compareAndSet(false, true)) {
+            if (force) {
+                try {
+                    process.exitValue()
+                } catch (_: IllegalThreadStateException) {
+                    processKiller.terminate(process, true)
+                }
+            }
+            return
+        }
+        activeStream = null
+        try {
+            processKiller.terminate(process, force)
+        } finally {
+            closeStreams()
         }
     }
 
@@ -118,43 +145,33 @@ class R2Pipe private constructor(
         }
     }
 
-    private fun discardAvailableInput() {
-        while (stdout.available() > 0) {
-            if (stdout.read() == -1) {
-                running = false
-                break
-            }
-        }
-    }
 
     private fun writeCommand(command: String) {
-        stdin.write(command.toByteArray(StandardCharsets.UTF_8))
+        val request = if ('\n' in command || '\r' in command) {
+            buildString(command.length) {
+                var previousWasCarriageReturn = false
+                for (character in command) {
+                    if (character != '\n' || !previousWasCarriageReturn) {
+                        append(if (character == '\n' || character == '\r') ';' else character)
+                    }
+                    previousWasCarriageReturn = character == '\r'
+                }
+            }
+        } else {
+            command
+        }
+        stdin.write(request.toByteArray(StandardCharsets.UTF_8))
         stdin.write('\n'.code)
         stdin.flush()
     }
 
-    private fun readUntilNull(): String {
+    private fun readUntilNull(stream: InputStream): String {
         resetResultBuffer()
         while (true) {
+            val count = stream.read(readBuffer.array(), 0, readBuffer.capacity())
+            if (count == -1) break
             readBuffer.clear()
-            val count = stdoutChannel.read(readBuffer)
-            if (count == -1) {
-                running = false
-                if (currentResultSize() > 0) {
-                    return finishResult()
-                }
-                throw IOException("R2 process terminated unexpectedly (EOF)")
-            }
-
-            readBuffer.flip()
-            val nullIndex = firstNullIndex(readBuffer)
-            if (nullIndex >= 0) {
-                val originalLimit = readBuffer.limit()
-                readBuffer.limit(nullIndex)
-                appendResult(readBuffer)
-                readBuffer.limit(originalLimit)
-                break
-            }
+            readBuffer.limit(count)
             appendResult(readBuffer)
         }
         return finishResult()
@@ -166,7 +183,6 @@ class R2Pipe private constructor(
         overflowSize = 0
     }
 
-    private fun currentResultSize(): Int = resultBuffer.position() + overflowSize
 
     private fun appendResult(source: ByteBuffer) {
         val length = source.remaining()
@@ -233,11 +249,11 @@ class R2Pipe private constructor(
         } catch (_: Exception) {
         }
         try {
-            stdoutChannel.close()
+            stdout.close()
         } catch (_: Exception) {
         }
         try {
-            stdout.close()
+            process.errorStream.close()
         } catch (_: Exception) {
         }
     }
@@ -274,21 +290,23 @@ class R2Pipe private constructor(
             builder.environment().putAll(launchSpec.environment)
             builder.redirectErrorStream(false)
             val process = builder.start()
-            val stdout = BufferedInputStream(process.inputStream, STREAM_BUFFER_SIZE)
-            val stdoutChannel = Channels.newChannel(stdout)
+            val stdout = PushbackInputStream(
+                BufferedInputStream(process.inputStream, STREAM_BUFFER_SIZE),
+                NullDelimitedInputStream.READ_BUFFER_SIZE
+            )
             return try {
                 R2Pipe(
                     process = process,
                     stdout = stdout,
-                    stdoutChannel = stdoutChannel,
                     stdin = process.outputStream,
                     logger = logger,
                     processKiller = processKiller
                 )
             } catch (e: Exception) {
                 try {
-                    stdoutChannel.close()
-                } catch (_: Exception) {
+                    processKiller.terminate(process, true)
+                } catch (cleanupError: Exception) {
+                    e.addSuppressed(cleanupError)
                 }
                 try {
                     stdout.close()
@@ -298,25 +316,18 @@ class R2Pipe private constructor(
                     process.outputStream.close()
                 } catch (_: Exception) {
                 }
-                processKiller.terminate(process, true)
+                try {
+                    process.errorStream.close()
+                } catch (_: Exception) {
+                }
                 throw e
             }
         }
 
         private const val STREAM_BUFFER_SIZE = 64 * 1024
-        private const val READ_BUFFER_SIZE = 256 * 1024
         private const val INITIAL_RESULT_BUFFER_SIZE = 512 * 1024
         private const val MAX_RETAINED_RESULT_BUFFER_SIZE = 4 * 1024 * 1024
         private const val OVERFLOW_CHUNK_SIZE = 256 * 1024
 
-        private fun firstNullIndex(buffer: ByteBuffer): Int {
-            val limit = buffer.limit()
-            for (index in 0 until limit) {
-                if (buffer.get(index).toInt() == 0) {
-                    return index
-                }
-            }
-            return -1
-        }
     }
 }

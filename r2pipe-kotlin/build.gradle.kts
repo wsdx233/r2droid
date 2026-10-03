@@ -13,6 +13,7 @@ kotlin {
 
 dependencies {
     api(kotlin("stdlib"))
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
 
     testImplementation(kotlin("test"))
 }

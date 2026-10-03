@@ -1,10 +1,17 @@
 package org.radare.r2pipe
 
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.BindException
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class R2PipeHttp private constructor(
@@ -16,35 +23,30 @@ class R2PipeHttp private constructor(
     @Volatile
     private var running = true
 
+    private val requestLock = Any()
+    private var closed = false
+    private val activeRequests = mutableMapOf<Call, HttpResponseInputStream?>()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.MINUTES)
+        .retryOnConnectionFailure(false)
+        .build()
+
     override fun cmd(command: String): String {
-        ensureRunning()
-        val connection = openCommandConnection(command)
+        val call = registerCommand(command)
         return try {
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw RuntimeException("HTTP $responseCode from r2 server")
-            }
-            connection.inputStream.bufferedReader().use { it.readText() }
+            openResponse(call).bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
         } catch (e: Exception) {
             updateRunningState()
             throw RuntimeException("HTTP cmd failed: ${e.message}", e)
-        } finally {
-            connection.disconnect()
         }
     }
 
     override fun cmdStream(command: String): InputStream {
-        ensureRunning()
-        val connection = openCommandConnection(command)
+        val call = registerCommand(command)
         return try {
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                connection.disconnect()
-                throw RuntimeException("HTTP $responseCode from r2 server")
-            }
-            HttpResponseInputStream(connection, connection.inputStream)
+            openResponse(call)
         } catch (e: Exception) {
-            connection.disconnect()
             updateRunningState()
             throw RuntimeException("HTTP cmd stream failed: ${e.message}", e)
         }
@@ -59,28 +61,40 @@ class R2PipeHttp private constructor(
     }
 
     override fun forceClose() {
-        running = false
-        process?.let { processKiller.terminate(it, true) }
+        try {
+            closeRequests()
+            process?.let { processKiller.terminate(it, true) }
+        } finally {
+            httpClient.connectionPool.evictAll()
+        }
     }
 
     override fun close() {
-        if (!running) return
-        running = false
+        if (!closeRequests()) return
         try {
-            URL("$baseUrl/cmd/q").openConnection().let { it as HttpURLConnection }.run {
-                connectTimeout = 1000
-                readTimeout = 1000
-                requestMethod = "GET"
+            val currentProcess = process ?: return
+            val processExited = try {
+                currentProcess.exitValue()
+                true
+            } catch (_: IllegalThreadStateException) {
+                false
+            }
+            if (!processExited) {
                 try {
-                    responseCode
+                    httpClient.newBuilder()
+                        .connectTimeout(1, TimeUnit.SECONDS)
+                        .readTimeout(1, TimeUnit.SECONDS)
+                        .callTimeout(1, TimeUnit.SECONDS)
+                        .build()
+                        .newCall(commandRequest("q"))
+                        .execute().use { }
                 } catch (_: Exception) {
-                } finally {
-                    disconnect()
                 }
             }
-        } catch (_: Exception) {
+            processKiller.terminate(currentProcess, false)
+        } finally {
+            httpClient.connectionPool.evictAll()
         }
-        process?.let { processKiller.terminate(it, false) }
     }
 
     override fun isRunning(): Boolean {
@@ -113,34 +127,99 @@ class R2PipeHttp private constructor(
         }
     }
 
-    private fun openCommandConnection(command: String): HttpURLConnection {
-        val encoded = encodeR2Command(command)
-        return (URL("$baseUrl/cmd/$encoded").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 5000
-            readTimeout = 600_000
-            requestMethod = "GET"
+    private fun commandRequest(command: String): Request = Request.Builder()
+        .url("$baseUrl/cmd/${encodeR2Command(command)}")
+        .get()
+        .build()
+
+    private fun registerCommand(command: String): Call = synchronized(requestLock) {
+        ensureRunning()
+        httpClient.newCall(commandRequest(command)).also { activeRequests[it] = null }
+    }
+
+    private fun openResponse(call: Call): HttpResponseInputStream {
+        var response: Response? = null
+        try {
+            response = call.execute()
+            if (response.code != 200) throw IOException("HTTP ${response.code} from r2 server")
+            val stream = HttpResponseInputStream(call, response) {
+                synchronized(requestLock) { activeRequests.remove(call) }
+            }
+            val accepted = synchronized(requestLock) {
+                if (closed) {
+                    false
+                } else {
+                    activeRequests[call] = stream
+                    true
+                }
+            }
+            if (!accepted) throw IOException("R2 HTTP session closed during request")
+            return stream
+        } catch (e: Exception) {
+            call.cancel()
+            try {
+                response?.close()
+            } catch (cleanupError: Exception) {
+                e.addSuppressed(cleanupError)
+            } finally {
+                synchronized(requestLock) { activeRequests.remove(call) }
+            }
+            throw e
         }
     }
 
-    private fun waitForHttpReady(maxRetries: Int, intervalMs: Long) {
-        repeat(maxRetries) {
+    private fun closeRequests(): Boolean {
+        val requests = synchronized(requestLock) {
+            if (closed) return false
+            closed = true
+            running = false
+            activeRequests.toList().also { activeRequests.clear() }
+        }
+        // Cancel sockets before closing streams: a stream may be blocked in read().
+        requests.forEach { (call, _) -> call.cancel() }
+        requests.forEach { (_, stream) ->
             try {
-                val connection = (URL("$baseUrl/cmd/?").openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 500
-                    readTimeout = 500
-                    requestMethod = "GET"
-                }
-                val responseCode = connection.responseCode
-                connection.disconnect()
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    logger?.log(R2PipeLogLevel.INFO, "R2 HTTP server ready at $baseUrl")
-                    return
-                }
+                stream?.close()
             } catch (_: Exception) {
             }
-            Thread.sleep(intervalMs)
         }
-        throw RuntimeException("R2 HTTP server did not become ready within ${maxRetries * intervalMs}ms")
+        return true
+    }
+
+    private fun waitForHttpReady(maxRetries: Int, intervalMs: Long) {
+        val currentProcess = requireNotNull(process)
+        val probeClient = httpClient.newBuilder()
+            .connectTimeout(500, TimeUnit.MILLISECONDS)
+            .readTimeout(500, TimeUnit.MILLISECONDS)
+            .callTimeout(1, TimeUnit.SECONDS)
+            .build()
+        repeat(maxRetries) { attempt ->
+            val ready = try {
+                probeClient.newCall(commandRequest("?V")).execute().use { response ->
+                    response.code == 200 &&
+                        response.body.byteStream().bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                            reader.readLine()?.startsWith("radare2 ") == true
+                        }
+                }
+            } catch (_: IOException) {
+                false
+            }
+            val exitCode = try {
+                currentProcess.exitValue()
+            } catch (_: IllegalThreadStateException) {
+                null
+            }
+            if (exitCode != null) {
+                running = false
+                throw IllegalStateException("R2 HTTP process exited before becoming ready (exit code $exitCode)")
+            }
+            if (ready) {
+                logger?.log(R2PipeLogLevel.INFO, "R2 HTTP server ready at $baseUrl")
+                return
+            }
+            if (attempt + 1 < maxRetries) Thread.sleep(intervalMs)
+        }
+        throw IllegalStateException("R2 HTTP server did not become ready within ${maxRetries * intervalMs}ms")
     }
 
     private fun startDrainThread(
@@ -163,9 +242,7 @@ class R2PipeHttp private constructor(
     }
 
     companion object {
-        private val CHARS_TO_ENCODE = setOf(
-            ' ', '"', '#', '%', '<', '>', '[', ']', '^', '`', '{', '}', '\\'
-        )
+        private const val HEX_DIGITS = "0123456789ABCDEF"
 
         @JvmStatic
         @JvmOverloads
@@ -192,6 +269,14 @@ class R2PipeHttp private constructor(
             maxRetries: Int = 30,
             intervalMs: Long = 200
         ): R2PipeHttp {
+            require(port in 1..65535) { "HTTP port must be between 1 and 65535" }
+            try {
+                ServerSocket().use { socket ->
+                    socket.bind(InetSocketAddress("127.0.0.1", port))
+                }
+            } catch (e: BindException) {
+                throw IllegalStateException("R2 HTTP port $port is already in use", e)
+            }
             val builder = ProcessBuilder(launchSpec.command)
             launchSpec.workingDirectory?.let(builder::directory)
             builder.environment().putAll(launchSpec.environment)
@@ -219,19 +304,28 @@ class R2PipeHttp private constructor(
                 client.waitForHttpReady(maxRetries, intervalMs)
                 return client
             } catch (e: Exception) {
-                client.forceClose()
+                try {
+                    client.forceClose()
+                } catch (cleanupError: Exception) {
+                    e.addSuppressed(cleanupError)
+                }
                 throw e
             }
         }
 
         private fun encodeR2Command(command: String): String {
-            val output = StringBuilder()
+            val output = StringBuilder(command.length)
             for (byte in command.toByteArray(StandardCharsets.UTF_8)) {
                 val code = byte.toInt() and 0xFF
-                if (code in 0x80..0xFF || code.toChar() in CHARS_TO_ENCODE) {
-                    output.append(String.format("%%%02X", code))
-                } else {
+                if (code in 'A'.code..'Z'.code || code in 'a'.code..'z'.code ||
+                    code in '0'.code..'9'.code || code == '-'.code || code == '_'.code ||
+                    code == '.'.code || code == '~'.code
+                ) {
                     output.append(code.toChar())
+                } else {
+                    output.append('%')
+                    output.append(HEX_DIGITS[code ushr 4])
+                    output.append(HEX_DIGITS[code and 0x0F])
                 }
             }
             return output.toString()

@@ -5,7 +5,8 @@ import java.io.InputStream
 interface R2PipeSession : AutoCloseable {
     fun cmd(command: String): String
 
-    fun cmdj(command: String): String = cmd(if (command.endsWith("j")) command else "${command}j")
+    /** Executes a JSON-producing r2 command unchanged; returns its raw text without parsing. */
+    fun cmdj(command: String): String = cmd(command)
 
     fun cmdStream(command: String): InputStream
 

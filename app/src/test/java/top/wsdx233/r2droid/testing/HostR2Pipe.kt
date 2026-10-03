@@ -36,10 +36,7 @@ class HostR2Pipe(
         return result
     }
 
-    fun cmdj(command: String): String {
-        val jsonCmd = if (command.endsWith("j")) command else "${command}j"
-        return cmd(jsonCmd)
-    }
+    fun cmdj(command: String): String = cmd(command)
 
     fun quit() {
         try {

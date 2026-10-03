@@ -140,6 +140,7 @@ class BinInfoRepository @Inject constructor(
                 }
             }
             reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
             reader.close()
 
             if (buffer.isNotEmpty()) {
@@ -173,7 +174,9 @@ class BinInfoRepository @Inject constructor(
                 buffer.add(SectionEntity(vAddr, name, size, vSize, perm, pAddr))
                 if (buffer.size >= 10000) { sectionDao.insertAll(buffer); buffer.clear() }
             }
-            reader.endArray(); reader.close()
+            reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
+            reader.close()
             if (buffer.isNotEmpty()) sectionDao.insertAll(buffer)
         }
     }
@@ -209,7 +212,9 @@ class BinInfoRepository @Inject constructor(
                 buffer.add(SymbolEntity(name = name, type = type, vAddr = vAddr, pAddr = pAddr, isImported = isImported, realname = realname))
                 if (buffer.size >= 10000) { symbolDao.insertAll(buffer); buffer.clear() }
             }
-            reader.endArray(); reader.close()
+            reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
+            reader.close()
             android.util.Log.d("SyncSymbols", "Parsed ${buffer.size} symbols, inserting to DB")
             if (buffer.isNotEmpty()) symbolDao.insertAll(buffer)
         }
@@ -244,7 +249,9 @@ class BinInfoRepository @Inject constructor(
                 buffer.add(ImportEntity(name = name, ordinal = ordinal, type = type, plt = plt))
                 if (buffer.size >= 10000) { importDao.insertAll(buffer); buffer.clear() }
             }
-            reader.endArray(); reader.close()
+            reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
+            reader.close()
             if (buffer.isNotEmpty()) importDao.insertAll(buffer)
         }
     }
@@ -272,7 +279,9 @@ class BinInfoRepository @Inject constructor(
                 buffer.add(RelocationEntity(name = name, type = type, vAddr = vAddr, pAddr = pAddr))
                 if (buffer.size >= 10000) { relocationDao.insertAll(buffer); buffer.clear() }
             }
-            reader.endArray(); reader.close()
+            reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
+            reader.close()
             if (buffer.isNotEmpty()) relocationDao.insertAll(buffer)
         }
     }
@@ -301,7 +310,9 @@ class BinInfoRepository @Inject constructor(
                 buffer.add(FunctionEntity(addr, name, size, nbbs, signature))
                 if (buffer.size >= 10000) { functionDao.insertAll(buffer); buffer.clear() }
             }
-            reader.endArray(); reader.close()
+            reader.endArray()
+            check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
+            reader.close()
             if (buffer.isNotEmpty()) functionDao.insertAll(buffer)
         }
     }
