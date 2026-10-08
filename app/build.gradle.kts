@@ -1,3 +1,9 @@
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.Exec
+import org.gradle.kotlin.dsl.register
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -6,8 +12,37 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+
+val nativeRuntimeNdkVersion = "28.2.13676358"
+val nativeRuntimePython = providers.gradleProperty("nativeRuntimePython").orElse("python3")
+val nativeRuntimeGithubToken = providers.gradleProperty("nativeRuntimeGithubToken")
+    .orElse(providers.environmentVariable("GITHUB_TOKEN"))
+    .orElse("")
+val nativeRuntimeCache = rootProject.layout.projectDirectory.dir("build/native-runtime-cache")
+val nativeRuntimeScript = rootProject.layout.projectDirectory.file("tools/build_native_runtime.py")
+val nativeRuntimeRecipes = rootProject.fileTree("tools") {
+    include("build_native_runtime.py", "native_*.py")
+}
+
+fun nativeRuntimeSdkDirectory(): File {
+    val localProperties = rootProject.file("local.properties")
+    val properties = Properties()
+    if (localProperties.isFile) localProperties.inputStream().use(properties::load)
+    val sdk = System.getenv("ANDROID_SDK_ROOT")
+        ?: System.getenv("ANDROID_HOME")
+        ?: properties.getProperty("sdk.dir")
+        ?: throw GradleException("Android SDK location is required to locate NDK $nativeRuntimeNdkVersion")
+    return File(sdk.replace("\\:", ":"))
+}
+
+fun nativeRuntimeNdkDirectory(): File {
+    val explicit = System.getenv("ANDROID_NDK_ROOT") ?: System.getenv("ANDROID_NDK_HOME")
+    return (explicit?.let(::File) ?: File(nativeRuntimeSdkDirectory(), "ndk/$nativeRuntimeNdkVersion")).absoluteFile
+}
+
 android {
     namespace = "top.wsdx233.r2droid"
+    ndkVersion = nativeRuntimeNdkVersion
     compileSdk {
         version = release(36)
     }
@@ -95,7 +130,8 @@ android {
             assets.srcDirs("src/shared/assets")
         }
         getByName("full") {
-            assets.srcDirs("src/full/assets")
+            // Runtime assets come only from the generated per-variant directory.
+            assets.setSrcDirs(emptyList<String>())
         }
         getByName("prootOnly") {
             assets.srcDirs("src/prootOnly/assets")
@@ -119,6 +155,89 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
         }
+    }
+}
+
+val nativeRuntimeExternalLock = project.findProperty("nativeRuntimeLock")?.toString()?.let {
+    File(it).also { lock ->
+        require(lock.isAbsolute) { "-PnativeRuntimeLock must be an absolute path" }
+    }
+}
+val nativeRuntimeLock = nativeRuntimeExternalLock
+    ?: layout.buildDirectory.dir("generated/nativeRuntime").get().asFile.resolve("source-lock.json")
+// Both Release variants share one fresh lock per default Gradle invocation.
+
+val prepareNativeRuntimeSourceLock = if (nativeRuntimeExternalLock == null) {
+    tasks.register<Exec>("prepareNativeRuntimeSourceLock") {
+        outputs.file(nativeRuntimeLock)
+        outputs.upToDateWhen { false }
+        workingDir(rootProject.projectDir)
+        commandLine(
+            nativeRuntimePython.get(), nativeRuntimeScript.asFile.absolutePath,
+            "--resolve-lock", "--lock-file", nativeRuntimeLock.absolutePath
+        )
+        environment("GITHUB_TOKEN", nativeRuntimeGithubToken.get())
+    }
+} else {
+    val lockFile = requireNotNull(nativeRuntimeExternalLock)
+    tasks.register("prepareNativeRuntimeSourceLock") {
+        inputs.file(lockFile)
+        doLast {
+            if (!lockFile.isFile) {
+                throw GradleException("Configured nativeRuntimeLock does not exist: $lockFile")
+            }
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val variantName = variant.name
+        val release = variant.buildType == "release"
+        val component = if (variant.flavorName == "full") "full" else "proot"
+        val runtimeOutput = project.objects.directoryProperty().apply {
+            set(layout.buildDirectory.dir("generated/nativeRuntime/$variantName"))
+        }
+        val runtimeCommand = mutableListOf(
+            nativeRuntimePython.get(), nativeRuntimeScript.asFile.absolutePath,
+            "--component", component, "--output-dir", runtimeOutput.get().asFile.absolutePath
+        )
+        if (!release) {
+            runtimeCommand += "--prebuilt"
+        } else {
+            runtimeCommand += listOf(
+                "--cache-dir", nativeRuntimeCache.asFile.absolutePath,
+                "--ndk", nativeRuntimeNdkDirectory().absolutePath,
+                "--lock-file", nativeRuntimeLock.absolutePath
+            )
+            project.findProperty("nativeRuntimeJobs")?.toString()?.let {
+                runtimeCommand += listOf("--jobs", it)
+            }
+        }
+        val runtimeTask = tasks.register<Exec>("prepare${variantName.replaceFirstChar { it.uppercase() }}NativeRuntime") {
+            inputs.property("component", component)
+            inputs.property("prebuilt", !release)
+            inputs.property("pythonExecutable", nativeRuntimePython)
+            inputs.files(nativeRuntimeRecipes)
+            if (release) {
+                inputs.file(nativeRuntimeLock)
+            } else {
+                inputs.file(rootProject.layout.projectDirectory.file("app/src/shared/assets/proot"))
+                if (component == "full") {
+                    inputs.files(
+                        rootProject.layout.projectDirectory.file("app/src/full/assets/r2.tar.gz"),
+                        rootProject.layout.projectDirectory.file("app/src/full/assets/r2dir.tar.gz")
+                    )
+                    inputs.dir(rootProject.layout.projectDirectory.dir("app/src/full/assets/libs"))
+                }
+            }
+            outputs.dir(runtimeOutput)
+            workingDir(rootProject.projectDir)
+            commandLine(runtimeCommand)
+            environment("GITHUB_TOKEN", nativeRuntimeGithubToken.get())
+            if (release) dependsOn(prepareNativeRuntimeSourceLock)
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(runtimeTask) { runtimeOutput }
     }
 }
 

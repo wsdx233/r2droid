@@ -41,12 +41,29 @@
 
 ## 📦 构建说明
 
-1. 克隆本仓库。
+1. 克隆仓库。
 2. 使用 Android Studio（建议 Ladybug 或更新版本）打开。
 3. Gradle JVM 选择 **JDK 17**。
-4. 在 Android 设备/模拟器上运行（**minSdk 24**）。
+4. 在 Android 设备/模拟器上构建并运行 Debug 变体（**minSdk 24**）。
 
-> 注意：应用内包含预编译 `radare2` 资源（`r2.tar`、`r2dir.tar`），首次启动会自动解压安装。
+Release 变体会在打包前刷新 ARM64 原生运行时。本地与 GitHub Actions 共用构建入口，解析官方最新稳定版 `radare2`、`termux/proot` 的 `master` 提交及内置 `r2ghidra` / `r2dec` 源码，使用 Android NDK `28.2.13676358` / API 24 交叉编译。
+
+Release 原生构建需要 Linux x86_64 环境（包括 WSL）、支持 venv 的 Python **3.11+**、`curl`、Git、C/C++ 编译器、Make、GNU tar、zlib 开发头文件、Ninja、`pkg-config`，以及上述 Android SDK/NDK。在已激活的虚拟环境中安装固定版本的 Meson：
+
+```bash
+python3 -m venv "$HOME/.venvs/r2droid-native"
+. "$HOME/.venvs/r2droid-native/bin/activate"
+python -m pip install meson==1.7.2
+./gradlew :app:assembleFullRelease :app:assembleProotOnlyRelease
+```
+
+默认每次 Release 构建都会刷新一份两版共用的源码锁；源码未变化时复用经过校验的原生构建缓存。生成的源码锁位于 `app/build/generated/nativeRuntime/source-lock.json`。使用 `-PnativeRuntimeLock=/absolute/path/source-lock.json` 可按已有不可变源码锁构建，不再解析上游新提交。`-PnativeRuntimeJobs=N` 控制原生编译并行度；`-PnativeRuntimePython=/path/to/python` 指定解释器（Meson 仍须在 `PATH` 中）。本地可选设置 `GITHUB_TOKEN` 以提高 GitHub API 限额。
+
+推送 `v*` 标签后，GitHub Actions 会执行同一组 Gradle 任务，发布两版签名 APK、源码锁和各变体的运行时清单。清单记录源码提交、工具链版本及生成资源的哈希。Android 资源合并器可能将生成的 `.tar.gz` 展开为 APK 内的 `.tar`，安装器兼容两种格式。
+
+Debug 原生资源准备同样需要 Python 3.11+，但使用仓库内预编译文件，不刷新上游源码，也不编译 radare2/插件。
+
+> Full APK 包含 radare2 和重新编译的反编译插件；PRoot-only 仅内置 PRoot 运行时。启动时按资源内容标识更新安装，包括仅插件变化的情况，并保留用户的 `.radare2rc`。
 
 ## 📄 许可证
 

@@ -43,10 +43,27 @@
 
 1. Clone the repository.
 2. Open with Android Studio (Ladybug or newer recommended).
-3. Use **JDK 17** as Gradle JVM.
-4. Build and run on an Android device/emulator (**minSdk 24**).
+3. Use **JDK 17** as the Gradle JVM.
+4. Build and run a debug variant on an Android device/emulator (**minSdk 24**).
 
-> Note: The app bundles prebuilt `radare2` assets (`r2.tar`, `r2dir.tar`) and extracts them on first launch.
+Release variants refresh the ARM64 native runtime before packaging. The shared local/GitHub Actions build resolves the latest stable official `radare2`, `termux/proot`'s `master` commit, and the bundled `r2ghidra` / `r2dec` sources, then cross-compiles with Android NDK `28.2.13676358` / API 24.
+
+Native Release builds require a Linux x86_64 environment (including WSL), Python **3.11+** with venv support, `curl`, Git, a C/C++ compiler, Make, GNU tar, zlib development headers, Ninja, `pkg-config`, and the Android SDK/NDK above. Install the pinned Meson in an active virtual environment:
+
+```bash
+python3 -m venv "$HOME/.venvs/r2droid-native"
+. "$HOME/.venvs/r2droid-native/bin/activate"
+python -m pip install meson==1.7.2
+./gradlew :app:assembleFullRelease :app:assembleProotOnlyRelease
+```
+
+Each default Release invocation refreshes one shared source lock; unchanged sources reuse checksum-verified native artifacts. The resolved lock is `app/build/generated/nativeRuntime/source-lock.json`. Pass `-PnativeRuntimeLock=/absolute/path/source-lock.json` to build from an existing immutable lock without resolving newer upstream commits. `-PnativeRuntimeJobs=N` controls native parallelism; `-PnativeRuntimePython=/path/to/python` selects the interpreter (Meson must remain on `PATH`). `GITHUB_TOKEN` is optional for local GitHub API rate limits.
+
+Pushing a `v*` tag runs the same Gradle tasks and publishes both signed APKs, the source lock, and each variant's runtime manifest. Manifests record source commits, toolchain versions, and staged asset hashes. Android's asset merger may expand staged `.tar.gz` archives into `.tar` entries in the APK; the installer supports both.
+
+Debug native preparation also requires Python 3.11+, but uses the checked-in binaries and does not refresh upstream sources or compile radare2/plugins.
+
+> The Full APK includes radare2 and rebuilt decompiler plugins; PRoot-only includes only the bundled PRoot runtime. Startup refreshes installed resources when their content identity changes, including plugin-only updates, and preserves the user's `.radare2rc`.
 
 ## 📄 License
 

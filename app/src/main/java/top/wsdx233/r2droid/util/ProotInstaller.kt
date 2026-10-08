@@ -57,12 +57,14 @@ data class ProotInstallState(
 object ProotInstaller {
     private const val TAG = "ProotInstaller"
     private const val PROOT_ASSET_NAME = "proot"
+    private const val RUNTIME_MARKER_NAME = ".proot-runtime"
     private const val READY_MARKER_NAME = ".setup-complete"
     private const val EXTRACT_MARKER_NAME = ".rootfs-extracted"
     private const val STAGE_MARKER_DIR = ".setup-stages"
     private const val MAX_LOG_LINES = 160
 
     private val installMutex = Mutex()
+    private val runtimeInstallLock = Any()
 
     private data class StageCommand(
         val id: String,
@@ -95,7 +97,14 @@ object ProotInstaller {
     fun getInstalledRootfsAlias(context: Context): String? = readReadyMetadata(context)["alias"]
 
     fun isEnvironmentReady(context: Context): Boolean {
-        return getProotBinary(context).exists() && getReadyMarker(context).exists() && getRootfsDir(context).isDirectory
+        val expectedSha = runCatching {
+            BundledRuntimeManifest.fromAssets(context.assets).proot.sha256
+        }.getOrNull() ?: return false
+        val markerSha = readMarkerMetadata(getRuntimeMarker(context))["sha256"]
+        return getProotBinary(context).exists() &&
+            markerSha == expectedSha &&
+            getReadyMarker(context).exists() &&
+            getRootfsDir(context).isDirectory
     }
 
     fun isR2FridaInstalled(context: Context): Boolean {
@@ -117,28 +126,59 @@ object ProotInstaller {
         _state.value = ProotInstallState()
     }
 
-    fun ensureRuntimeBinary(context: Context) {
+    fun ensureRuntimeBinary(context: Context) = synchronized(runtimeInstallLock) {
         val target = getProotBinary(context)
         val runtimeDir = getRuntimeDir(context)
         val assets = context.assets
+        val expectedSha = BundledRuntimeManifest.fromAssets(assets).proot.sha256
 
         runtimeDir.mkdirs()
         target.parentFile?.mkdirs()
-
-        val assetSize = runCatching { assets.openFd(PROOT_ASSET_NAME).length }.getOrNull()
-        val needsCopy = !target.exists() || assetSize == null || target.length() != assetSize
-
-        if (!needsCopy) {
-            runCatching { Os.chmod(target.absolutePath, 493) }
-            return
+        val markerSha = readMarkerMetadata(getRuntimeMarker(context))["sha256"]
+        if (target.isFile && markerSha == expectedSha) {
+            Os.chmod(target.absolutePath, 493)
+            return@synchronized
         }
 
-        assets.open(PROOT_ASSET_NAME).use { input ->
-            FileOutputStream(target).use { output ->
-                input.copyTo(output)
+        val temporary = File(runtimeDir, ".proot.new")
+        temporary.delete()
+        try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            assets.open(PROOT_ASSET_NAME).use { input ->
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
+                }
             }
+            val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
+            require(actualSha == expectedSha) {
+                "Bundled proot hash mismatch: expected $expectedSha, got $actualSha"
+            }
+            Os.chmod(temporary.absolutePath, 493)
+            Os.rename(temporary.absolutePath, target.absolutePath)
+            writeRuntimeMetadata(context, expectedSha)
+        } finally {
+            temporary.delete()
         }
-        Os.chmod(target.absolutePath, 493)
+    }
+
+    private fun getRuntimeMarker(context: Context): File = File(getRuntimeDir(context), RUNTIME_MARKER_NAME)
+
+    private fun writeRuntimeMetadata(context: Context, sha256: String) {
+        val marker = getRuntimeMarker(context)
+        val temporary = File(getRuntimeDir(context), "$RUNTIME_MARKER_NAME.new")
+        temporary.writeText("sha256=$sha256\n")
+        try {
+            Os.rename(temporary.absolutePath, marker.absolutePath)
+        } finally {
+            temporary.delete()
+        }
     }
 
     private fun readReadyMetadata(context: Context): Map<String, String> = readMarkerMetadata(getReadyMarker(context))

@@ -25,6 +25,33 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Install native runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git pkg-config ninja-build python3 python3-venv curl pax bison flex zlib1g-dev
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;28.2.13676358
+
+      - name: Install pinned native build tools
+        run: |
+          python3 -m venv .native-runtime-venv
+          .native-runtime-venv/bin/python -m pip install --upgrade pip
+          .native-runtime-venv/bin/python -m pip install meson==1.7.2
+
+      - name: Cache native runtime compiler outputs
+        uses: actions/cache@v4
+        with:
+          path: build/native-runtime-cache
+          key: ${{ runner.os }}-native-runtime-${{ hashFiles('tools/build_native_runtime.py', 'tools/native_*.py') }}-ndk-28.2.13676358-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ runner.os }}-native-runtime-${{ hashFiles('tools/build_native_runtime.py', 'tools/native_*.py') }}-ndk-28.2.13676358-
+
       - name: Decode Keystore
         env:
           ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
@@ -39,23 +66,31 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          export PATH="$PWD/.native-runtime-venv/bin:$PATH"
+          NATIVE_RUNTIME_GITHUB_TOKEN="$GITHUB_TOKEN"
+          unset GITHUB_TOKEN
           ./gradlew \
             :app:assembleFullRelease \
             :app:assembleProotOnlyRelease \
             -PKEYSTORE_FILE=release-keystore.jks \
             -PKEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
             -PKEY_ALIAS="$KEY_ALIAS" \
-            -PKEY_PASSWORD="$KEY_PASSWORD"
+            -PKEY_PASSWORD="$KEY_PASSWORD" \
+            -PnativeRuntimePython="$PWD/.native-runtime-venv/bin/python" \
+            -PnativeRuntimeGithubToken="$NATIVE_RUNTIME_GITHUB_TOKEN"
 
       - name: List Build Output
         run: find app/build/outputs/apk -name "*.apk" -o -name "output-metadata.json"
 
-      - name: Rename APKs
+      - name: Rename APKs and collect runtime provenance
         run: |
           cp app/build/outputs/apk/full/release/app-full-release.apk R2Droid-${{ github.ref_name }}.apk
           cp app/build/outputs/apk/prootOnly/release/app-prootOnly-release.apk R2Droid-Proot-${{ github.ref_name }}.apk
-
+          cp app/build/generated/nativeRuntime/source-lock.json native-runtime-source-lock-${{ github.ref_name }}.json
+          cp app/build/generated/nativeRuntime/fullRelease/runtime-manifest.json native-runtime-manifest-full-${{ github.ref_name }}.json
+          cp app/build/generated/nativeRuntime/prootOnlyRelease/runtime-manifest.json native-runtime-manifest-proot-${{ github.ref_name }}.json
       - name: Build Changelog
         id: build_changelog
         uses: mikepenz/release-changelog-builder-action@v6
@@ -73,5 +108,8 @@ jobs:
           files: |
             R2Droid-${{ github.ref_name }}.apk
             R2Droid-Proot-${{ github.ref_name }}.apk
+            native-runtime-source-lock-${{ github.ref_name }}.json
+            native-runtime-manifest-full-${{ github.ref_name }}.json
+            native-runtime-manifest-proot-${{ github.ref_name }}.json
           draft: false
           prerelease: false

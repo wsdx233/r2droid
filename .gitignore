@@ -19,3 +19,4 @@ desktop.ini
 *.apk
 app/release/*
 app/src/main/assets/plugins/*
+__pycache__/
