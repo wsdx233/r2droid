@@ -2,12 +2,12 @@ package top.wsdx233.r2droid.util
 
 import android.content.Context
 import android.util.Log
-import org.radare.r2pipe.LaunchSpec
-import org.radare.r2pipe.ProcessKiller
-import org.radare.r2pipe.R2Pipe
-import org.radare.r2pipe.R2PipeHttp
-import org.radare.r2pipe.R2PipeLogLevel
-import org.radare.r2pipe.R2PipeLogger
+import org.radare.r2pipe.kotlin.LaunchSpec
+import org.radare.r2pipe.kotlin.ProcessKiller
+import org.radare.r2pipe.kotlin.R2Pipe
+import org.radare.r2pipe.kotlin.R2PipeHttp
+import org.radare.r2pipe.kotlin.R2PipeLogLevel
+import org.radare.r2pipe.kotlin.R2PipeLogger
 
 internal object AndroidR2PipeSupport {
     val processKiller: ProcessKiller = object : ProcessKiller {

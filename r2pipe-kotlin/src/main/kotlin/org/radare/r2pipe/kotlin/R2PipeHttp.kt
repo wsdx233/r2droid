@@ -1,8 +1,10 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
 import okhttp3.Call
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.io.InputStream
@@ -30,6 +32,15 @@ class R2PipeHttp private constructor(
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.MINUTES)
         .retryOnConnectionFailure(false)
+        .addNetworkInterceptor { chain ->
+            // Fail at the wire response, before OkHttp can redirect or replay a 503 (Retry-After: 0).
+            val response = chain.proceed(chain.request())
+            if (response.code != 200) {
+                response.close()
+                throw IOException("HTTP ${response.code} from r2 server")
+            }
+            response
+        }
         .build()
 
     override fun cmd(command: String): String {
@@ -127,10 +138,16 @@ class R2PipeHttp private constructor(
         }
     }
 
-    private fun commandRequest(command: String): Request = Request.Builder()
-        .url("$baseUrl/cmd/${encodeR2Command(command)}")
-        .get()
-        .build()
+    private fun commandRequest(command: String): Request {
+        requireNulFreeCommand(command)
+        val endpoint = "$baseUrl/cmd/"
+        val request = Request.Builder()
+        return when (command) {
+            // Even percent-encoded dot segments normalize away in HTTP URLs. r2 also accepts raw command bodies.
+            ".", ".." -> request.url(endpoint).post(command.toRequestBody(COMMAND_TEXT))
+            else -> request.url(endpoint + encodeR2Command(command)).get()
+        }.build()
+    }
 
     private fun registerCommand(command: String): Call = synchronized(requestLock) {
         ensureRunning()
@@ -141,7 +158,6 @@ class R2PipeHttp private constructor(
         var response: Response? = null
         try {
             response = call.execute()
-            if (response.code != 200) throw IOException("HTTP ${response.code} from r2 server")
             val stream = HttpResponseInputStream(call, response) {
                 synchronized(requestLock) { activeRequests.remove(call) }
             }
@@ -196,10 +212,9 @@ class R2PipeHttp private constructor(
         repeat(maxRetries) { attempt ->
             val ready = try {
                 probeClient.newCall(commandRequest("?V")).execute().use { response ->
-                    response.code == 200 &&
-                        response.body.byteStream().bufferedReader(StandardCharsets.UTF_8).use { reader ->
-                            reader.readLine()?.startsWith("radare2 ") == true
-                        }
+                    response.body.byteStream().bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                        reader.readLine()?.startsWith("radare2 ") == true
+                    }
                 }
             } catch (_: IOException) {
                 false
@@ -242,6 +257,7 @@ class R2PipeHttp private constructor(
     }
 
     companion object {
+        private val COMMAND_TEXT = "text/plain; charset=utf-8".toMediaType()
         private const val HEX_DIGITS = "0123456789ABCDEF"
 
         @JvmStatic

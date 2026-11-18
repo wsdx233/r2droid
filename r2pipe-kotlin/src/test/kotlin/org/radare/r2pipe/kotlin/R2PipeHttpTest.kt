@@ -1,4 +1,4 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
 import com.sun.net.httpserver.HttpServer
 import java.io.File
@@ -7,6 +7,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -15,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
@@ -66,6 +68,40 @@ class R2PipeHttpTest {
 
         assertEquals(command, capturedCommand.get())
         assertEquals(null, capturedQuery.get())
+    }
+
+    @Test
+    fun dotSegmentsAreCommandsNotDirectoryTraversal() {
+        val received = ConcurrentLinkedQueue<Triple<String, String, String>>()
+        val baseUrl = startServer { exchange ->
+            exchange.use {
+                received.add(Triple(it.requestMethod, it.requestURI.rawPath, it.requestBody.readBytes().decodeToString()))
+                it.sendResponseHeaders(200, -1)
+            }
+        }
+        R2PipeHttp.connect(baseUrl).use { client ->
+            client.cmd(".")
+            client.cmdStream("..").use { it.readBytes() }
+        }
+        assertEquals(listOf(Triple("POST", "/cmd/", "."), Triple("POST", "/cmd/", "..")), received.toList())
+    }
+
+    @Test
+    fun embeddedNulIsRejectedWithoutSendingOrClosingTheSession() {
+        val paths = ConcurrentLinkedQueue<String>()
+        val baseUrl = startServer { exchange ->
+            exchange.use {
+                paths.add(it.requestURI.path)
+                it.sendResponseHeaders(200, -1)
+            }
+        }
+        R2PipeHttp.connect(baseUrl).use { client ->
+            val invalid = "?e left\u0000right"
+            assertFailsWith<IllegalArgumentException> { client.cmd(invalid) }
+            assertFailsWith<IllegalArgumentException> { client.cmdStream(invalid).close() }
+            client.cmd("ij")
+        }
+        assertEquals(listOf("/cmd/ij"), paths.toList())
     }
 
     @Test
@@ -255,6 +291,52 @@ class R2PipeHttpTest {
             assertFailsWith<RuntimeException> { client.cmd("af") }
             assertEquals(1, executions.get())
             assertEquals("ok", client.cmd("ij"))
+        }
+    }
+
+    @Test
+    fun retryAfterZeroDoesNotReplayACommand() {
+        val requests = AtomicInteger()
+        val baseUrl = startServer { exchange ->
+            exchange.use {
+                if (requests.incrementAndGet() == 1) {
+                    it.responseHeaders.add("Retry-After", "0")
+                    it.sendResponseHeaders(503, -1)
+                } else {
+                    it.sendResponseHeaders(200, -1)
+                }
+            }
+        }
+
+        R2PipeHttp.connect(baseUrl).use { client ->
+            val failure = assertFailsWith<RuntimeException> { client.cmd("s+1") }
+            assertContains(failure.message.orEmpty(), "HTTP 503")
+            assertEquals(1, requests.get())
+            assertEquals("", client.cmd("s"))
+            assertEquals(2, requests.get())
+        }
+    }
+
+    @Test
+    fun redirectedCommandStreamDoesNotExecuteTheRedirectTarget() {
+        val paths = ConcurrentLinkedQueue<String>()
+        val baseUrl = startServer { exchange ->
+            exchange.use {
+                val path = it.requestURI.path
+                paths.add(path)
+                if (path == "/cmd/ij") {
+                    it.responseHeaders.add("Location", "/cmd/other")
+                    it.sendResponseHeaders(307, -1)
+                } else {
+                    it.sendResponseHeaders(200, -1)
+                }
+            }
+        }
+
+        R2PipeHttp.connect(baseUrl).use { client ->
+            val failure = assertFailsWith<RuntimeException> { client.cmdStream("ij").use { it.read() } }
+            assertContains(failure.message.orEmpty(), "HTTP 307")
+            assertEquals(listOf("/cmd/ij"), paths.toList())
         }
     }
 

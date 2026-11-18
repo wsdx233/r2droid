@@ -1,19 +1,54 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
 import java.io.EOFException
 import java.io.File
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class R2PipeTest {
+    @Test
+    fun missingReadyMarkerTimesOutAndKillsTheChild() {
+        var terminated: Process? = null
+        val killer = object : ProcessKiller {
+            override fun terminate(process: Process, force: Boolean) {
+                ProcessKiller.DEFAULT.terminate(process, force)
+                if (force) terminated = process
+            }
+        }
+        val error = assertFailsWith<IOException> {
+            R2Pipe.open(peerLaunch("no-marker"), startupTimeoutMs = 250, processKiller = killer).use { }
+        }
+        assertIs<TimeoutException>(error.cause)
+        val child = assertNotNull(terminated)
+        child.onExit().get(5, TimeUnit.SECONDS)
+        assertFalse(child.isAlive)
+    }
+
+    @Test
+    fun eofBeforeReadyIsNotATimeout() {
+        assertFailsWith<EOFException> {
+            R2Pipe.open(peerLaunch("early-eof")).use { }
+        }
+    }
+
+    @Test
+    fun nonPositiveHandshakeTimeoutIsRejectedBeforeLaunching() {
+        assertFailsWith<IllegalArgumentException> {
+            R2Pipe.open(LaunchSpec(listOf("not-a-real-r2-executable")), startupTimeoutMs = 0)
+        }
+    }
+
     @Test
     fun activeStreamRejectsCommandsWithoutInvalidatingItsResponse() = withPeer { pipe, _ ->
         pipe.cmdStream("response").use { stream ->
@@ -131,18 +166,22 @@ class R2PipeTest {
         }
     }
 
-    private fun withPeer(
-        logger: R2PipeLogger? = null,
-        processKiller: ProcessKiller = ProcessKiller.DEFAULT,
-        block: (R2Pipe, ProcessHandle) -> Unit
-    ) {
+    private fun peerLaunch(vararg args: String): LaunchSpec {
         val javaName = if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
         val java = File(System.getProperty("java.home"), "bin/$javaName")
         val classpath = listOf(StdioProtocolPeer::class.java, Unit::class.java).joinToString(File.pathSeparator) {
             File(it.protectionDomain.codeSource.location.toURI()).absolutePath
         }
+        return LaunchSpec(listOf(java.absolutePath, "-cp", classpath, StdioProtocolPeer::class.java.name, *args))
+    }
+
+    private fun withPeer(
+        logger: R2PipeLogger? = null,
+        processKiller: ProcessKiller = ProcessKiller.DEFAULT,
+        block: (R2Pipe, ProcessHandle) -> Unit
+    ) {
         val pipe = R2Pipe.open(
-            LaunchSpec(listOf(java.absolutePath, "-cp", classpath, StdioProtocolPeer::class.java.name)),
+            peerLaunch(),
             logger = logger,
             processKiller = processKiller
         )
@@ -162,6 +201,15 @@ internal object StdioProtocolPeer {
     @JvmStatic
     fun main(args: Array<String>) {
         val input = System.`in`.bufferedReader(StandardCharsets.UTF_8)
+        when (args.singleOrNull()) {
+            "no-marker" -> {
+                print("starting")
+                System.out.flush()
+                Thread.sleep(10_000)
+                return
+            }
+            "early-eof" -> return
+        }
         System.out.write(0)
         System.out.flush()
         while (true) {

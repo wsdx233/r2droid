@@ -34,10 +34,18 @@ as a `String`. Pass the complete JSON-producing r2 command, including `j` in the
 command name (for example, `cmdj("pdj 10 @ 0x1000")`). It does not add `j` to a
 command or parse/validate JSON; callers can use their preferred JSON library.
 
-## Coordinates inside this repository
+## Build and test
 
-- module: `:r2pipe-kotlin`
-- package: `org.radare.r2pipe`
+From this directory, with JDK 17 on your path, run `./gradlew build` (Windows:
+`gradlew.bat build`). This builds the JAR in `build/libs/` and runs the tests.
+The wrapper and settings are self-contained: no Android SDK, R2Droid checkout,
+system Gradle, or radare2 installation is needed for the build or unit tests.
+Running the examples does require radare2. Inside R2Droid the module is still
+available as `:r2pipe-kotlin`.
+
+Import the Kotlin binding from `org.radare.r2pipe.kotlin`. If migrating from an
+earlier R2Droid version, update the Kotlin binding imports; `org.radare.r2pipe.R2Pipe`
+is the **Java** binding and can now be used on the same classpath.
 
 ## Core types
 
@@ -51,8 +59,8 @@ command or parse/validate JSON; callers can use their preferred JSON library.
 ## Example: stdio
 
 ```kotlin
-import org.radare.r2pipe.LaunchSpec
-import org.radare.r2pipe.R2Pipe
+import org.radare.r2pipe.kotlin.LaunchSpec
+import org.radare.r2pipe.kotlin.R2Pipe
 import java.io.File
 
 fun main() {
@@ -70,6 +78,11 @@ fun main() {
 
 ### Stdio command and stream lifecycle
 
+After spawning, `R2Pipe.open(spec)` waits up to 30 seconds for the initial NUL
+from `r2 -q0`. Use `R2Pipe.open(spec, startupTimeoutMs = 60_000)` for slower
+startup. A missing marker raises an `IOException` and the owned process is
+terminated. This deadline does not apply to commands or response reads.
+
 `R2Pipe` serializes blocking commands. A response stream owns the session until
 its NUL terminator has been consumed; another `cmd()` or `cmdStream()` call is
 rejected while that stream is active.
@@ -77,7 +90,8 @@ rejected while that stream is active.
 - Read each response stream until EOF before closing it. JSON parsers must also
   consume document EOF, not stop immediately after the final object or array.
 - Closing a stream before its terminator invalidates the session and forcibly
-  terminates its owned process. Open a new session rather than reusing it.
+  terminates its owned process, even if another thread is blocked in `read()`.
+  That read fails with an `IOException`. Open a new session rather than reusing it.
 - EOF before the response terminator is an error, not a successful partial result.
   I/O failures invalidate the session and release its process and streams.
 - `close()` and `forceClose()` are safe to repeat. `forceClose()` can still
@@ -89,8 +103,8 @@ rejected while that stream is active.
 ## Example: HTTP
 
 ```kotlin
-import org.radare.r2pipe.LaunchSpec
-import org.radare.r2pipe.R2PipeHttp
+import org.radare.r2pipe.kotlin.LaunchSpec
+import org.radare.r2pipe.kotlin.R2PipeHttp
 import java.io.File
 
 fun main() {
@@ -118,12 +132,18 @@ and terminates that process.
 response streams, including reads blocked waiting for headers or body data.
 Once closed, the client rejects new commands. Close a `cmdStream()` response
 when finished; reaching EOF also releases it. Closing one response early
-cancels only that request, not the HTTP session. A request that fails does not
-automatically retry: commands can modify the r2 session. Connection timeout
-is 5 seconds; read timeout is 10 minutes.
+cancels only that request, not the HTTP session. Each `cmd()` or `cmdStream()`
+sends at most one request: redirects and non-200 responses (including `503`
+with `Retry-After: 0`) are reported as errors, not followed or retried. If a
+reply is lost, the command may already have run. Connection timeout is 5 seconds;
+read timeout is 10 minutes.
 
-Commands are UTF-8 percent-encoded as URL path data, including reserved
-characters such as `?`, `#`, `%`, `/`, and line breaks.
+Normally commands are UTF-8 percent-encoded as URL path data, including reserved
+characters such as `?`, `#`, `%`, `/`, and line breaks. The exact commands `.`
+and `..` are sent as UTF-8 request bodies to `POST /cmd/` instead: HTTP URLs
+normalize dot segments. A server that refuses the POST returns an error; the
+command is not reissued as a GET. As with stdio, an embedded NUL is rejected
+before dispatch without closing the session.
 
 ## Logging
 

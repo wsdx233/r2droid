@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.radare.r2pipe.R2PipeSession
+import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import java.io.File
 import java.io.InputStream

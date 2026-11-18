@@ -1,19 +1,23 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
-import java.io.BufferedInputStream
+import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.io.OutputStream
-import java.io.PushbackInputStream
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.min
 
 class R2Pipe private constructor(
     private val process: Process,
-    private val stdout: PushbackInputStream,
+    private val stdout: StdioFrameSource,
     private val stdin: OutputStream,
     private val logger: R2PipeLogger?,
     private val processKiller: ProcessKiller
@@ -27,7 +31,7 @@ class R2Pipe private constructor(
     @Volatile
     private var activeStream: NullDelimitedInputStream? = null
 
-    private val readBuffer: ByteBuffer = ByteBuffer.allocate(NullDelimitedInputStream.READ_BUFFER_SIZE)
+    private val readBuffer: ByteBuffer = ByteBuffer.allocate(StdioFrameSource.BUFFER_SIZE)
     private var resultBuffer: ByteBuffer = ByteBuffer.allocateDirect(INITIAL_RESULT_BUFFER_SIZE)
     private var overflowChunks: MutableList<ByteArray>? = null
     private var overflowSize: Int = 0
@@ -39,7 +43,6 @@ class R2Pipe private constructor(
             level = R2PipeLogLevel.WARNING,
             prefix = ""
         )
-        awaitReadyMarker()
     }
 
     override fun cmd(command: String): String = synchronized(commandLock) {
@@ -98,9 +101,7 @@ class R2Pipe private constructor(
             throw IllegalStateException("R2 process is not running")
         }
         check(activeStream == null) { "The previous R2 response stream is still active" }
-        require('\u0000' !in command) {
-            "Stdio commands must not contain NUL bytes"
-        }
+        requireNulFreeCommand(command)
     }
 
     private fun beginResponse(): NullDelimitedInputStream {
@@ -131,17 +132,28 @@ class R2Pipe private constructor(
         }
     }
 
-    private fun awaitReadyMarker() {
-        val buffer = ByteArray(1)
-        while (true) {
-            val count = stdout.read(buffer)
-            if (count == -1) {
-                running = false
-                throw IOException("R2 process terminated before initial ready marker")
+    private fun awaitReadyMarker(timeoutMs: Long) {
+        val ready = FutureTask<Unit> {
+            while (true) {
+                when (stdout.readByte()) {
+                    -1 -> throw EOFException("R2 process terminated before initial ready marker")
+                    0 -> break
+                }
             }
-            if (buffer[0].toInt() == 0) {
-                return
-            }
+        }
+        thread(name = "r2pipe-handshake", isDaemon = true, block = ready::run)
+        try {
+            ready.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            throw IOException("Timed out after ${timeoutMs}ms waiting for the initial R2 ready marker (-q0)", e)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw InterruptedIOException("Interrupted while waiting for the initial R2 ready marker").apply { initCause(e) }
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        } finally {
+            // open() terminates the child and closes stdout on failure; interrupt alone cannot cancel a pipe read.
+            ready.cancel(true)
         }
     }
 
@@ -284,16 +296,25 @@ class R2Pipe private constructor(
             launchSpec: LaunchSpec,
             logger: R2PipeLogger? = null,
             processKiller: ProcessKiller = ProcessKiller.DEFAULT
+        ): R2Pipe = open(launchSpec, DEFAULT_STARTUP_TIMEOUT_MS, logger, processKiller)
+
+        /** Limits only the wait for the first NUL after spawning, not subsequent command execution. */
+        @JvmStatic
+        @JvmOverloads
+        @Throws(IOException::class)
+        fun open(
+            launchSpec: LaunchSpec,
+            startupTimeoutMs: Long,
+            logger: R2PipeLogger? = null,
+            processKiller: ProcessKiller = ProcessKiller.DEFAULT
         ): R2Pipe {
+            require(startupTimeoutMs > 0) { "startupTimeoutMs must be positive" }
             val builder = ProcessBuilder(launchSpec.command)
             launchSpec.workingDirectory?.let(builder::directory)
             builder.environment().putAll(launchSpec.environment)
             builder.redirectErrorStream(false)
             val process = builder.start()
-            val stdout = PushbackInputStream(
-                BufferedInputStream(process.inputStream, STREAM_BUFFER_SIZE),
-                NullDelimitedInputStream.READ_BUFFER_SIZE
-            )
+            val stdout = StdioFrameSource(process.inputStream)
             return try {
                 R2Pipe(
                     process = process,
@@ -301,7 +322,7 @@ class R2Pipe private constructor(
                     stdin = process.outputStream,
                     logger = logger,
                     processKiller = processKiller
-                )
+                ).also { it.awaitReadyMarker(startupTimeoutMs) }
             } catch (e: Exception) {
                 try {
                     processKiller.terminate(process, true)
@@ -324,7 +345,7 @@ class R2Pipe private constructor(
             }
         }
 
-        private const val STREAM_BUFFER_SIZE = 64 * 1024
+        private const val DEFAULT_STARTUP_TIMEOUT_MS = 30_000L
         private const val INITIAL_RESULT_BUFFER_SIZE = 512 * 1024
         private const val MAX_RETAINED_RESULT_BUFFER_SIZE = 4 * 1024 * 1024
         private const val OVERFLOW_CHUNK_SIZE = 256 * 1024

@@ -1,4 +1,4 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
 import java.io.InputStream
 
@@ -17,4 +17,8 @@ interface R2PipeSession : AutoCloseable {
     fun isRunning(): Boolean
 
     override fun close()
+}
+
+internal fun requireNulFreeCommand(command: String) {
+    require('\u0000' !in command) { "R2 commands must not contain NUL bytes" }
 }

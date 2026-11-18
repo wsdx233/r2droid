@@ -1,4 +1,4 @@
-package org.radare.r2pipe
+package org.radare.r2pipe.kotlin
 
 interface ProcessKiller {
     fun interrupt(process: Process) {}

@@ -1,5 +1,5 @@
-import org.radare.r2pipe.LaunchSpec
-import org.radare.r2pipe.R2PipeHttp
+import org.radare.r2pipe.kotlin.LaunchSpec
+import org.radare.r2pipe.kotlin.R2PipeHttp
 import java.io.File
 
 fun main() {

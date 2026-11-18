@@ -8,7 +8,7 @@
 
 - **Radare2 资源安装器**: `app/src/main/java/top/wsdx233/r2droid/util/R2Installer.kt`
   - 首次启动检查并解压 `assets/r2.tar`、`assets/r2dir.tar` 到应用私有目录，设置运行权限。
-- **通用 Kotlin r2pipe 模块**: `r2pipe-kotlin/src/main/kotlin/org/radare/r2pipe/`
+- **通用 Kotlin r2pipe 模块**: `r2pipe-kotlin/src/main/kotlin/org/radare/r2pipe/kotlin/`
   - 提供与 Android 无关的 stdio / HTTP r2pipe 核心实现（`R2Pipe`, `R2PipeHttp`, `R2PipeSession`）。
 - **Android r2pipe 适配层**: `app/src/main/java/top/wsdx233/r2droid/util/AndroidR2PipeSupport.kt`
   - 将 `R2Runtime` 生成的启动参数桥接到通用模块，并提供 Android 日志与进程中断/终止实现。
