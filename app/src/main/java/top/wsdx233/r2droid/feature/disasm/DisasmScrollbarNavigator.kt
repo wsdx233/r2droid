@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.disasm
 
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -20,6 +21,7 @@ data class DisasmScrollbarPreview(
 /** Main-thread gesture controller. Pointer updates never decode, merge or rebuild jump maps. */
 internal class DisasmScrollbarNavigator(
     private val scope: CoroutineScope,
+    private val uptimeMillis: () -> Long = SystemClock::uptimeMillis,
     private val onCommitReady: (address: Long, index: Int) -> Unit
 ) {
     companion object {
@@ -40,6 +42,7 @@ internal class DisasmScrollbarNavigator(
     private var commitSent = false
     private var loading = false
     private var workId = 0L
+    private var dwellDeadline = 0L
 
     fun begin(manager: DisasmDataManager) {
         cancel()
@@ -51,25 +54,19 @@ internal class DisasmScrollbarNavigator(
         if (!dragging) return
         val manager = manager ?: return
         val target = address.coerceIn(manager.viewStartAddress, manager.viewEndAddress - 1)
+        if (_preview.value?.address == target) return
         val nextRegion = (target - manager.viewStartAddress) / REGION_BYTES
         val before = manager.getDataSnapshot()
-        manager.showCachedAddress(target)
+        val covered = manager.showCachedAddress(target)
         val switchedWindow = before !== manager.getDataSnapshot()
         // Small finger jitter within one region must not indefinitely postpone its dwell load.
         val changedRegion = nextRegion != region || switchedWindow
         if (changedRegion) {
-            cancelWork()
+            if (loading) cancelWork()
             region = nextRegion
         }
-        val previous = _preview.value
-        _preview.value = DisasmScrollbarPreview(
-            target, isLoading = loading,
-            failed = !changedRegion && previous?.address == target && previous.failed
-        )
-        if (changedRegion) schedule(DWELL_MILLIS)
-        else if (job?.isActive != true && previous?.address != target && !manager.isAddressRangeLoaded(target)) {
-            schedule(DWELL_MILLIS)
-        }
+        _preview.value = DisasmScrollbarPreview(target, isLoading = loading)
+        if (changedRegion || (!covered && job?.isActive != true)) schedule(DWELL_MILLIS)
     }
 
     /** Release bypasses the dwell timer, but does not cancel a matching in-flight request. */
@@ -121,18 +118,26 @@ internal class DisasmScrollbarNavigator(
 
     private fun schedule(waitMillis: Long) {
         val manager = manager ?: return
+        // A fast sweep only moves the deadline. Keep one sleeper instead of cancelling and
+        // allocating a coroutine/timer per pointer sample that crosses a 400-byte region.
+        dwellDeadline = uptimeMillis() + waitMillis
+        if (job?.isActive == true) return
         val id = ++workId
         job = scope.launch {
             try {
-                delay(waitMillis)
+                while (true) {
+                    val remaining = dwellDeadline - uptimeMillis()
+                    if (remaining <= 0) break
+                    delay(remaining)
+                }
                 loading = true
                 _preview.value = _preview.value?.copy(isLoading = true, failed = false)
                 if (!loadLatestTarget(manager)) return@launch
                 // Publish the target before fetching adjacent chunks; a slow neighbor must not
                 // delay either the preview or release. The pipe still executes serially.
+                val address = _preview.value?.address ?: return@launch
                 publishCommitIfReady()
-                val address = _preview.value?.address ?: manager.getSnapshot().firstOrNull()?.addr
-                if (address != null) manager.preloadAround(address, rangeChunks = 1)
+                manager.preloadAround(address, rangeChunks = 1)
                 currentCoroutineContext().ensureActive()
                 // The finger may have moved backwards within this region during the fetch.
                 if (_preview.value != null && loadLatestTarget(manager)) publishCommitIfReady()
@@ -148,7 +153,7 @@ internal class DisasmScrollbarNavigator(
     private suspend fun loadLatestTarget(manager: DisasmDataManager): Boolean {
         while (true) {
             val target = _preview.value?.address ?: return true
-            manager.loadAndFindIndex(target)
+            manager.loadAndFindIndex(target, preloadPrevious = false)
             currentCoroutineContext().ensureActive()
             val latest = _preview.value ?: return true
             if (manager.isAddressRangeLoaded(latest.address)) return true
@@ -163,8 +168,10 @@ internal class DisasmScrollbarNavigator(
     private fun publishCommitIfReady() {
         val manager = manager ?: return
         val target = _preview.value?.address ?: return
-        if (!committed || commitSent || !manager.isAddressRangeLoaded(target)) return
+        if (!committed || commitSent) return
+        val index = DisasmDataManager.coveredIndex(manager.getSnapshot(), target)
+        if (index < 0) return
         commitSent = true
-        onCommitReady(target, DisasmDataManager.coveredIndex(manager.getSnapshot(), target))
+        onCommitReady(target, index)
     }
 }

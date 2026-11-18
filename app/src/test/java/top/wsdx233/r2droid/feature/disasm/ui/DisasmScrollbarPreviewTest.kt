@@ -62,7 +62,7 @@ class DisasmScrollbarPreviewTest {
         manager.loadFromAddress(0)
         val data = MutableStateFlow(manager.getDataSnapshot())
         manager.onChunkLoaded = { data.value = manager.getDataSnapshot() }
-        val navigator = DisasmScrollbarNavigator(this) { address, _ -> commits.add(address) }
+        val navigator = DisasmScrollbarNavigator(this, { testScheduler.currentTime }) { address, _ -> commits.add(address) }
         compose.setContent {
             MaterialTheme {
                 val snapshot by data.collectAsState()

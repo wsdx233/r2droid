@@ -227,7 +227,7 @@ fun AutoHideAddressScrollbar(
     totalItems: Int,
     viewStartAddress: Long,
     viewEndAddress: Long,
-    currentAddress: Long,
+    currentAddress: () -> Long,
     modifier: Modifier = Modifier,
     thumbColor: Color = colorResource(R.color.thumb_color),
     trackWidth: Dp = 16.dp,
@@ -276,7 +276,7 @@ fun AutoHideAddressScrollbar(
 
     fun addressRatio(): Float {
         val range = (viewEndAddress - 1 - viewStartAddress).coerceAtLeast(1)
-        return ((address.coerceIn(viewStartAddress, viewEndAddress - 1) - viewStartAddress).toDouble() / range)
+        return ((address().coerceIn(viewStartAddress, viewEndAddress - 1) - viewStartAddress).toDouble() / range)
             .toFloat().coerceIn(0f, 1f)
     }
 
@@ -295,21 +295,22 @@ fun AutoHideAddressScrollbar(
                     val grabOffset = if (down.position.y in thumbTop..(thumbTop + thumbPx)) {
                         down.position.y - thumbTop
                     } else thumbPx / 2f
-                    var lastAddress = address
-                    fun moveTo(y: Float) {
+                    var lastAddress: Long
+                    fun moveTo(y: Float): Long {
                         val ratio = scrollbarRatioAtPosition(y, height, thumbPx, grabOffset)
                         dragThumbRatio = ratio
-                        lastAddress = scrollbarAddressAtRatio(viewStartAddress, viewEndAddress, ratio)
-                        preview(lastAddress)
+                        val target = scrollbarAddressAtRatio(viewStartAddress, viewEndAddress, ratio)
+                        preview(target)
+                        return target
                     }
                     isDragging = true
                     isVisible = true
                     dragStateChange(true)
                     try {
-                        moveTo(down.position.y)
+                        lastAddress = moveTo(down.position.y)
                         val released = verticalDrag(down.id) { change ->
                             change.consume()
-                            moveTo(change.position.y)
+                            lastAddress = moveTo(change.position.y)
                         }
                         if (released) commit(lastAddress) else dragThumbRatio = null
                     } finally {

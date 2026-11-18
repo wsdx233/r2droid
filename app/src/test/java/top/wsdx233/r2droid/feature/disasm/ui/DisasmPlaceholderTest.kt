@@ -13,15 +13,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
@@ -70,6 +73,32 @@ class DisasmPlaceholderTest {
         val placeholder = compose.onNodeWithTag("placeholder").getUnclippedBoundsInRoot()
         assertEquals(decoded.right - decoded.left, placeholder.right - placeholder.left)
         assertEquals(decoded.bottom - decoded.top, placeholder.bottom - placeholder.top)
+    }
+
+    @Test fun wrappedInstructionKeepsGutterAndRowHitAreasSeparateAtFullHeight() {
+        var gutterClicks = 0
+        var rowClicks = 0
+        compose.setContent {
+            R2droidTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                    Box(Modifier.width(280.dp).testTag("decoded")) {
+                        DisasmRow(
+                            instr = DisasmInstruction(16, "mov", "00", "mov", 1,
+                                "mov rax, [a_long_symbol_name + a_long_displacement]", null, ptr = 16),
+                            isSelected = false,
+                            onGutterClick = { gutterClicks++ },
+                            onClick = { _, _ -> rowClicks++ }, onLongClick = { _, _ -> }
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("decoded").performTouchInput {
+            click(Offset(8f, height - 2f))
+            click(Offset(centerX, height - 2f))
+        }
+        assertEquals(1, gutterClicks)
+        assertEquals(1, rowClicks)
     }
 
     @Test fun lightThemeHasASubtleMovingSweep() = assertSweep(dark = false)

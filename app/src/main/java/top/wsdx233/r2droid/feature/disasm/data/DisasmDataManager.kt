@@ -34,14 +34,21 @@ class DisasmDataManager internal constructor(
 
         /** Unlike nearest-index lookup, holes and addresses outside the window are cache misses. */
         fun coveredIndex(instructions: List<DisasmInstruction>, addr: Long): Int {
+            // A cold scrollbar position is usually outside *every* LRU chunk. Reject it using
+            // the endpoints instead of binary-searching the rows of each unrelated chunk.
+            if (instructions.isEmpty() || addr < instructions.first().addr) return -1
+            val last = instructions.last()
+            if (addr >= last.addr) return if (covers(last, addr)) instructions.lastIndex else -1
             val found = instructions.binarySearchBy(addr) { it.addr }
             if (found >= 0) return found
             val index = -found - 2
             val previous = instructions.getOrNull(index) ?: return -1
-            return if (addr >= previous.addr &&
-                addr.toULong() - previous.addr.toULong() < previous.size.coerceAtLeast(1).toULong()
-            ) index else -1
+            return if (covers(previous, addr)) index else -1
         }
+
+        // Called with addr >= instr.addr. Subtraction remains valid at Long.MAX_VALUE.
+        private fun covers(instr: DisasmInstruction, addr: Long): Boolean =
+            addr.toULong() - instr.addr.toULong() < instr.size.coerceAtLeast(1).toULong()
 
         /** Allocation-free binary lookup, also usable against the exact snapshot rendered by UI. */
         fun findClosestIndex(instructions: List<DisasmInstruction>, addr: Long): Int {
@@ -189,11 +196,18 @@ class DisasmDataManager internal constructor(
     suspend fun preloadAround(addr: Long, rangeChunks: Int = 2) {
         val gen = generation
         if (!isAddressRangeLoaded(addr)) loadFromAddress(addr, gen, replace = false)
+        val desiredRows = rangeChunks.toLong() * INSTRUCTIONS_PER_CHUNK
         repeat(rangeChunks) {
             if (generation != gen) return
-            loadMore(false, gen)
-            if (generation != gen) return
-            loadMore(true, gen)
+            val window = data.instructions
+            val index = coveredIndex(window, addr)
+            if (index < 0) return
+            // Don't grow the remote edges of a large, already warm window at every dwell.
+            val needBefore = index < desiredRows
+            val needAfter = window.lastIndex - index < desiredRows
+            if (!needBefore && !needAfter) return
+            if (needBefore) loadMore(false, gen)
+            if (needAfter) loadMore(true, gen)
         }
     }
 
@@ -260,15 +274,18 @@ class DisasmDataManager internal constructor(
         loadAndFindIndex(addr)
     }
 
-    suspend fun loadAndFindIndex(addr: Long): Int {
+    suspend fun loadAndFindIndex(addr: Long, preloadPrevious: Boolean = true): Int {
         if (showCachedAddress(addr)) return findClosestIndex(addr)
         val gen = generation
         // Keep the old window visible until the new one is ready, and never merge across a far jump.
         loadFromAddress(addr, gen, replace = true)
         if (generation != gen) return -1
-        // Decode at the requested address first (important for variable-length instructions).
-        val previous = (addr - INSTRUCTIONS_PER_CHUNK * AVG_INSTRUCTION_SIZE / 2).coerceAtLeast(startAddress)
-        if (previous < addr && isAddressRangeLoaded(addr)) loadFromAddress(previous, gen, replace = false)
+        if (preloadPrevious && isAddressRangeLoaded(addr)) {
+            // Centered navigation wants preceding rows; the scrollbar publishes its top row
+            // first and preloads both neighbors separately after releasing the UI target.
+            val previous = (addr - INSTRUCTIONS_PER_CHUNK * AVG_INSTRUCTION_SIZE / 2).coerceAtLeast(startAddress)
+            if (previous < addr) loadFromAddress(previous, gen, replace = false)
+        }
         return if (generation == gen && isAddressRangeLoaded(addr)) findClosestIndex(addr) else -1
     }
 

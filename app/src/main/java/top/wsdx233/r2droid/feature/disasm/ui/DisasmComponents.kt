@@ -5,14 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowRightAlt
@@ -21,18 +21,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.data.model.formatCompactAddress
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
 
@@ -41,14 +48,24 @@ import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
 private fun dc(light: Long, dark: Long): Color =
     if (LocalDarkTheme.current) Color(dark) else Color(light)
 
-/**
- * Helper function to format address in a compact way
- * Removes 0x prefix and leading zeros for shorter display
- */
-private fun formatCompactAddress(addr: Long): String {
-    val hex = "%X".format(addr)
-    // Keep at least 4 characters for readability
-    return if (hex.length <= 4) hex else hex.trimStart('0').ifEmpty { "0" }
+private fun DrawScope.band(start: Float, end: Float, color: Color) {
+    if (end <= start) return
+    val left = if (layoutDirection == LayoutDirection.Ltr) start else size.width - end
+    drawRect(color, Offset(left, 0f), Size(end - start, size.height))
+}
+
+@Composable
+private fun InstructionLine(
+    modifier: Modifier,
+    onGutterClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit
+) {
+    Box {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, content = content)
+        // The whole gutter remains tappable even beside a multiline instruction.
+        Spacer(Modifier.matchParentSize().wrapContentWidth(Alignment.Start)
+            .width(DisasmRowLayout.GutterWidth).clickable(onClick = onGutterClick))
+    }
 }
 
 /**
@@ -219,23 +236,29 @@ fun DisasmRow(
                 }
             }
             
-            // === Main instruction row (compact, single line) ===
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                verticalAlignment = Alignment.CenterVertically
+            // Let the tallest text set the line height (including wrapped opcodes). Painting
+            // the column bands behind that line avoids an intrinsic text pass per lazy item.
+            val inlineColumn = inlineComment.length in 1..20
+            val inlineWidth = if (inlineColumn) remember { mutableIntStateOf(0) } else null
+            InstructionLine(
+                onGutterClick = onGutterClick,
+                modifier = Modifier.fillMaxWidth().drawBehind {
+                    if (!highlighted) {
+                        val gutter = DisasmRowLayout.GutterWidth.roundToPx().toFloat().coerceAtMost(size.width)
+                        val address = (gutter + DisasmRowLayout.AddressWidth.roundToPx()).coerceAtMost(size.width)
+                        val bytes = (address + DisasmRowLayout.BytesWidth.roundToPx()).coerceAtMost(size.width)
+                        val opcode = (size.width - (inlineWidth?.intValue ?: 0)).coerceAtLeast(bytes)
+                        band(0f, gutter, colJumpBg)
+                        band(gutter, address, colAddressBg)
+                        band(address, bytes, colBytesBg)
+                        band(bytes, opcode, colOpcodeBg)
+                        band(opcode, size.width, colInlineCommentBg)
+                    }
+                }
             ) {
-
-
-                // Jump indicator column (fixed width) - with background color
                 // Used as gutter for breakpoints and PC indicator
                 Box(
-                    modifier = Modifier
-                        .width(DisasmRowLayout.GutterWidth)
-                        .fillMaxHeight()
-                        .background(if (highlighted) Color.Transparent else colJumpBg)
-                        .clickable { onGutterClick() },
+                    modifier = Modifier.width(DisasmRowLayout.GutterWidth),
                     contentAlignment = Alignment.Center
                 ) {
                     // Render breakpoint red dot in background
@@ -305,8 +328,6 @@ fun DisasmRow(
                 Box(
                     modifier = Modifier
                         .width(DisasmRowLayout.AddressWidth)
-                        .fillMaxHeight()
-                        .background(if (highlighted) Color.Transparent else colAddressBg)
                         .padding(horizontal = 2.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {
@@ -323,8 +344,6 @@ fun DisasmRow(
                 Box(
                     modifier = Modifier
                         .width(DisasmRowLayout.BytesWidth)
-                        .fillMaxHeight()
-                        .background(if (highlighted) Color.Transparent else colBytesBg)
                         .padding(horizontal = 2.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -340,8 +359,6 @@ fun DisasmRow(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .background(if (highlighted) Color.Transparent else colOpcodeBg)
                         .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -358,11 +375,10 @@ fun DisasmRow(
                 }
                 
                 // Inline comment column (if present and short enough for same line)
-                if (hasInlineComment && inlineComment.length <= 20) {
+                if (inlineWidth != null) {
                     Box(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .background(if (highlighted) Color.Transparent else colInlineCommentBg)
+                            .onSizeChanged { inlineWidth.intValue = it.width }
                             .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {

@@ -151,6 +151,21 @@ class DisasmDataManagerTest {
         assertEquals(0L, manager.getSnapshot().first().addr)
     }
 
+    @Test fun preloadDoesNotFetchDistantEdgesWhenTheTargetAlreadyHasContext() = runTest {
+        val requests = mutableListOf<Long>()
+        val manager = DisasmDataManager(0, 100000, { address, count ->
+            requests += address
+            Result.success(List(count) { instruction(address + it * 4) })
+        }, StandardTestDispatcher(testScheduler))
+        manager.loadFromAddress(0)
+        repeat(3) { manager.loadMore(true) }
+        requests.clear()
+        manager.preloadAround(801, rangeChunks = 1)
+        assertTrue(requests.isEmpty())
+        manager.preloadAround(1599, rangeChunks = 1)
+        assertEquals(listOf(1600L), requests)
+    }
+
     @Test fun staleCompletionCannotPublishOrRemoveTheNewRequestToken() = runTest {
         val oldResponse = CompletableDeferred<List<DisasmInstruction>>()
         val newResponse = CompletableDeferred<List<DisasmInstruction>>()

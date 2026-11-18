@@ -84,6 +84,7 @@ import top.wsdx233.r2droid.util.R2PipeManager
  * - Placeholder shown for unloaded regions
  */
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.data.model.formatCompactAddress
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
@@ -935,8 +936,9 @@ private fun DisasmCurrentAddress(
     viewModel: DisasmViewModel
 ) {
     val preview by viewModel.scrollbarPreview.collectAsState()
-    val address = preview?.address ?: instructions.getOrNull(listState.firstVisibleItemIndex)?.addr ?: 0L
-    Text("Addr: ${"0x%X".format(address)}", fontSize = 12.sp, fontFamily = LocalAppFont.current)
+    val hex = preview?.let { formatCompactAddress(it.address) }
+        ?: instructions.getOrNull(listState.firstVisibleItemIndex)?.displayAddress ?: "0"
+    Text("Addr: 0x$hex", fontSize = 12.sp, fontFamily = LocalAppFont.current)
 }
 
 @Composable
@@ -970,7 +972,7 @@ internal fun DisasmAddressScrollbar(
         totalItems = instructions.size,
         viewStartAddress = manager.viewStartAddress,
         viewEndAddress = manager.viewEndAddress,
-        currentAddress = instructions.getOrNull(listState.firstVisibleItemIndex)?.addr ?: manager.viewStartAddress,
+        currentAddress = { instructions.getOrNull(listState.firstVisibleItemIndex)?.addr ?: manager.viewStartAddress },
         modifier = modifier,
         alwaysShow = true,
         isSeeking = isSeeking,

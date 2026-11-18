@@ -22,6 +22,7 @@
 
 - **Project Lifecycle**: open binaries from file picker or external intents, choose analysis level, then save/restore projects with metadata and replay scripts.
 - **Hex + Disassembly**: virtualized large-file hex/disasm viewers (chunked loading + cache), patching (`wx`/`wa`/string/comment), xrefs, function dialogs, and navigation history.
+  - Drag the disassembly scrollbar to preview cached instructions immediately. For uncached addresses it shows the target and placeholder rows; pausing in one region for 300 ms or releasing loads the target without waiting for neighboring chunks.
 - **Decompiler**: switch between `r2ghidra`, `r2dec`, `native`, and `aipdg`; optional built-in editor mode, zoom/line-wrap/line-number controls.
 - **Debugging (ESIL-first)**: ESIL init, breakpoints, step/step-over/continue/pause, register panel, and automatic PC-follow in disassembly.
 - **Search + Analysis Lists**: overview plus sections/symbols/imports/relocs/strings/functions with search and paging-backed data loading.

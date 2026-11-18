@@ -38,7 +38,7 @@ class AutoHideAddressScrollbarTest {
                 Box(Modifier.height(300.dp)) {
                     AutoHideAddressScrollbar(
                         listState = rememberLazyListState(), totalItems = 100,
-                        viewStartAddress = 100, viewEndAddress = 10000, currentAddress = 100,
+                        viewStartAddress = 100, viewEndAddress = 10000, currentAddress = { 100 },
                         modifier = Modifier.testTag("scrollbar"), alwaysShow = true,
                         onScrollToAddress = { previews.add(it) },
                         onDragComplete = { commits.add(it) },
@@ -109,7 +109,7 @@ class AutoHideAddressScrollbarTest {
                 Box(Modifier.height(300.dp)) {
                     AutoHideAddressScrollbar(
                         listState = rememberLazyListState(), totalItems = 100,
-                        viewStartAddress = 100, viewEndAddress = 10000, currentAddress = 100,
+                        viewStartAddress = 100, viewEndAddress = 10000, currentAddress = { 100 },
                         modifier = Modifier.testTag("scrollbar"), alwaysShow = true,
                         onDragComplete = { calls.add(currentVersion) }
                     )

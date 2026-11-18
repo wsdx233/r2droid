@@ -39,7 +39,7 @@ class DisasmScrollbarNavigatorTest {
         }, StandardTestDispatcher(testScheduler))
         manager.loadFromAddress(0)
         requests.clear()
-        val navigator = DisasmScrollbarNavigator(this) { address, index ->
+        val navigator = DisasmScrollbarNavigator(this, { testScheduler.currentTime }) { address, index ->
             assertEquals(index, DisasmDataManager.coveredIndex(manager.getSnapshot(), address))
             commits.add(address)
         }
@@ -127,6 +127,25 @@ class DisasmScrollbarNavigatorTest {
         advanceUntilIdle()
         assertEquals(1, h.requests.count { it == 8000L })
         assertEquals(listOf(8000L), h.commits)
+    }
+
+    @Test fun releasePublishesTheTargetWhileThePrecedingChunkIsStillBlocked() = runTest {
+        val neighbor = CompletableDeferred<Unit>()
+        val h = harness { address, count ->
+            if (address in 1L until 8000L) neighbor.await()
+            Result.success(rows(address, count))
+        }
+        h.navigator.commit(8000)
+        h.navigator.endGesture()
+        runCurrent()
+        assertEquals(listOf(8000L), h.commits)
+        assertTrue(h.requests.last() in 1L until 8000L)
+        h.navigator.acknowledgeCommit(8000)
+        assertNull(h.navigator.preview.value)
+        neighbor.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(8000L), h.commits)
+        assertTrue(h.manager.isAddressRangeLoaded(8000))
     }
 
     @Test fun releaseAfterDwellDoesNotFetchTheSameRegionOrNeighborsAgain() = runTest {

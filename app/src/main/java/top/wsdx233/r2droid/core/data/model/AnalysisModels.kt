@@ -378,6 +378,10 @@ data class DisasmRef(
     }
 }
 
+private val compactHex = HexFormat { upperCase = true; number.removeLeadingZeros = true }
+
+internal fun formatCompactAddress(addr: Long): String = addr.toHexString(compactHex)
+
 data class DisasmInstruction(
     val addr: Long,
     val opcode: String,
@@ -470,11 +474,8 @@ data class DisasmInstruction(
 
     // --- Pre-computed display strings (lazy, not part of equals/hashCode) ---
 
-    /** Compact hex address without leading zeros, min 4 chars */
-    val displayAddress: String by lazy {
-        val hex = "%X".format(addr)
-        if (hex.length <= 4) hex else hex.trimStart('0').ifEmpty { "0" }
-    }
+    /** Uppercase hexadecimal without a prefix or leading zeroes. */
+    val displayAddress: String by lazy { formatCompactAddress(addr) }
 
     /** Lowercase bytes, truncated to 8 chars + ellipsis if longer than 10 */
     val displayBytes: String by lazy {
@@ -484,22 +485,19 @@ data class DisasmInstruction(
 
     /** Pre-built inline comment from ptr/refs */
     val inlineComment: String by lazy {
+        if (ptr == null && !refptr) return@lazy ""
         buildString {
             if (ptr != null) {
-                val pHex = "%X".format(ptr)
-                val pDisplay = if (pHex.length <= 4) pHex else pHex.trimStart('0').ifEmpty { "0" }
-                append("; $pDisplay")
+                append("; ").append(formatCompactAddress(ptr))
             }
             if (refptr && refs.isNotEmpty()) {
                 val dataRef = refs.firstOrNull { it.type == "DATA" }
                 if (dataRef != null) {
                     if (isNotEmpty()) append(" ")
-                    val rHex = "%X".format(dataRef.addr)
-                    val rDisplay = if (rHex.length <= 4) rHex else rHex.trimStart('0').ifEmpty { "0" }
-                    append("[$rDisplay]")
+                    append('[').append(formatCompactAddress(dataRef.addr)).append(']')
                 }
             }
-        }.trim()
+        }
     }
 }
 

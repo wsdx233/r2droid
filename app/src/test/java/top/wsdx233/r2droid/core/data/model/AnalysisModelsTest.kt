@@ -468,6 +468,12 @@ class AnalysisModelsTest {
         assertEquals("0", instr.displayAddress)
     }
 
+    @Test fun `compact instruction addresses keep all bits of high addresses`() {
+        val instr = DisasmInstruction(-1L, "nop", "00", "nop", 1, "nop", null, ptr = Long.MIN_VALUE)
+        assertEquals("FFFFFFFFFFFFFFFF", instr.displayAddress)
+        assertEquals("; 8000000000000000", instr.inlineComment)
+    }
+
     @Test
     fun `DisasmInstruction displayBytes truncates long bytes`() {
         val instr = DisasmInstruction(
