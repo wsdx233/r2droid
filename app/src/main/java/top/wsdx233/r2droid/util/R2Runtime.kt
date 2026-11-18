@@ -259,16 +259,19 @@ object R2Runtime {
     }
 
     private fun buildDirectEnvironment(filesDir: File): Map<String, String> {
+        val r2Prefix = File(filesDir, "radare2").absolutePath
         val existingLd = System.getenv("LD_LIBRARY_PATH")
-        val myLd = "${File(filesDir, "radare2/lib")}:${File(filesDir, "libs")}"
+        val myLd = "$r2Prefix/lib:${File(filesDir, "libs")}"
         val systemPath = System.getenv("PATH") ?: "/system/bin:/system/xbin"
-        val customBin = File(filesDir, "radare2/bin").absolutePath
+        val customBin = "$r2Prefix/bin"
 
         return buildMap {
             put("LD_LIBRARY_PATH", if (existingLd != null) "$myLd:$existingLd" else myLd)
+            // Resolve bundled calling-convention data instead of using r2's build-time prefix.
+            put("R2_PREFIX", r2Prefix)
             put("XDG_DATA_HOME", File(filesDir, "r2work").absolutePath)
             put("XDG_CACHE_HOME", File(filesDir, ".cache").absolutePath)
-            put("HOME", File(filesDir, "radare2/bin").absolutePath)
+            put("HOME", customBin)
             put("TERM", "dumb")
             put("R2_NOCOLOR", "1")
             put("PATH", "$customBin:$systemPath")

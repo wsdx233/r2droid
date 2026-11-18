@@ -68,6 +68,8 @@ Full Debug 当前内置 radare2 6.2.6。
 
 > Full APK 包含 radare2 和重新编译的反编译插件；PRoot-only 仅内置 PRoot 运行时。启动时按资源内容标识更新安装，包括仅插件变化的情况，并保留用户的 `.radare2rc`。
 
+Full 版启动内置 r2 时会把 `R2_PREFIX` 指向应用私有的 radare2 目录，以加载 `r2dec` 所需的调用约定数据库。此设置不影响 PRoot 模式，也不需要修改 `.radare2rc`。
+
 Full APK 按需安装 [r2frida](https://github.com/wsdx233/r2frida-android-arm64-build/releases) 和 [r2flutter](https://github.com/wsdx233/r2flutter-android-arm64-build/releases)，按内置 radare2 版本选择 `r2-<版本>` 发布标签。发布使用新版 radare2 的 Full APK 前，先交叉编译并发布与其匹配的两个 Android ARM64 插件。PRoot 模式仍通过 `r2pm` 安装。
 
 新建 PRoot 环境默认从 Ubuntu 官方下载 [Ubuntu Base 24.04.5 LTS](https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/)。覆盖更新应用不会替换已安装的容器。

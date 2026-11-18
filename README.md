@@ -68,6 +68,8 @@ Full Debug currently bundles radare2 6.2.6.
 
 > The Full APK includes radare2 and rebuilt decompiler plugins; PRoot-only includes only the bundled PRoot runtime. Startup refreshes installed resources when their content identity changes, including plugin-only updates, and preserves the user's `.radare2rc`.
 
+The Full build sets `R2_PREFIX` to the app-private radare2 directory when launching the bundled engine, so r2 can load the calling-convention database used by `r2dec`. This does not change PRoot mode or require editing `.radare2rc`.
+
 The Full APK installs [r2frida](https://github.com/wsdx233/r2frida-android-arm64-build/releases) and [r2flutter](https://github.com/wsdx233/r2flutter-android-arm64-build/releases) on demand, selecting the `r2-<version>` release tag for its bundled radare2. When updating radare2 for a Full release, cross-compile and publish both matching Android ARM64 plugins first. PRoot mode continues to install them via `r2pm`.
 
 New PRoot environments default to [Ubuntu Base 24.04.5 LTS](https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/) from the official Ubuntu download server. Updating the app does not replace an installed container.
