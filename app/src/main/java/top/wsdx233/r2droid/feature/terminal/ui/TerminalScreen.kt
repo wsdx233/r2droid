@@ -380,7 +380,7 @@ fun CommandScreen(
 
                         isExecuting = true
                         scope.launch {
-                            val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmdToExecute)
+                            val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmdToExecute, includeStderr = true)
                             val resultText = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
                             onCommandHistoryChange(commandHistory + (cmdToExecute to resultText))
                             output = ""

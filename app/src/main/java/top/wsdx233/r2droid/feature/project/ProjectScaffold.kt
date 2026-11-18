@@ -1559,7 +1559,7 @@ fun ProjectScaffold(
                     if (sheetCommand.isNotBlank()) {
                         sheetExecuting = true
                         sheetScope.launch {
-                            val result = R2PipeManager.execute(sheetCommand)
+                            val result = R2PipeManager.execute(sheetCommand, includeStderr = true)
                             sheetOutput = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
                             sheetExecuting = false
                         }

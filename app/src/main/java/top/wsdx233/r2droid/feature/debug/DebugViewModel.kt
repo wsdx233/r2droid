@@ -39,7 +39,7 @@ class DebugViewModel : ViewModel() {
             _isExecuting.value = true
             _outputText.value = "Executing '$command' on active session..."
             val result = if (R2PipeManager.isConnected) {
-                R2PipeManager.execute(command)
+                R2PipeManager.execute(command, includeStderr = true)
             } else {
                 Result.failure(IllegalStateException("No active R2 session. Open a project first."))
             }

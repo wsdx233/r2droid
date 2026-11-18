@@ -27,6 +27,7 @@
 - **Debugging (ESIL-first)**: ESIL init, breakpoints, step/step-over/continue/pause, register panel, and automatic PC-follow in disassembly.
 - **Search + Analysis Lists**: overview plus sections/symbols/imports/relocs/strings/functions with search and paging-backed data loading.
 - **Terminal Experience**: embedded terminal with extra keys (ESC/TAB/CTRL/ALT/arrows/PGUP/PGDN) and command console with suggestion panel.
+  - The command tab, quick panel, and custom command dialog show each command’s diagnostics under `[stderr]` without redirection. Long diagnostics retain the last 256 Ki characters. Programmatic queries and streams still return stdout only.
 - **System Integration**: background keep-alive service, update checker dialog, language/theme/font settings, and custom `.radare2rc` support.
 
 ## Screenshots

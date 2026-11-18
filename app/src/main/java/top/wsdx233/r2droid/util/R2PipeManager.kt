@@ -41,9 +41,11 @@ object R2PipeManager {
         val rawArgs: String?
     )
 
-    data class R2Session(
+    @ConsistentCopyVisibility
+    data class R2Session internal constructor(
         val sessionId: String,
         val pipe: R2PipeSession,
+        internal val console: R2CommandConsole,
         val isHttpMode: Boolean,
         val httpPort: Int? = null,
         val projectPath: String?,
@@ -218,6 +220,7 @@ object R2PipeManager {
         val resolvedHttpPort = if (useHttp) httpPort else null
         val appCtx = context.applicationContext
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val console = R2CommandConsole(AndroidR2PipeSupport.logger(if (useHttp) "R2PipeHttp" else "R2Pipe", isFrida))
 
         val pipe = if (useHttp) {
             AndroidR2PipeSupport.openHttp(
@@ -226,8 +229,7 @@ object R2PipeManager {
                 flags = flags,
                 rawArgs = rawArgs,
                 port = resolvedHttpPort ?: SettingsManager.httpPort,
-                logTag = "R2PipeHttp",
-                suppressKnownR2FridaWarnings = isFrida
+                logger = console
             )
         } else {
             AndroidR2PipeSupport.openStdio(
@@ -235,14 +237,14 @@ object R2PipeManager {
                 filePath = filePath,
                 flags = flags,
                 rawArgs = rawArgs,
-                logTag = "R2Pipe",
-                suppressKnownR2FridaWarnings = isFrida
+                logger = console
             )
         }
 
         val session = R2Session(
             sessionId = sid,
             pipe = pipe,
+            console = console,
             isHttpMode = useHttp,
             httpPort = resolvedHttpPort,
             projectPath = filePath,
@@ -396,9 +398,10 @@ object R2PipeManager {
      * 自动更新 state 状态。
      *
      * @param cmd 要执行的 r2 命令
+     * @param includeStderr 仅用于手动命令的显示；JSON 等程序化调用保持原始 stdout。
      * @return Result<String> 包含命令输出或异常
      */
-    suspend fun execute(sessionId: String, cmd: String, markDirty: Boolean = true): Result<String> {
+    suspend fun execute(sessionId: String, cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {
         val session = _sessions.value[sessionId]
             ?: return Result.failure(IllegalStateException("Session not found: $sessionId"))
         if (isR2FridaOnlyCommand(cmd) && !session.isFridaSession) {
@@ -419,14 +422,16 @@ object R2PipeManager {
                     publishActiveStateFrom(sessionId)
                     LogManager.log(LogType.COMMAND, cmd)
 
-                    val output = pipeCmd(session, cmd)
+                    val consoleOutput = if (includeStderr) session.console.execute(session.pipe, cmd) else null
+                    val stdout = consoleOutput?.stdout ?: pipeCmd(session, cmd)
 
-                    if (output.isNotBlank()) {
-                        LogManager.log(LogType.OUTPUT, output)
+                    if (stdout.isNotBlank()) {
+                        LogManager.log(LogType.OUTPUT, stdout)
                     }
                     if (markDirty) {
                         session.isDirtyAfterSave = true
                     }
+                    val output = consoleOutput?.displayText() ?: stdout
                     session.state.value = State.Success(cmd, output)
                     publishActiveStateFrom(sessionId)
                     Result.success(output)
@@ -442,10 +447,10 @@ object R2PipeManager {
         }
     }
 
-    suspend fun execute(cmd: String, markDirty: Boolean = true): Result<String> {
+    suspend fun execute(cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {
         val sid = _activeSessionId.value
             ?: return Result.failure(IllegalStateException("No active session."))
-        return execute(sid, cmd, markDirty)
+        return execute(sid, cmd, markDirty, includeStderr)
     }
 
     private fun isR2FridaOnlyCommand(cmd: String): Boolean {

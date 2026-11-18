@@ -87,7 +87,7 @@ fun CustomCommandDialog(
                             if (command.isNotBlank()) {
                                 isExecuting = true
                                 scope.launch {
-                                    val result = top.wsdx233.r2droid.util.R2PipeManager.execute(command)
+                                    val result = top.wsdx233.r2droid.util.R2PipeManager.execute(command, includeStderr = true)
                                     output = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
                                     isExecuting = false
                                 }

@@ -52,14 +52,13 @@ internal object AndroidR2PipeSupport {
         filePath: String? = null,
         flags: String = "",
         rawArgs: String? = null,
-        logTag: String = "R2Pipe",
-        suppressKnownR2FridaWarnings: Boolean = false
+        logger: R2PipeLogger
     ): R2Pipe {
         return R2Pipe.open(
             launchSpec = toCoreLaunchSpec(
                 R2Runtime.buildStdioLaunch(context.applicationContext, filePath, flags, rawArgs)
             ),
-            logger = logger(logTag, suppressKnownR2FridaWarnings),
+            logger = logger,
             processKiller = processKiller
         )
     }
@@ -70,15 +69,14 @@ internal object AndroidR2PipeSupport {
         flags: String = "",
         rawArgs: String? = null,
         port: Int,
-        logTag: String = "R2PipeHttp",
-        suppressKnownR2FridaWarnings: Boolean = false
+        logger: R2PipeLogger
     ): R2PipeHttp {
         return R2PipeHttp.spawn(
             launchSpec = toCoreLaunchSpec(
                 R2Runtime.buildHttpLaunch(context.applicationContext, filePath, flags, rawArgs, port)
             ),
             port = port,
-            logger = logger(logTag, suppressKnownR2FridaWarnings),
+            logger = logger,
             processKiller = processKiller
         )
     }
