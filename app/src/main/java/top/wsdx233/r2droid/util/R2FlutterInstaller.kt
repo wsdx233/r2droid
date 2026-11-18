@@ -33,12 +33,10 @@ data class R2FlutterInstallState(
 object R2FlutterInstaller {
     private const val TAG = "R2FlutterInstaller"
     private const val GITHUB_API =
-        "https://api.github.com/repos/wsdx233/r2flutter-android-arm64-build/releases/latest"
+        "https://api.github.com/repos/wsdx233/r2flutter-android-arm64-build/releases/tags"
     private const val PLUGIN_FILE_NAME = "core_flutter.so"
     private const val CHECKSUM_FILE_NAME = "SHA256SUMS"
     private const val BUILD_INFO_FILE_NAME = "build-info.json"
-    private const val REQUIRED_R2_VERSION = "6.1.0"
-    private const val REQUIRED_R2_ABI = 70
     private val json = Json { ignoreUnknownKeys = true }
 
     private val _state = MutableStateFlow(R2FlutterInstallState())
@@ -88,9 +86,10 @@ object R2FlutterInstaller {
             status = R2FlutterInstallState.Status.FETCHING,
             message = "Fetching r2flutter release information..."
         )
-        val release = fetchText(GITHUB_API)
+        val runtime = checkNotNull(BundledRuntimeManifest.fromAssets(context.assets, requireRadare2 = true).radare2)
+        val release = fetchText("$GITHUB_API/r2-${runtime.version}")
         val releaseJson = json.parseToJsonElement(release).jsonObject
-        val version = releaseJson["tag_name"]?.jsonPrimitive?.content ?: "unknown"
+        val version = releaseJson["name"]?.jsonPrimitive?.content ?: runtime.version
         val assets = releaseJson["assets"]?.jsonArray ?: error("Release has no downloadable assets")
         val pluginUrl = assets.firstNotNullOfOrNull { element ->
             val asset = element.jsonObject
@@ -111,7 +110,7 @@ object R2FlutterInstaller {
             } else null
         } ?: error("Release asset $BUILD_INFO_FILE_NAME was not found")
 
-        validateBuildInfo(fetchText(buildInfoUrl))
+        validateBuildInfo(fetchText(buildInfoUrl), runtime.version, R2Runtime.bundledPluginAbi(context))
         val expectedSha256 = parseExpectedChecksum(fetchText(checksumUrl))
         val pluginsDir = getPluginsDir(context).apply { mkdirs() }
         val target = getNativePluginFile(context)
@@ -220,14 +219,14 @@ object R2FlutterInstaller {
         "${'$'}R2PM_BIN" -ci r2flutter
     """.trimIndent()
 
-    internal fun validateBuildInfo(text: String) {
+    internal fun validateBuildInfo(text: String, runtimeVersion: String, runtimeAbi: Int) {
         val info = json.parseToJsonElement(text).jsonObject
         val architecture = info["architecture"]?.jsonPrimitive?.content
         val r2Version = info["radare2Version"]?.jsonPrimitive?.content
         val r2Abi = info["radare2Abi"]?.jsonPrimitive?.content?.toIntOrNull()
         require(architecture == "arm64-v8a") { "Release architecture is not arm64-v8a" }
-        require(r2Version == REQUIRED_R2_VERSION && r2Abi == REQUIRED_R2_ABI) {
-            "Release requires an incompatible radare2 runtime"
+        require(r2Version == runtimeVersion && r2Abi == runtimeAbi) {
+            "Release does not match radare2 $runtimeVersion (ABI $runtimeAbi)"
         }
     }
 

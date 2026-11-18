@@ -112,6 +112,27 @@ class BundledRuntimeInstallerTest {
     }
 
     @Test
+    fun radare2UpgradeRemovesLegacyNativePluginsButKeepsCustomConfig() = runBlocking {
+        assumeTrue(AppVariant.bundledR2Available)
+        val files = temporary.newFolder("installed")
+        val old = fixture(files, "r2-610", "proot".toByteArray())
+        R2Installer.checkAndInstall(old)
+        val plugins = File(files, "r2work/radare2/plugins")
+        val oldPlugins = listOf("io_frida.so", "core_flutter.so").map { name ->
+            File(plugins, name).apply { writeText("legacy ABI 70") }
+        }
+        val config = File(files, "radare2/bin/.radare2rc")
+        config.writeText("e asm.bytes = false\n")
+
+        val updated = fixture(files, "r2-626", "proot".toByteArray(), version = "6.2.6")
+        R2Installer.checkAndInstall(updated)
+
+        assertEquals("r2 6.2.6 executable", File(files, "radare2/bin/r2").readText())
+        assertEquals("e asm.bytes = false\n", config.readText())
+        oldPlugins.forEach { assertFalse(it.exists()) }
+    }
+
+    @Test
     fun missingSuccessMarkerAndMissingMainFileBothReinstall() = runBlocking {
         assumeTrue(AppVariant.bundledR2Available)
         val files = temporary.newFolder("installed")
@@ -121,10 +142,10 @@ class BundledRuntimeInstallerTest {
         binary.writeText("old install without marker")
         File(files, ".r2-runtime-manifest").delete()
         R2Installer.checkAndInstall(context)
-        assertEquals("r2 executable", binary.readText())
+        assertEquals("r2 6.1.0 executable", binary.readText())
         binary.delete()
         R2Installer.checkAndInstall(context)
-        assertEquals("r2 executable", binary.readText())
+        assertEquals("r2 6.1.0 executable", binary.readText())
         assertTrue(File(files, ".r2-runtime-manifest").isFile)
     }
 
@@ -156,7 +177,8 @@ class BundledRuntimeInstallerTest {
         full: Boolean = true,
         plugin: String = "original plugin",
         expectedProot: ByteArray = proot,
-        brokenData: Boolean = false
+        brokenData: Boolean = false,
+        version: String = "6.1.0"
     ): Context {
         val root = temporary.newFolder(name)
         val assets = File(root, "assets").apply { mkdirs() }
@@ -171,7 +193,7 @@ class BundledRuntimeInstallerTest {
                 .put("commit", "1".repeat(40))
                 .put("sha256", sha(expectedProot)))
         if (full) {
-            val core = archive(mapOf("radare2/bin/r2" to "r2 executable"))
+            val core = archive(mapOf("radare2/bin/r2" to "r2 $version executable"))
             val data = archive(mapOf("plugins/libcore_pdd.so" to plugin))
             val libcxx = "libc++ fixture".toByteArray()
             File(assets, "r2.tar.gz").writeBytes(core)
@@ -180,8 +202,8 @@ class BundledRuntimeInstallerTest {
             File(assets, "libs/libc++_shared.so").writeBytes(libcxx)
             manifest.put("radare2", JSONObject()
                 .put("source", "https://github.com/radareorg/radare2")
-                .put("ref", "6.1.0")
-                .put("version", "6.1.0")
+                .put("ref", version)
+                .put("version", version)
                 .put("commit", "2".repeat(40))
                 .put("sha256", sha(core))
                 .put("dataSha256", sha(data))

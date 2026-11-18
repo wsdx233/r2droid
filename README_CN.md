@@ -62,8 +62,13 @@ python -m pip install meson==1.7.2
 推送 `v*` 标签后，GitHub Actions 会执行同一组 Gradle 任务，发布两版签名 APK、源码锁和各变体的运行时清单。清单记录源码提交、工具链版本及生成资源的哈希。Android 资源合并器可能将生成的 `.tar.gz` 展开为 APK 内的 `.tar`，安装器兼容两种格式。
 
 Debug 原生资源准备同样需要 Python 3.11+，但使用仓库内预编译文件，不刷新上游源码，也不编译 radare2/插件。
+Full Debug 当前内置 radare2 6.2.6。
 
 > Full APK 包含 radare2 和重新编译的反编译插件；PRoot-only 仅内置 PRoot 运行时。启动时按资源内容标识更新安装，包括仅插件变化的情况，并保留用户的 `.radare2rc`。
+
+Full APK 按需安装 [r2frida](https://github.com/wsdx233/r2frida-android-arm64-build/releases) 和 [r2flutter](https://github.com/wsdx233/r2flutter-android-arm64-build/releases)，按内置 radare2 版本选择 `r2-<版本>` 发布标签。发布使用新版 radare2 的 Full APK 前，先交叉编译并发布与其匹配的两个 Android ARM64 插件。PRoot 模式仍通过 `r2pm` 安装。
+
+新建 PRoot 环境默认从 Ubuntu 官方下载 [Ubuntu Base 24.04.5 LTS](https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/)。覆盖更新应用不会替换已安装的容器。
 
 ## 📄 许可证
 

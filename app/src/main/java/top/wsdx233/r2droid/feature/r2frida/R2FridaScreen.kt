@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -131,11 +130,10 @@ private fun R2FridaInstallScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val useProotInstall = SettingsManager.useProotMode
-    var useChinaSource by remember { mutableStateOf(SettingsManager.language == "zh") }
+    var useChinaSource by remember { mutableStateOf(false) }
     val isWorking = installState.status in listOf(
         R2FridaInstallState.Status.FETCHING,
         R2FridaInstallState.Status.DOWNLOADING,
-        R2FridaInstallState.Status.EXTRACTING,
         R2FridaInstallState.Status.INSTALLING
     )
 
@@ -217,17 +215,12 @@ private fun R2FridaInstallScreen(
                             progress = installState.progress
                         )
                     }
-                    R2FridaInstallState.Status.EXTRACTING -> {
-                        StatusCard(
-                            icon = Icons.Default.FolderZip,
-                            text = stringResource(R.string.r2frida_install_extracting),
-                            showProgress = true
-                        )
-                    }
                     R2FridaInstallState.Status.INSTALLING -> {
                         StatusCard(
                             icon = Icons.Default.Settings,
-                            text = installState.message.ifBlank { stringResource(R.string.r2frida_installing_in_proot) },
+                            text = installState.message.ifBlank {
+                                stringResource(if (useProotInstall) R.string.r2frida_installing_in_proot else R.string.r2frida_install_installing)
+                            },
                             progress = installState.progress.takeIf { it > 0f },
                             showProgress = installState.progress <= 0f
                         )

@@ -6,17 +6,21 @@ import org.junit.Test
 
 class R2FlutterInstallerTest {
     @Test
-    fun validateBuildInfo_acceptsPinnedRuntime() {
-        R2FlutterInstaller.validateBuildInfo(
-            """{"architecture":"arm64-v8a","radare2Version":"6.1.0","radare2Abi":70}"""
-        )
+    fun validateBuildInfo_rejectsDifferentRuntimeVersion() {
+        assertThrows(IllegalArgumentException::class.java) {
+            R2FlutterInstaller.validateBuildInfo(
+                """{"architecture":"arm64-v8a","radare2Version":"6.2.4","radare2Abi":174}""",
+                runtimeVersion = "6.2.6", runtimeAbi = 174
+            )
+        }
     }
 
     @Test
     fun validateBuildInfo_rejectsDifferentAbi() {
         assertThrows(IllegalArgumentException::class.java) {
             R2FlutterInstaller.validateBuildInfo(
-                """{"architecture":"arm64-v8a","radare2Version":"6.1.0","radare2Abi":71}"""
+                """{"architecture":"arm64-v8a","radare2Version":"6.2.6","radare2Abi":173}""",
+                runtimeVersion = "6.2.6", runtimeAbi = 174
             )
         }
     }

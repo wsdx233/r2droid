@@ -944,7 +944,6 @@
     <string name="r2frida_install_installing">Installing…</string>
     <string name="r2frida_install_fetching">Fetching release info…</string>
     <string name="r2frida_install_downloading">Downloading plugin…</string>
-    <string name="r2frida_install_extracting">Extracting files…</string>
     <string name="r2frida_installing_in_proot">Installing r2frida in proot…</string>
     <string name="r2frida_install_proot_desc">Proot mode is enabled. r2frida will be installed inside the proot environment through r2pm instead of downloading the Android plugin package.</string>
     <string name="r2frida_install_done">Installation complete</string>

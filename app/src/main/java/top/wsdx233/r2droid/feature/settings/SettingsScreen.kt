@@ -522,8 +522,7 @@ fun SettingsScreen(
     var prootRootfsOptions by remember(context) { mutableStateOf(ProotRootfsCatalog.load(context)) }
     val selectedProotRootfs = remember(prootRootfsAlias, prootRootfsOptions) {
         prootRootfsOptions.firstOrNull { it.alias == prootRootfsAlias }
-            ?: prootRootfsOptions.firstOrNull()
-            ?: ProotRootfsCatalog.defaultOption()
+            ?: prootRootfsOptions.first()
     }
     
     LaunchedEffect(useProotMode) {

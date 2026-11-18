@@ -814,7 +814,6 @@
     <string name="r2frida_install_installing">Установка…</string>
     <string name="r2frida_install_fetching">Получение информации о релизе…</string>
     <string name="r2frida_install_downloading">Скачивание плагина…</string>
-    <string name="r2frida_install_extracting">Распаковка файлов…</string>
     <string name="r2frida_install_done">Установка завершена</string>
     <string name="r2frida_install_continue">Продолжить</string>
     <string name="r2frida_install_switch_hint">Попробуйте сменить источник загрузки ниже и повторите</string>

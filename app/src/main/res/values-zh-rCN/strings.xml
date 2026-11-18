@@ -946,7 +946,6 @@
     <string name="r2frida_install_installing">安装中…</string>
     <string name="r2frida_install_fetching">获取版本信息…</string>
     <string name="r2frida_install_downloading">下载插件中…</string>
-    <string name="r2frida_install_extracting">解压文件中…</string>
     <string name="r2frida_installing_in_proot">正在 proot 中安装 r2frida…</string>
     <string name="r2frida_install_proot_desc">当前已启用 Proot 模式。r2frida 将通过 r2pm 安装到 proot 环境中，而不是下载 Android 插件包。</string>
     <string name="r2frida_install_done">安装完成</string>

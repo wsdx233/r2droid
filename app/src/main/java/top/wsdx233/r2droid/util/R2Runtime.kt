@@ -244,6 +244,20 @@ object R2Runtime {
         }
     }
 
+    internal fun bundledPluginAbi(context: Context): Int {
+        val binDir = File(context.filesDir, "radare2/bin")
+        val process = ProcessBuilder(File(binDir, "r2").absolutePath, "-H", "R2_ABIVERSION")
+            .directory(binDir)
+            .redirectErrorStream(true)
+            .apply { environment().putAll(buildDirectEnvironment(context.filesDir)) }
+            .start()
+        val abi = process.inputStream.bufferedReader().useLines { lines ->
+            lines.mapNotNull { it.trim().toIntOrNull() }.singleOrNull()
+        }
+        check(process.waitFor() == 0 && abi != null && abi > 0) { "Cannot read the bundled radare2 plugin ABI" }
+        return abi
+    }
+
     private fun buildDirectEnvironment(filesDir: File): Map<String, String> {
         val existingLd = System.getenv("LD_LIBRARY_PATH")
         val myLd = "${File(filesDir, "radare2/lib")}:${File(filesDir, "libs")}"

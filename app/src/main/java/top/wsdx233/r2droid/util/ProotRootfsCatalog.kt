@@ -15,7 +15,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 private const val DEFAULT_PROOT_ROOTFS_ALIAS = "ubuntu"
-private const val DEFAULT_PROOT_ROOTFS_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.3-base-arm64.tar.gz"
+private const val BUNDLED_UBUNTU_PLUGIN = "$DEFAULT_PROOT_ROOTFS_ALIAS.sh"
 
 data class ProotRootfsOption(
     val alias: String,
@@ -43,24 +43,9 @@ object ProotRootfsCatalog {
     private const val CACHE_DIR_NAME = "proot-distro-plugins"
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun defaultOption(): ProotRootfsOption = ProotRootfsOption(
-        alias = DEFAULT_PROOT_ROOTFS_ALIAS,
-        displayName = "Ubuntu",
-        comment = "Default rootfs for automatic setup.",
-        distroType = "normal",
-        arch = currentArch(),
-        tarballUrl = DEFAULT_PROOT_ROOTFS_URL,
-        sha256 = null,
-        tarballStripOpt = 0
-    )
-
     fun load(context: Context): List<ProotRootfsOption> {
         val arch = currentArch()
-        val cachedEntries = loadFromCache(context, arch)
-        if (cachedEntries.isNotEmpty()) return cachedEntries
-
-        val assetEntries = loadFromAssets(context, arch)
-        return if (assetEntries.isEmpty()) listOf(defaultOption()) else assetEntries
+        return withBundledUbuntu(context, arch, loadAlternatives(context, arch))
     }
 
     suspend fun refresh(context: Context): List<ProotRootfsOption> = withContext(Dispatchers.IO) {
@@ -68,27 +53,48 @@ object ProotRootfsCatalog {
             val arch = currentArch()
             val remotePlugins = fetchRemotePluginSources()
             cacheRemotePluginSources(context, remotePlugins)
-            normalizeEntries(
+            val entries = normalizeEntries(
                 remotePlugins.mapNotNull { (fileName, content) ->
                     parsePlugin(fileName.removeSuffix(".sh"), arch, content)
                 }
-            ).ifEmpty { load(context) }
+            )
+            if (entries.isEmpty()) load(context) else withBundledUbuntu(context, arch, entries)
         }.getOrElse {
             load(context)
         }
     }
 
     fun resolve(context: Context, alias: String?): ProotRootfsOption {
+        val arch = currentArch()
         val normalizedAlias = alias?.trim().orEmpty()
-        return load(context).firstOrNull { it.alias == normalizedAlias }
-            ?: defaultOption()
+        if (normalizedAlias.isNotEmpty() && normalizedAlias != DEFAULT_PROOT_ROOTFS_ALIAS) {
+            loadAlternatives(context, arch).firstOrNull { it.alias == normalizedAlias }?.let { return it }
+        }
+        return loadBundledUbuntu(context, arch)
     }
+
+    private fun loadBundledUbuntu(context: Context, arch: String): ProotRootfsOption {
+        val content = context.assets.open("$ASSET_PLUGIN_DIR/$BUNDLED_UBUNTU_PLUGIN")
+            .bufferedReader().use { it.readText() }
+        // If Ubuntu Base has no image for this ABI, keep the bundled runtime's ARM64 default.
+        return checkNotNull(parsePlugin(DEFAULT_PROOT_ROOTFS_ALIAS, arch, content)
+            ?: parsePlugin(DEFAULT_PROOT_ROOTFS_ALIAS, "aarch64", content))
+    }
+
+    private fun withBundledUbuntu(context: Context, arch: String, entries: List<ProotRootfsOption>) =
+        buildList(entries.size + 1) {
+            add(loadBundledUbuntu(context, arch))
+            addAll(entries)
+        }
+
+    private fun loadAlternatives(context: Context, arch: String): List<ProotRootfsOption> =
+        loadFromCache(context, arch).ifEmpty { loadFromAssets(context, arch) }
 
     private fun loadFromAssets(context: Context, arch: String): List<ProotRootfsOption> {
         val assetManager = context.assets
         val pluginFiles = runCatching { assetManager.list(ASSET_PLUGIN_DIR)?.toList().orEmpty() }
             .getOrDefault(emptyList())
-            .filter { it.endsWith(".sh") }
+            .filter(::isAlternatePlugin)
             .sorted()
 
         return normalizeEntries(
@@ -108,7 +114,7 @@ object ProotRootfsCatalog {
         return normalizeEntries(
             cacheDir.listFiles()
                 .orEmpty()
-                .filter { it.isFile && it.name.endsWith(".sh") }
+                .filter { it.isFile && isAlternatePlugin(it.name) }
                 .sortedBy { it.name }
                 .mapNotNull { file -> parsePlugin(file.name.removeSuffix(".sh"), arch, file.readText()) }
         )
@@ -116,10 +122,13 @@ object ProotRootfsCatalog {
 
     private fun normalizeEntries(entries: List<ProotRootfsOption>): List<ProotRootfsOption> {
         return entries
-            .filter { it.distroType.isBlank() || it.distroType == "normal" }
+            .filter { !it.isRecommended && (it.distroType.isBlank() || it.distroType == "normal") }
             .distinctBy { it.alias }
-            .sortedWith(compareByDescending<ProotRootfsOption> { it.isRecommended }.thenBy { it.displayName.lowercase() })
+            .sortedBy { it.displayName.lowercase() }
     }
+
+    private fun isAlternatePlugin(name: String): Boolean =
+        name.endsWith(".sh") && name != BUNDLED_UBUNTU_PLUGIN
 
     private fun fetchRemotePluginSources(): List<Pair<String, String>> {
         val listRequest = (URL(GITHUB_CONTENTS_API).openConnection() as HttpURLConnection).apply {
@@ -136,7 +145,7 @@ object ProotRootfsCatalog {
                 val name = obj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
                 val type = obj["type"]?.jsonPrimitive?.content ?: return@mapNotNull null
                 val downloadUrl = obj["download_url"]?.jsonPrimitive?.content ?: return@mapNotNull null
-                if (type == "file" && name.endsWith(".sh")) name to downloadUrl else null
+                if (type == "file" && isAlternatePlugin(name)) name to downloadUrl else null
             }
         } finally {
             listRequest.disconnect()

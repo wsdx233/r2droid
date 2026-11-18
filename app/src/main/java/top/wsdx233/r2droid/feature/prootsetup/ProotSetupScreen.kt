@@ -77,7 +77,7 @@ fun ProotSetupScreen(
         )
     }
     var selectedRootfsAlias by remember {
-        mutableStateOf(SettingsManager.prootRootfsAlias.ifBlank { ProotRootfsCatalog.defaultOption().alias })
+        mutableStateOf(SettingsManager.prootRootfsAlias.ifBlank { rootfsOptions.first().alias })
     }
     var installStarted by remember { mutableStateOf(false) }
 
@@ -99,8 +99,7 @@ fun ProotSetupScreen(
     }
 
     val selectedRootfs = rootfsOptions.firstOrNull { it.alias == selectedRootfsAlias }
-        ?: rootfsOptions.firstOrNull()
-        ?: ProotRootfsCatalog.defaultOption()
+        ?: rootfsOptions.first()
 
     Scaffold(
         topBar = {

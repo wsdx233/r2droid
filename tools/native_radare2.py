@@ -319,10 +319,8 @@ def _write_meson_files(
     ar = env.get("AR", "ar")
     strip = env.get("STRIP", "strip")
     pkg_config = shutil.which("pkg-config")
-    c_args = shlex.split(env.get("CFLAGS", "")) + ["-D__ANDROID_API__=24"]
-    cpp_args = shlex.split(env.get("CXXFLAGS", env.get("CFLAGS", ""))) + [
-        "-D__ANDROID_API__=24"
-    ]
+    c_args = shlex.split(env.get("CFLAGS", ""))
+    cpp_args = shlex.split(env.get("CXXFLAGS", env.get("CFLAGS", "")))
     link_args = shlex.split(env.get("LDFLAGS", ""))
     includes = _include_directories(source)
     c_args.extend(f"-I{path}" for path in includes)
@@ -366,53 +364,14 @@ def _write_meson_files(
     return cross, native
 
 
-def _build_host_sleighc(source: Path, work: Path, run: Run) -> Path:
-    """Build the host helper required to generate r2ghidra Sleigh data."""
+def _build_host_sleighc(source: Path, work: Path, native: Path, jobs: int, run: Run) -> Path:
+    """Build the host generator with ghidra-native's own source lists and patches."""
     ghidra = source / "subprojects" / "ghidra-native"
-    meson_text = (ghidra / "meson.build").read_text(encoding="utf-8")
-    relative_sources: list[str] = []
-    for variable in ("base_sources", "decompiler_sources", "slgh_sources", "sleigh_compiler_sources"):
-        match = re.search(
-            rf"(?ms)^{variable}\s*=\s*\[(.*?)^\]",
-            meson_text,
-        )
-        if match is None:
-            raise RuntimeError(f"ghidra-native Meson file has no {variable} list")
-        relative_sources.extend(re.findall(r"'([^']+\.cc)'", match.group(1)))
-    relative_sources = [
-        path for path in dict.fromkeys(relative_sources)
-        if path != "src/decompiler/string_ghidra.cc"
-    ]
-    sources = [ghidra / relative for relative in relative_sources]
-    missing = [path for path in sources if not path.is_file()]
-    if missing:
-        raise RuntimeError("ghidra-native is missing sleighc source(s): " + ", ".join(map(str, missing)))
-    cxx = shutil.which("c++") or shutil.which("g++")
-    if cxx is None:
-        raise RuntimeError("host C++ compiler is required to build r2ghidra sleighc")
-    output = work / "host-tools" / "sleighc"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.unlink(missing_ok=True)
-    _run(
-        run,
-        [
-            cxx,
-            "-std=c++14",
-            "-O2",
-            "-DNDEBUG",
-            f"-I{ghidra / 'src' / 'decompiler'}",
-            *(str(path) for path in sources),
-            "-lz",
-            "-o",
-            str(output),
-        ],
-        work,
-        {},
-    )
-    if not output.is_file():
-        raise RuntimeError(f"host sleighc build produced no executable: {output}")
-    output.chmod(0o755)
-    return output
+    build = work / "host-tools" / "ghidra-native"
+    build.parent.mkdir(parents=True, exist_ok=True)
+    _run(run, ["meson", "setup", str(build), str(ghidra), "--native-file", str(native), "-Dbuildtype=release"], work, {})
+    _run(run, ["meson", "compile", "-C", str(build), "-j", str(max(1, jobs)), "sleighc"], work, {})
+    return build / "sleighc"
 
 
 def _build_host_r2dec_tools(source: Path, work: Path, run: Run) -> tuple[Path, Path]:
@@ -535,7 +494,7 @@ def _build_plugin(
     )
     if name == "r2ghidra":
         _run(run, ["meson", "subprojects", "download"], source, plugin_env)
-        host_sleighc = _build_host_sleighc(source, work, run)
+        host_sleighc = _build_host_sleighc(source, work, native, jobs, run)
         _use_host_sleighc(source, host_sleighc)
     if name == "r2dec":
         _run(run, ["meson", "subprojects", "download"], source, plugin_env)
