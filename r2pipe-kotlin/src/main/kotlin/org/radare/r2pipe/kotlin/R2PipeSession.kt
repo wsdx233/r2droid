@@ -8,6 +8,10 @@ interface R2PipeSession : AutoCloseable {
     /** Executes a JSON-producing r2 command unchanged; returns its raw text without parsing. */
     fun cmdj(command: String): String = cmd(command)
 
+    /**
+     * Streams the command response. With [R2Pipe], NUL terminates both streamed and buffered
+     * responses; request hex text with `p8` rather than raw `pr` output for arbitrary bytes.
+     */
     fun cmdStream(command: String): InputStream
 
     fun interrupt()

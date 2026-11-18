@@ -292,6 +292,7 @@ class R2Pipe private constructor(
     companion object {
         @JvmStatic
         @JvmOverloads
+        @Throws(IOException::class)
         fun open(
             launchSpec: LaunchSpec,
             logger: R2PipeLogger? = null,

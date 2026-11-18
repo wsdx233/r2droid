@@ -1,6 +1,8 @@
 package org.radare.r2pipe.kotlin
 
 import okhttp3.Call
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,7 +19,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class R2PipeHttp private constructor(
-    private val baseUrl: String,
+    private val baseUrl: HttpUrl,
     private val process: Process?,
     private val logger: R2PipeLogger?,
     private val processKiller: ProcessKiller
@@ -25,6 +27,9 @@ class R2PipeHttp private constructor(
     @Volatile
     private var running = true
 
+    private val commandEndpoint = baseUrl.newBuilder()
+        .encodedPath(baseUrl.encodedPath.trimEnd('/') + "/cmd/")
+        .build()
     private val requestLock = Any()
     private var closed = false
     private val activeRequests = mutableMapOf<Call, HttpResponseInputStream?>()
@@ -140,12 +145,14 @@ class R2PipeHttp private constructor(
 
     private fun commandRequest(command: String): Request {
         requireNulFreeCommand(command)
-        val endpoint = "$baseUrl/cmd/"
         val request = Request.Builder()
         return when (command) {
             // Even percent-encoded dot segments normalize away in HTTP URLs. r2 also accepts raw command bodies.
-            ".", ".." -> request.url(endpoint).post(command.toRequestBody(COMMAND_TEXT))
-            else -> request.url(endpoint + encodeR2Command(command)).get()
+            ".", ".." -> request.url(commandEndpoint).post(command.toRequestBody(COMMAND_TEXT))
+            else -> {
+                val url = commandEndpoint.newBuilder().addEncodedPathSegment(encodeR2Command(command)).build()
+                request.url(url).get()
+            }
         }.build()
     }
 
@@ -260,6 +267,7 @@ class R2PipeHttp private constructor(
         private val COMMAND_TEXT = "text/plain; charset=utf-8".toMediaType()
         private const val HEX_DIGITS = "0123456789ABCDEF"
 
+        /** Accepts an HTTP(S) server URL with an optional path prefix, but no query or fragment. */
         @JvmStatic
         @JvmOverloads
         fun connect(
@@ -267,8 +275,12 @@ class R2PipeHttp private constructor(
             logger: R2PipeLogger? = null,
             processKiller: ProcessKiller = ProcessKiller.DEFAULT
         ): R2PipeHttp {
+            val url = baseUrl.toHttpUrl()
+            require(url.encodedQuery == null && url.encodedFragment == null) {
+                "The r2 HTTP base URL must not contain a query or fragment"
+            }
             return R2PipeHttp(
-                baseUrl = baseUrl.trimEnd('/'),
+                baseUrl = url,
                 process = null,
                 logger = logger,
                 processKiller = processKiller
@@ -299,7 +311,7 @@ class R2PipeHttp private constructor(
             builder.redirectErrorStream(false)
             val process = builder.start()
             val client = R2PipeHttp(
-                baseUrl = "http://127.0.0.1:$port",
+                baseUrl = "http://127.0.0.1:$port".toHttpUrl(),
                 process = process,
                 logger = logger,
                 processKiller = processKiller

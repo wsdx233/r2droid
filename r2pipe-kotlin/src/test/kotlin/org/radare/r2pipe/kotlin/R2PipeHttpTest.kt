@@ -33,20 +33,30 @@ class R2PipeHttpTest {
     }
 
     @Test
+    fun connectRejectsQueryOrFragmentEvenIfEmpty() {
+        for (suffix in listOf("?view=demo", "#overview", "?", "#")) {
+            assertFailsWith<IllegalArgumentException>(suffix) {
+                R2PipeHttp.connect("http://127.0.0.1/instance$suffix").close()
+            }
+        }
+    }
+
+    @Test
     fun cmdUsesEncodedPathAndReturnsBody() {
         val capturedPath = AtomicReference<String>()
-        val baseUrl = startServer { exchange ->
+        val baseUrl = startServer("/") { exchange ->
             capturedPath.set(exchange.requestURI.rawPath)
             val response = "ok"
             exchange.sendResponseHeaders(200, response.toByteArray().size.toLong())
             exchange.responseBody.use { it.write(response.toByteArray()) }
         }
 
-        val client = R2PipeHttp.connect(baseUrl)
-        val result = client.cmd("px 8 @ 0x1000")
+        val result = R2PipeHttp.connect("$baseUrl/proxy%2Ftenant/r2%3F%23///").use { client ->
+            client.cmd("px 8 @ 0x1000")
+        }
 
         assertEquals("ok", result)
-        assertEquals("/cmd/px%208%20%40%200x1000", capturedPath.get())
+        assertEquals("/proxy%2Ftenant/r2%3F%23/cmd/px%208%20%40%200x1000", capturedPath.get())
     }
 
     @Test
@@ -73,17 +83,17 @@ class R2PipeHttpTest {
     @Test
     fun dotSegmentsAreCommandsNotDirectoryTraversal() {
         val received = ConcurrentLinkedQueue<Triple<String, String, String>>()
-        val baseUrl = startServer { exchange ->
+        val baseUrl = startServer("/instance/") { exchange ->
             exchange.use {
                 received.add(Triple(it.requestMethod, it.requestURI.rawPath, it.requestBody.readBytes().decodeToString()))
                 it.sendResponseHeaders(200, -1)
             }
         }
-        R2PipeHttp.connect(baseUrl).use { client ->
+        R2PipeHttp.connect("$baseUrl/instance").use { client ->
             client.cmd(".")
             client.cmdStream("..").use { it.readBytes() }
         }
-        assertEquals(listOf(Triple("POST", "/cmd/", "."), Triple("POST", "/cmd/", "..")), received.toList())
+        assertEquals(listOf(Triple("POST", "/instance/cmd/", "."), Triple("POST", "/instance/cmd/", "..")), received.toList())
     }
 
     @Test
@@ -365,9 +375,9 @@ class R2PipeHttpTest {
         }
     }
 
-    private fun startServer(handler: (com.sun.net.httpserver.HttpExchange) -> Unit): String {
+    private fun startServer(contextPath: String = "/cmd/", handler: (com.sun.net.httpserver.HttpExchange) -> Unit): String {
         val httpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        httpServer.createContext("/cmd/") { exchange ->
+        httpServer.createContext(contextPath) { exchange ->
             handler(exchange)
         }
         httpServer.executor = null

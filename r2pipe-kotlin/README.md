@@ -89,9 +89,10 @@ rejected while that stream is active.
 
 - Read each response stream until EOF before closing it. JSON parsers must also
   consume document EOF, not stop immediately after the final object or array.
-- Closing a stream before its terminator invalidates the session and forcibly
-  terminates its owned process, even if another thread is blocked in `read()`.
-  That read fails with an `IOException`. Open a new session rather than reusing it.
+- Closing a stream before its terminator invalidates the session and requests
+  forcible termination. When r2 is the direct child and the only stdout writer,
+  this unblocks `read()` with an `IOException`. For wrappers, see [Process control](#process-control).
+  Open a new session rather than reusing it.
 - EOF before the response terminator is an error, not a successful partial result.
   I/O failures invalidate the session and release its process and streams.
 - `close()` and `forceClose()` are safe to repeat. `forceClose()` can still
@@ -99,6 +100,13 @@ rejected while that stream is active.
 - LF, CRLF, and CR in commands are normalized to `;` so a multiline command is
   sent as one request and produces one response frame. Embedded NUL is rejected
   without invalidating an otherwise healthy session.
+
+`r2 -q0` uses NUL as the response terminator, so **output must not contain NUL**.
+`cmdStream()` streams the same frames as `cmd()`; it is not a raw binary channel.
+To read arbitrary bytes, use `r2.cmd("p8 3 @ 0").trim()` (hex text, e.g. `410042`
+for bytes `41 00 42`) instead of `pr 3 @ 0`. A payload NUL looks like a successful
+end of frame; the next command may receive the previous reply's tail. If this
+happens, close the session and open a new one before sending more commands.
 
 ## Example: HTTP
 
@@ -121,9 +129,13 @@ fun main() {
 
 ### HTTP lifecycle
 
-`connect(url)` uses an existing server: closing the client does not send `q`
-or stop the remote process. `spawn(spec, port)` owns its process; the port must
-be free before launch. Startup requires the process to remain alive and the
+`connect(url)` accepts an HTTP(S) URL with an optional path prefix: a base of
+`https://host/instance/` sends commands to `/instance/cmd/`. A query or fragment
+(even an empty `?` or `#`) raises `IllegalArgumentException` at `connect()`,
+before any request. Closing this client does not send `q` or stop the remote process.
+
+`spawn(spec, port)` owns its process; the port must be free before launch.
+Startup requires the process to remain alive and the
 selected port to answer `/cmd/?V` with a radare2 version. Failed startup
 terminates the launched process. Closing a spawned client requests shutdown
 and terminates that process.
@@ -154,6 +166,18 @@ val logger = R2PipeLogger { level, message ->
 ```
 
 ## Process control
+
+The default `ProcessKiller` terminates only the process created by `LaunchSpec`.
+Start r2 directly, or make the last line of a POSIX wrapper replace the shell:
+
+```sh
+exec radare2 -q0 "$@"
+```
+
+If the wrapper must stay alive, supply a `ProcessKiller` that terminates the
+wrapper **and** the owned descendants holding its pipes. Killing just the
+wrapper can leave r2 running after a startup timeout or a forced close, with
+another thread still blocked in `read()` until the last writer closes stdout.
 
 `ProcessKiller` lets platform code define how interrupt / terminate works.
 This is useful on Android, where sending `SIGINT` to the spawned process tree may require custom shell logic.
