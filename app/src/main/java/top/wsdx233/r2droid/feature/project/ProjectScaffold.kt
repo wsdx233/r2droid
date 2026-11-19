@@ -1291,6 +1291,13 @@ fun ProjectScaffold(
                                         selectedDetailTabIndex = 0
                                         viewModel.currentDetailTab = 0
                                         viewModel.onEvent(ProjectEvent.JumpToAddress(address))
+                                    },
+                                    onJumpToDisasm = { address ->
+                                        markVisited(address)
+                                        selectBuiltinCategory(MainCategory.Detail)
+                                        selectedDetailTabIndex = 1
+                                        viewModel.currentDetailTab = 1
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(address))
                                     }
                                 )
                                 else -> {

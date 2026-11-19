@@ -385,8 +385,11 @@ fun AnalysisConfigScreen(
             Text(stringResource(R.string.analysis_startup_options), style = MaterialTheme.typography.titleMedium)
             
             Row(
-                modifier = Modifier.fillMaxWidth().clickable { writeCacheEnabled = !writeCacheEnabled },
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { writeCacheEnabled = !writeCacheEnabled },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.analysis_write_cache))
@@ -401,14 +404,23 @@ fun AnalysisConfigScreen(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable(enabled = !writeCacheEnabled) { isWritable = !isWritable }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !writeCacheEnabled) { isWritable = !isWritable }
             ) {
                 Checkbox(
                     checked = isWritable && !writeCacheEnabled,
                     onCheckedChange = { isWritable = it },
                     enabled = !writeCacheEnabled
                 )
-                Text(stringResource(R.string.analysis_writable_mode))
+                Text(
+                    text = stringResource(R.string.analysis_writable_mode),
+                    color = if (writeCacheEnabled) {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
             }
             
             OutlinedTextField(

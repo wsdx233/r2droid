@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -275,10 +276,35 @@ fun ProjectScreen(
                 ))
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(if (isExistingProject) R.string.project_exit_update_message else R.string.project_exit_message))
                     if (sessions[activeSessionId]?.writeCacheEnabled == true) {
-                        Text(stringResource(R.string.analysis_write_cache_close_warning))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f),
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier
+                                        .padding(top = 1.dp)
+                                        .size(18.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.analysis_write_cache_close_warning),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
                     }
                 }
             },
