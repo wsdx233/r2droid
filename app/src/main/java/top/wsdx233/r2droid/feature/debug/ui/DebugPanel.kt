@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,12 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import org.json.JSONObject
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.debug.data.DebugBackend
 import top.wsdx233.r2droid.feature.debug.data.DebugCapabilities
+import top.wsdx233.r2droid.feature.debug.data.DebugRegister
 import top.wsdx233.r2droid.feature.debug.data.DebugStackEntry
+import top.wsdx233.r2droid.feature.debug.data.DebugStopReason
+import top.wsdx233.r2droid.feature.debug.data.DebugStopReasonType
+import top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry
 import top.wsdx233.r2droid.feature.disasm.DebugStatus
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
@@ -50,7 +53,8 @@ fun DebugPanel(
     debugStatus: DebugStatus,
     debugBackend: DebugBackend,
     pcAddress: Long?,
-    registers: JSONObject,
+    stopReason: DebugStopReason?,
+    registers: List<DebugRegister>,
     breakpoints: Set<Long>,
     stackEntries: List<DebugStackEntry>,
     stackPointer: Long?,
@@ -58,7 +62,7 @@ fun DebugPanel(
     memoryBytes: ByteArray,
     memoryLoading: Boolean,
     memoryError: String?,
-    traceEntries: List<top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry>,
+    traceEntries: List<DebugTraceEntry>,
     capabilities: DebugCapabilities = DebugCapabilities(),
     autoShowRegisters: Boolean = false,
     onAutoShowRegistersChange: (Boolean) -> Unit = {},
@@ -97,6 +101,7 @@ fun DebugPanel(
                 debugStatus = debugStatus,
                 debugBackend = debugBackend,
                 pcAddress = pcAddress,
+                stopReason = stopReason,
                 onSettings = onSettings
             )
 
@@ -183,6 +188,7 @@ private fun DebugPanelHeader(
     debugStatus: DebugStatus,
     debugBackend: DebugBackend,
     pcAddress: Long?,
+    stopReason: DebugStopReason?,
     onSettings: () -> Unit
 ) {
     Row(
@@ -200,17 +206,51 @@ private fun DebugPanelHeader(
             Text(
                 text = stringResource(
                     R.string.debug_panel_pc,
-                    pcAddress?.let { "0x${it.toString(16).uppercase()}" }
+                    pcAddress?.let { "0x${it.toULong().toString(16).uppercase()}" }
                         ?: stringResource(R.string.debug_panel_no_pc)
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = LocalAppFont.current
             )
+            stopReason?.let { DebugStopDetails(it) }
         }
         IconButton(onClick = onSettings, enabled = debugStatus == DebugStatus.IDLE || debugStatus == DebugStatus.ERROR) {
             Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.debug_panel_settings))
         }
+    }
+}
+
+@Composable
+private fun DebugStopDetails(reason: DebugStopReason) {
+    val color = when (reason.type) {
+        DebugStopReasonType.ESIL_ERROR, DebugStopReasonType.EXCEPTION, DebugStopReasonType.SIGNAL ->
+            MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val style = MaterialTheme.typography.bodySmall
+    Text(
+        text = stringResource(R.string.debug_panel_stop_reason, reason.signal?.let { "${reason.type.name} · $it" } ?: reason.type.name),
+        style = style,
+        color = color,
+        fontWeight = FontWeight.Bold
+    )
+    reason.address?.let {
+        Text(
+            text = stringResource(R.string.debug_panel_stop_instruction, "0x${it.toULong().toString(16).uppercase()}"),
+            style = style,
+            color = color
+        )
+    }
+    reason.accessAddress?.let {
+        Text(
+            text = stringResource(R.string.debug_panel_stop_access, "0x${it.toULong().toString(16).uppercase()}"),
+            style = style,
+            color = color
+        )
+    }
+    reason.message?.takeIf { it.isNotBlank() }?.let {
+        Text(text = it, style = style, color = color, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -254,8 +294,11 @@ private fun DebugControlsTab(
                 }
             }
             DebugStatus.ERROR -> {
-                IconButton(onClick = onStartDebugging) {
-                    Icon(Icons.Default.Warning, stringResource(R.string.debug_panel_restart))
+                IconButton(onClick = onResetDebugging) {
+                    Icon(Icons.Default.PowerSettingsNew, stringResource(R.string.debug_panel_reset))
+                }
+                IconButton(onClick = onStopDebugging) {
+                    Icon(Icons.Default.Close, stringResource(R.string.debug_panel_stop))
                 }
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Default.Settings, stringResource(R.string.debug_panel_settings))

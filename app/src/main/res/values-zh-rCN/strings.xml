@@ -437,13 +437,16 @@
     <string name="debug_panel_tab_trace">追踪</string>
     <string name="debug_panel_pc">PC: %1$s</string>
     <string name="debug_panel_no_pc">--</string>
+    <string name="debug_panel_stop_reason">停止原因：%1$s</string>
+    <string name="debug_esil_edit_locked">请先关闭 ESIL 调试再编辑文件。模拟写入仅临时有效。</string>
+    <string name="debug_panel_stop_instruction">指令地址：%1$s</string>
+    <string name="debug_panel_stop_access">内存访问地址：%1$s</string>
     <string name="debug_footer_next_pc">下个 PC: %1$s</string>
     <string name="debug_register_auto_show">自动弹出寄存器</string>
     <string name="debug_panel_start">开始调试</string>
     <string name="debug_panel_settings">调试设置</string>
     <string name="debug_panel_progress">调试操作进行中</string>
     <string name="debug_panel_pause">暂停</string>
-    <string name="debug_panel_restart">重新开始调试</string>
     <string name="debug_panel_continue">继续</string>
     <string name="debug_panel_step_into">单步进入</string>
     <string name="debug_panel_step_over">单步越过</string>

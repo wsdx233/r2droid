@@ -470,13 +470,16 @@
     <string name="debug_panel_tab_trace">Трасса</string>
     <string name="debug_panel_pc">PC: %1$s</string>
     <string name="debug_panel_no_pc">--</string>
+    <string name="debug_panel_stop_reason">Причина остановки: %1$s</string>
+    <string name="debug_esil_edit_locked">Завершите отладку ESIL, чтобы изменить файл. Запись при эмуляции временная.</string>
+    <string name="debug_panel_stop_instruction">Адрес инструкции: %1$s</string>
+    <string name="debug_panel_stop_access">Адрес обращения к памяти: %1$s</string>
     <string name="debug_footer_next_pc">Следующий PC: %1$s</string>
     <string name="debug_register_auto_show">Авто-показ регистров</string>
     <string name="debug_panel_start">Начать отладку</string>
     <string name="debug_panel_settings">Настройки отладки</string>
     <string name="debug_panel_progress">Операция отладки выполняется</string>
     <string name="debug_panel_pause">Пауза</string>
-    <string name="debug_panel_restart">Перезапустить отладку</string>
     <string name="debug_panel_continue">Продолжить</string>
     <string name="debug_panel_step_into">Шаг внутрь</string>
     <string name="debug_panel_step_over">Шаг через</string>

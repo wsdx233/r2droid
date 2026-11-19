@@ -493,13 +493,16 @@
     <string name="debug_panel_tab_trace">Trace</string>
     <string name="debug_panel_pc">PC: %1$s</string>
     <string name="debug_panel_no_pc">--</string>
+    <string name="debug_panel_stop_reason">Motivo da parada: %1$s</string>
+    <string name="debug_esil_edit_locked">Encerre a depuração ESIL para editar o arquivo. As gravações simuladas são temporárias.</string>
+    <string name="debug_panel_stop_instruction">Endereço da instrução: %1$s</string>
+    <string name="debug_panel_stop_access">Endereço de acesso à memória: %1$s</string>
     <string name="debug_footer_next_pc">Próximo PC: %1$s</string>
     <string name="debug_register_auto_show">Mostrar registradores automaticamente</string>
     <string name="debug_panel_start">Iniciar Depuração</string>
     <string name="debug_panel_settings">Configurações de Depuração</string>
     <string name="debug_panel_progress">Operação de depuração em andamento</string>
     <string name="debug_panel_pause">Pausar</string>
-    <string name="debug_panel_restart">Reiniciar Depuração</string>
     <string name="debug_panel_continue">Continuar</string>
     <string name="debug_panel_step_into">Entrar (Step Into)</string>
     <string name="debug_panel_step_over">Passar Por Cima (Step Over)</string>

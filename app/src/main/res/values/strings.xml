@@ -493,13 +493,16 @@
     <string name="debug_panel_tab_trace">Trace</string>
     <string name="debug_panel_pc">PC: %1$s</string>
     <string name="debug_panel_no_pc">--</string>
+    <string name="debug_panel_stop_reason">Stop reason: %1$s</string>
+    <string name="debug_esil_edit_locked">Stop ESIL to edit this file. Simulated writes are temporary.</string>
+    <string name="debug_panel_stop_instruction">Instruction address: %1$s</string>
+    <string name="debug_panel_stop_access">Memory access address: %1$s</string>
     <string name="debug_footer_next_pc">Next PC: %1$s</string>
     <string name="debug_register_auto_show">Auto show registers</string>
     <string name="debug_panel_start">Start Debug</string>
     <string name="debug_panel_settings">Debug Settings</string>
     <string name="debug_panel_progress">Debug operation in progress</string>
     <string name="debug_panel_pause">Pause</string>
-    <string name="debug_panel_restart">Restart Debug</string>
     <string name="debug_panel_continue">Continue</string>
     <string name="debug_panel_step_into">Step Into</string>
     <string name="debug_panel_step_over">Step Over</string>

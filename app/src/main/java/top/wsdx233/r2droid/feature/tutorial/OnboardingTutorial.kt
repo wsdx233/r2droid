@@ -132,8 +132,7 @@ object OnboardingTutorial {
                 ?: throw IllegalStateException(context.getString(R.string.tutorial_demo_binary_missing))
 
             R2PipeManager.pendingFilePath = demoTargetPath
-            R2PipeManager.pendingRestoreFlags = null
-            R2PipeManager.pendingProjectId = null
+            R2PipeManager.pendingProjectRestore = null
             R2PipeManager.pendingCustomCommand = null
 
             awaitingDemoSession = true

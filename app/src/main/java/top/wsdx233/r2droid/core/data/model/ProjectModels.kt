@@ -19,7 +19,8 @@ data class SavedProject(
     val archType: String,               // Architecture type (e.g., arm64, x86)
     val binType: String,                // Binary type (e.g., elf, pe, mach0)
     val analysisLevel: String = "",     // Analysis level used (aaa, aaaa, etc.)
-    val ownsBinaryCopy: Boolean = false // Whether binaryPath points to an app/project-owned copy
+    val ownsBinaryCopy: Boolean = false, // Whether binaryPath points to an app/project-owned copy
+    val writeCacheEnabled: Boolean = false
 ) {
     companion object {
         fun fromJson(json: JSONObject): SavedProject {
@@ -34,7 +35,8 @@ data class SavedProject(
                 archType = json.optString("archType", ""),
                 binType = json.optString("binType", ""),
                 analysisLevel = json.optString("analysisLevel", ""),
-                ownsBinaryCopy = json.optBoolean("ownsBinaryCopy", false)
+                ownsBinaryCopy = json.optBoolean("ownsBinaryCopy", false),
+                writeCacheEnabled = json.optBoolean("writeCacheEnabled", false)
             )
         }
     }
@@ -52,6 +54,7 @@ data class SavedProject(
             put("binType", binType)
             put("analysisLevel", analysisLevel)
             put("ownsBinaryCopy", ownsBinaryCopy)
+            put("writeCacheEnabled", writeCacheEnabled)
         }
     }
 

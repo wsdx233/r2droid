@@ -10,15 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import org.json.JSONObject
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.feature.debug.data.DebugRegister
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterBottomSheet(
-    registers: JSONObject,
+    registers: List<DebugRegister>,
     autoShowRegisters: Boolean,
     onAutoShowRegistersChange: (Boolean) -> Unit,
     onDismissRequest: () -> Unit
@@ -72,35 +71,17 @@ fun RegisterBottomSheet(
 
 @Composable
 fun RegisterGrid(
-    registers: JSONObject,
+    registers: List<DebugRegister>,
     modifier: Modifier = Modifier
 ) {
-    val priority = listOf("pc", "rip", "eip", "ip", "sp", "rsp", "esp", "bp", "rbp", "ebp", "flags", "eflags", "rflags")
-    val keys = mutableListOf<String>()
-    registers.keys().forEach { keys.add(it) }
-    keys.sortWith(compareBy<String> { key ->
-        val normalized = key.lowercase(Locale.ROOT)
-        val exact = priority.indexOf(normalized)
-        when {
-            exact >= 0 -> exact
-            normalized.endsWith("ip") -> 20
-            normalized.endsWith("sp") -> 21
-            normalized.endsWith("bp") -> 22
-            else -> 100
-        }
-    }.thenBy { it.lowercase(Locale.ROOT) })
-
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
     ) {
-        items(keys) { key ->
-            val valueStr = when (val value = registers.opt(key)) {
-                is Number -> "0x${value.toLong().toString(16).padStart(8, '0')}"
-                else -> "$value"
-            }
+        items(registers, key = { it.name }) { register ->
+            val valueStr = "0x${register.value.toULong().toString(16).padStart(8, '0')}"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -108,7 +89,7 @@ fun RegisterGrid(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = key.uppercase(),
+                    text = register.name.uppercase(),
                     fontWeight = FontWeight.Bold,
                     fontFamily = LocalAppFont.current,
                     modifier = Modifier.weight(0.4f),

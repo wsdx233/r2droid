@@ -281,15 +281,14 @@ fun MainAppNavigation(
         if (mode != "auto") {
             R2PipeManager.pendingFilePath = null
             R2PipeManager.pendingCustomCommand = null
-            R2PipeManager.pendingRestoreFlags = null
-            R2PipeManager.pendingProjectId = null
+            R2PipeManager.pendingProjectRestore = null
             R2PipeManager.pendingAutoSaveProject = null
             return AppScreen.Home
         }
         return if (
             R2PipeManager.pendingFilePath != null ||
             R2PipeManager.pendingCustomCommand != null ||
-            R2PipeManager.pendingRestoreFlags != null
+            R2PipeManager.pendingProjectRestore != null
         ) {
             AppScreen.Project
         } else {
@@ -302,7 +301,7 @@ fun MainAppNavigation(
             val filePath = IntentFileResolver.resolve(context, pendingFileUri)
             if (filePath != null) {
                 R2PipeManager.pendingFilePath = filePath
-                R2PipeManager.pendingRestoreFlags = null
+                R2PipeManager.pendingProjectRestore = null
                 R2PipeManager.pendingAutoSaveProject = null
                 currentScreen = if (AppVariant.shouldGuideProotInstall(context)) {
                     Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
@@ -369,7 +368,7 @@ fun MainAppNavigation(
                     val rawArgs = command.trim().removePrefix("r2 ").removePrefix("r2").trim()
                     R2PipeManager.pendingCustomCommand = rawArgs.ifBlank { "-" }
                     R2PipeManager.pendingFilePath = null
-                    R2PipeManager.pendingRestoreFlags = null
+                    R2PipeManager.pendingProjectRestore = null
                     R2PipeManager.pendingAutoSaveProject = null
                     if (AppVariant.shouldGuideProotInstall(context)) {
                         Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
@@ -389,7 +388,7 @@ fun MainAppNavigation(
                 onOpenTarget = { path ->
                     R2PipeManager.pendingFilePath = path
                     R2PipeManager.pendingCustomCommand = null
-                    R2PipeManager.pendingRestoreFlags = null
+                    R2PipeManager.pendingProjectRestore = null
                     R2PipeManager.pendingAutoSaveProject = null
                     R2PipeManager.pendingOpenR2Flutter = true
                     currentScreen = AppScreen.Project
@@ -405,7 +404,7 @@ fun MainAppNavigation(
                 onConnect = { command ->
                     R2PipeManager.pendingCustomCommand = command
                     R2PipeManager.pendingFilePath = null
-                    R2PipeManager.pendingRestoreFlags = null
+                    R2PipeManager.pendingProjectRestore = null
                     R2PipeManager.pendingAutoSaveProject = null
                     if (AppVariant.shouldGuideProotInstall(context)) {
                         Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()

@@ -88,12 +88,6 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
         }
     }
 
-    suspend fun writeAsm(addr: Long, asm: String): Result<String> {
-        // wa [asm] @ [addr]
-        val escaped = asm.replace("\"", "\\\"")
-        return r2DataSource.execute("wa $escaped @ $addr")
-    }
-
     suspend fun getXrefs(addr: Long): Result<XrefsData> {
         return runCatching {
             // Get refs FROM current address (axfj)

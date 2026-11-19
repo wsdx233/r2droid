@@ -111,6 +111,7 @@ import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
@@ -132,6 +133,7 @@ import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
+import top.wsdx233.r2droid.feature.project.patches.PatchesScreen
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
 import top.wsdx233.r2droid.feature.r2frida.data.*
 import top.wsdx233.r2droid.feature.r2frida.ui.*
@@ -311,19 +313,18 @@ fun ProjectScaffold(
         }
     }
 
-    // R2Pipe busy state for progress indicator
-    val r2State by R2PipeManager.state.collectAsState()
+    // Paging issues short R2 commands. Observe them in the effect, not in the scaffold's
+    // composition: quick reads should never invalidate the project tabs or viewer.
     var showBusy by remember { mutableStateOf(false) }
     var busyCommand by remember { mutableStateOf("") }
 
-    androidx.compose.runtime.LaunchedEffect(r2State) {
-        when (val s = r2State) {
-            is R2PipeManager.State.Executing -> {
-                busyCommand = s.command
-                delay(300)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        R2PipeManager.state.collectLatest { state ->
+            if (state is R2PipeManager.State.Executing) {
+                if (!showBusy) delay(300)
+                busyCommand = state.command
                 showBusy = true
-            }
-            else -> {
+            } else {
                 showBusy = false
             }
         }
@@ -355,7 +356,14 @@ fun ProjectScaffold(
         addAll(baseDetailTabs)
         addAll(pluginDetailTabs.map { -1 })
     }
-    val baseProjectTabs = listOf(R.string.proj_tab_settings, R.string.proj_tab_cmd, R.string.proj_tab_logs)
+    val sessions by R2PipeManager.sessions.collectAsState()
+    val cacheSession = sessions[sessionId]?.takeIf { it.writeCacheEnabled }
+    val baseProjectTabs = buildList {
+        add(R.string.proj_tab_settings)
+        add(R.string.proj_tab_cmd)
+        add(R.string.proj_tab_logs)
+        if (cacheSession != null) add(R.string.proj_tab_patches)
+    }
     val pluginProjectTabs by PluginManager.projectTabs.collectAsState()
     val pluginProjectActions by PluginManager.projectActions.collectAsState()
     val projectTabs = buildList {
@@ -495,7 +503,7 @@ fun ProjectScaffold(
             MainCategory.Project -> buildCurrentTabAliases(
                 selectedIndex = selectedProjectTabIndex,
                 allTitles = projectTabs,
-                baseKeys = listOf("project.settings", "project.command", "project.logs"),
+                baseKeys = listOf("project.settings", "project.command", "project.logs", "project.patches"),
                 baseSize = baseProjectTabs.size,
                 pluginKeys = pluginProjectTabs.map { it.tab.key }
             )
@@ -1274,6 +1282,17 @@ fun ProjectScaffold(
                                     onCommandHistoryChange = { cmdHistory = it }
                                 )
                                 selectedProjectTabIndex == 2 -> LogList(logs, onClearLogs = { viewModel.onEvent(ProjectEvent.ClearLogs) })
+                                selectedProjectTabIndex == 3 && cacheSession != null -> PatchesScreen(
+                                    session = cacheSession,
+                                    onChanged = viewModel::invalidateBinaryViews,
+                                    onJump = { address ->
+                                        markVisited(address)
+                                        selectBuiltinCategory(MainCategory.Detail)
+                                        selectedDetailTabIndex = 0
+                                        viewModel.currentDetailTab = 0
+                                        viewModel.onEvent(ProjectEvent.JumpToAddress(address))
+                                    }
+                                )
                                 else -> {
                                     val pluginTab = pluginProjectTabs.getOrNull(selectedProjectTabIndex - baseProjectTabs.size)
                                     if (pluginTab == null) {
@@ -1914,10 +1933,10 @@ private fun ProjectSubTabs(
         }
         MainCategory.R2Flutter -> Unit
         MainCategory.Project -> TabRow(
-            selectedTabIndex = selectedProjectTabIndex,
+            selectedTabIndex = selectedProjectTabIndex.coerceAtMost(projectTabs.lastIndex),
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { indicator(it, selectedProjectTabIndex) }
+            indicator = { indicator(it, selectedProjectTabIndex.coerceAtMost(projectTabs.lastIndex)) }
         ) {
             projectTabs.forEachIndexed { i, t -> Tab(selectedProjectTabIndex == i, { onProjectTabSelected(i) }, text = { Text(t) }) }
         }

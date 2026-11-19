@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="proj_tab_patches">Patches</string>
+    <string name="patches_actions">Ações de patch</string>
+    <string name="patches_summary">Pendentes: %1$d · Gravados: %2$d</string>
+    <string name="patches_summary_with_superseded">Pendentes: %1$d · Gravados: %2$d · Substituídos: %3$d</string>
+    <string name="patches_loading">Carregando patches…</string>
+    <string name="patches_empty">Não há patches no cache desta sessão. As edições feitas pelo cache de gravação aparecerão aqui.</string>
+    <string name="patches_layered">Há várias camadas de cache ativas. Algumas entradas podem estar ocultas e as ações que exigem o cache completo estão indisponíveis.</string>
+    <string name="patches_pending">Pendente</string>
+    <string name="patches_written">Gravado</string>
+    <string name="patches_superseded">Substituído</string>
+    <plurals name="patches_byte_count">
+        <item quantity="one">%d byte</item>
+        <item quantity="other">%d bytes</item>
+    </plurals>
+    <string name="patches_preview">Exibindo os primeiros %1$d de %2$d bytes de cada versão.</string>
+    <string name="patches_original">Bytes originais</string>
+    <string name="patches_modified">Bytes modificados</string>
+    <string name="patches_show_details">Mostrar detalhes</string>
+    <string name="patches_hide_details">Ocultar detalhes</string>
+    <string name="patches_copy_address">Copiar endereço</string>
+    <string name="patches_jump">Abrir no editor hexadecimal</string>
+    <string name="patches_undo">Desfazer o último patch</string>
+    <string name="patches_undo_title">Desfazer o último patch?</string>
+    <string name="patches_undo_description">Remove apenas o patch pendente mais recente. Os demais patches e o arquivo original não serão alterados.</string>
+    <string name="patches_undo_done">Último patch desfeito.</string>
+    <string name="patches_undo_entry">Desfazer este patch</string>
+    <string name="patches_undo_entry_title">Desfazer este patch?</string>
+    <string name="patches_undo_entry_description">Remove apenas este patch pendente. Os demais patches e o arquivo original não serão alterados.</string>
+    <string name="patches_undo_entry_address">Endereço: %1$s</string>
+    <string name="patches_undo_entry_done">Patch desfeito.</string>
+    <string name="patches_undo_overlap">Patches sobrepostos não podem ser desfeitos individualmente.</string>
+    <string name="patches_reset">Limpar o cache de patches</string>
+    <string name="patches_reset_title">Limpar o cache de patches?</string>
+    <string name="patches_reset_description">Descarta todos os patches pendentes e limpa o histórico de patches desta sessão. As alterações já gravadas no arquivo não serão revertidas.</string>
+    <string name="patches_reset_done">Cache de patches limpo.</string>
+    <string name="patches_commit">Gravar todos os patches pendentes</string>
+    <string name="patches_commit_title">Gravar todos os patches pendentes no arquivo original?</string>
+    <string name="patches_commit_description">Isso altera o arquivo original. Depois de gravadas, as alterações não podem ser revertidas desfazendo patches ou limpando o cache. Para preservar o original, exporte uma cópia com os patches.</string>
+    <string name="patches_commit_done">Todos os patches pendentes foram gravados no arquivo original.</string>
+    <string name="patches_export">Exportar cópia com patches</string>
+    <string name="patches_export_hint">A exportação aplica os patches pendentes a uma cópia separada, sem alterar o arquivo original nem o cache.</string>
+    <string name="patches_export_done">Cópia com patches exportada.</string>
+    <string name="patches_load_failed">Não foi possível carregar o cache de patches.</string>
+    <string name="patches_update_failed">Não foi possível concluir a ação de patch.</string>
+    <string name="patches_export_failed">Não foi possível exportar a cópia com patches.</string>
+    <string name="patches_picker_failed">Não foi possível abrir o seletor de arquivos.</string>
+    <string name="patches_export_expired">A solicitação de exportação expirou. Inicie a exportação novamente na aba Patches.</string>
+    <string name="patches_stale">A sessão ou o cache de patches mudou. Confira a lista atualizada e tente novamente.</string>
+</resources>

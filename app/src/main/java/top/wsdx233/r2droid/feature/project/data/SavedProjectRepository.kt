@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.project.data
 
 import android.content.Context
+import android.util.AtomicFile
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,7 +10,9 @@ import org.json.JSONObject
 import top.wsdx233.r2droid.core.data.model.SavedProject
 import top.wsdx233.r2droid.util.ProjectFileUtils
 import top.wsdx233.r2droid.util.R2PipeManager
+import java.io.BufferedReader
 import java.io.File
+import java.io.Writer
 import java.util.UUID
 
 /**
@@ -103,6 +106,25 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         }
     }
 
+    internal suspend fun saveAnalysisScript(session: R2PipeManager.R2Session, scriptFile: File): Result<Unit> {
+        if (!session.writeCacheEnabled) {
+            return R2PipeManager.execute(session, "PS ${scriptFile.absolutePath}").map { Unit }
+        }
+        return R2PipeManager.executeStream(session, "PS /dev/stdout") { input ->
+            val outputFile = AtomicFile(scriptFile)
+            val output = outputFile.startWrite()
+            try {
+                val writer = output.bufferedWriter()
+                writeUnpatchedAnalysisScript(input.bufferedReader(), writer)
+                writer.flush()
+                outputFile.finishWrite(output)
+            } catch (e: Exception) {
+                outputFile.failWrite(output)
+                throw e
+            }
+        }
+    }
+
     /**
      * Save current analysis as a new project.
      * Uses R2 command "PS script_path" to export script file.
@@ -112,6 +134,7 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
      * @return Result containing the saved project or error
      */
     suspend fun saveCurrentProject(
+        session: R2PipeManager.R2Session,
         name: String,
         analysisLevel: String = "",
         copyBinary: Boolean = false,
@@ -119,7 +142,7 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         currentOwnedBinaryPath: String? = null
     ): Result<SavedProject> = withContext(Dispatchers.IO) {
         try {
-            val currentBinaryPath = R2PipeManager.currentFilePath
+            val currentBinaryPath = session.projectPath ?: session.customCommand
                 ?: return@withContext Result.failure(IllegalStateException("No file is currently open"))
             // Generate unique ID first so optional binary copies can live inside the project folder.
             val projectId = UUID.randomUUID().toString().take(8)
@@ -128,10 +151,12 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
 
             val binaryPath = when {
                 copyBinary -> copyBinaryIntoProjectDir(projectDir, currentBinaryPath)
+                // Analysis startup already opened an app-owned copy. Keep its path and descriptor.
+                ownsCurrentBinaryCopy && session.writeCacheEnabled -> currentOwnedBinaryPath ?: currentBinaryPath
                 ownsCurrentBinaryCopy -> moveOwnedBinaryIntoProjectDir(projectDir, currentOwnedBinaryPath ?: currentBinaryPath)
                 else -> currentBinaryPath
             }
-            if (binaryPath != currentBinaryPath && R2PipeManager.currentFilePath == currentBinaryPath) {
+            if (!session.writeCacheEnabled && binaryPath != currentBinaryPath && R2PipeManager.activeSessionPipe === session.pipe) {
                 R2PipeManager.updateCurrentFilePath(binaryPath)
             }
 
@@ -146,12 +171,9 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
             }
 
             // Get arch and bin type from R2
-            val (archType, binType) = getFileInfo()
+            val (archType, binType) = getFileInfo(session)
 
-            // Save analysis using R2 command: PS script_path
-            // This exports all analysis data (flags, comments, functions, etc.)
-            val saveCmd = "PS ${scriptFile.absolutePath}"
-            val result = R2PipeManager.execute(saveCmd)
+            val result = saveAnalysisScript(session, scriptFile)
             
             if (result.isFailure) {
                 return@withContext Result.failure(
@@ -172,7 +194,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
                 archType = archType,
                 binType = binType,
                 analysisLevel = analysisLevel,
-                ownsBinaryCopy = copyBinary || ownsCurrentBinaryCopy
+                ownsBinaryCopy = copyBinary || ownsCurrentBinaryCopy,
+                writeCacheEnabled = session.writeCacheEnabled
             )
 
             // Save metadata
@@ -192,16 +215,19 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
     /**
      * Update existing project with current analysis
      */
-    suspend fun updateProject(projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
+    suspend fun updateProject(session: R2PipeManager.R2Session, projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
         try {
             val existingProject = getProjectById(projectId)
                 ?: return@withContext Result.failure(IllegalArgumentException("Project not found: $projectId"))
 
-            val binaryPath = R2PipeManager.currentFilePath
+            val binaryPath = session.projectPath ?: session.customCommand
                 ?: return@withContext Result.failure(IllegalStateException("No file is currently open"))
 
-            // Verify it's the same binary
-            if (existingProject.binaryPath != binaryPath) {
+            // A cached Save As may associate the session with a project-owned copy while leaving
+            // the open descriptor attached to the original. Allow analysis updates from that session.
+            val isAssociatedCacheProject = session.writeCacheEnabled && session.currentProjectId == projectId &&
+                existingProject.ownsBinaryCopy
+            if (existingProject.binaryPath != binaryPath && !isAssociatedCacheProject) {
                 return@withContext Result.failure(
                     IllegalStateException("Current file doesn't match project binary")
                 )
@@ -209,9 +235,7 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
 
             val scriptFile = File(existingProject.scriptPath)
 
-            // Save updated analysis using PS command
-            val saveCmd = "PS ${scriptFile.absolutePath}"
-            val result = R2PipeManager.execute(saveCmd)
+            val result = saveAnalysisScript(session, scriptFile)
 
             if (result.isFailure) {
                 return@withContext Result.failure(
@@ -220,7 +244,10 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
             }
 
             // Update metadata
-            val updatedProject = existingProject.copy(lastModified = System.currentTimeMillis())
+            val updatedProject = existingProject.copy(
+                lastModified = System.currentTimeMillis(),
+                writeCacheEnabled = session.writeCacheEnabled
+            )
             val metadataFile = File(scriptFile.parentFile, METADATA_FILENAME)
             metadataFile.writeText(updatedProject.toJson().toString(2))
 
@@ -307,9 +334,9 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
     /**
      * Get file info from R2 (arch and bin type)
      */
-    private suspend fun getFileInfo(): Pair<String, String> {
+    private suspend fun getFileInfo(session: R2PipeManager.R2Session): Pair<String, String> {
         return try {
-            val result = R2PipeManager.executeJson("ij")
+            val result = R2PipeManager.execute(session, "ij", markDirty = false)
             if (result.isSuccess) {
                 val json = JSONObject(result.getOrDefault("{}"))
                 val bin = json.optJSONObject("bin") ?: JSONObject()
@@ -377,5 +404,24 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         } catch (e: Exception) {
             Log.e(TAG, "Failed to remove from index", e)
         }
+    }
+}
+
+private val CACHE_OPTION = Regex("^['\"]?e\\s+io\\.cache(?:\\.[a-z]+)?\\s*=.*$")
+private val IO_OPEN = Regex("^(?:(?:o|onnu)\\s+.+|o=\\d+)$")
+
+internal fun writeUnpatchedAnalysisScript(reader: BufferedReader, writer: Writer) {
+    val header = reader.readLine()
+    check(header?.startsWith("# r2 rdb project file") == true) { "Failed to save analysis script" }
+    writer.appendLine(header)
+    var beforeAnalysis = true
+    reader.lineSequence().forEach { line ->
+        if (line == "# functions") beforeAnalysis = false
+        val command = line.trimStart()
+        // PS emits both config and a wc* dump; the saved project restores neither cache contents nor settings from the script.
+        if (command.startsWith("wx ") || CACHE_OPTION.matches(command)) return@forEach
+        // The app already opened the target, which might be a project-owned copy at a new path.
+        if (beforeAnalysis && IO_OPEN.matches(command)) return@forEach
+        writer.appendLine(line)
     }
 }

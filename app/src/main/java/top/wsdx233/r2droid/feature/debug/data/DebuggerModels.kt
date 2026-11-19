@@ -78,14 +78,18 @@ enum class DebugStopReasonType {
     TIMEOUT,
     STARTED,
     STOPPED,
-    UNKNOWN
+    UNKNOWN,
+    STEP_LIMIT,
+    TARGET_REACHED
 }
 
+/** [address] is the stop location (the faulting instruction PC for an ESIL fault). */
 data class DebugStopReason(
     val type: DebugStopReasonType = DebugStopReasonType.UNKNOWN,
     val message: String? = null,
     val signal: String? = null,
-    val address: Long? = null
+    val address: Long? = null,
+    val accessAddress: Long? = null
 )
 
 enum class RegisterRole {

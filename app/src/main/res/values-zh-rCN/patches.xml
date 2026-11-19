@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="proj_tab_patches">补丁</string>
+    <string name="patches_actions">补丁操作</string>
+    <string name="patches_summary">待写入：%1$d · 已写入：%2$d</string>
+    <string name="patches_summary_with_superseded">待写入：%1$d · 已写入：%2$d · 已覆盖：%3$d</string>
+    <string name="patches_loading">正在加载补丁…</string>
+    <string name="patches_empty">当前会话没有缓存的补丁。通过写入缓存进行的修改会显示在这里。</string>
+    <string name="patches_layered">当前有多个缓存层。部分条目可能未显示，需要访问完整缓存的操作不可用。</string>
+    <string name="patches_pending">待写入</string>
+    <string name="patches_written">已写入</string>
+    <string name="patches_superseded">已覆盖</string>
+    <plurals name="patches_byte_count">
+        <item quantity="other">%d 字节</item>
+    </plurals>
+    <string name="patches_preview">每个版本仅显示前 %1$d 字节，共 %2$d 字节。</string>
+    <string name="patches_original">原始字节</string>
+    <string name="patches_modified">修改后的字节</string>
+    <string name="patches_show_details">显示详情</string>
+    <string name="patches_hide_details">隐藏详情</string>
+    <string name="patches_copy_address">复制地址</string>
+    <string name="patches_jump">在十六进制视图中打开</string>
+    <string name="patches_undo">撤销最后一个补丁</string>
+    <string name="patches_undo_title">撤销最后一个补丁？</string>
+    <string name="patches_undo_description">仅移除最后一个待写入的补丁，不会更改其他补丁或原始文件。</string>
+    <string name="patches_undo_done">已撤销最后一个补丁。</string>
+    <string name="patches_undo_entry">撤销此补丁</string>
+    <string name="patches_undo_entry_title">撤销此补丁？</string>
+    <string name="patches_undo_entry_description">仅移除此待写入的补丁，不会更改其他补丁或原始文件。</string>
+    <string name="patches_undo_entry_address">地址：%1$s</string>
+    <string name="patches_undo_entry_done">已撤销补丁。</string>
+    <string name="patches_undo_overlap">无法单独撤销有重叠的补丁。</string>
+    <string name="patches_reset">重置补丁缓存</string>
+    <string name="patches_reset_title">重置补丁缓存？</string>
+    <string name="patches_reset_description">丢弃所有待写入的补丁并清除当前会话的补丁历史。已经写入文件的修改不会撤销。</string>
+    <string name="patches_reset_done">已重置补丁缓存。</string>
+    <string name="patches_commit">写入所有待处理补丁</string>
+    <string name="patches_commit_title">将所有待处理补丁写入原始文件？</string>
+    <string name="patches_commit_description">此操作会修改原始文件。写入后的修改无法通过撤销或重置还原。若要保留原始文件，请改为导出应用补丁后的副本。</string>
+    <string name="patches_commit_done">已将所有待处理补丁写入原始文件。</string>
+    <string name="patches_export">导出应用补丁后的副本</string>
+    <string name="patches_export_hint">导出会将待写入的补丁应用到独立副本，不会更改原始文件或缓存。</string>
+    <string name="patches_export_done">已导出应用补丁后的副本。</string>
+    <string name="patches_load_failed">无法加载补丁缓存。</string>
+    <string name="patches_update_failed">未能完成补丁操作。</string>
+    <string name="patches_export_failed">无法导出应用补丁后的副本。</string>
+    <string name="patches_picker_failed">无法打开文件选择器。</string>
+    <string name="patches_export_expired">导出请求已失效。请在补丁标签页中重新发起导出。</string>
+    <string name="patches_stale">会话或补丁缓存已更改。请查看刷新后的列表，然后重试。</string>
+</resources>

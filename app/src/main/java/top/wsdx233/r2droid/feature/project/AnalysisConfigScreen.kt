@@ -70,6 +70,7 @@ fun AnalysisConfigScreen(
     onStartAnalysis: (
         cmd: String,
         writable: Boolean,
+        writeCacheEnabled: Boolean,
         flags: String,
         saveAsProject: Boolean,
         projectName: String,
@@ -82,6 +83,7 @@ fun AnalysisConfigScreen(
     var selectedLevel by remember { mutableStateOf("aaa") }
     var customCmd by remember { mutableStateOf("") }
     var isWritable by remember { mutableStateOf(false) }
+    var writeCacheEnabled by remember(filePath) { mutableStateOf(false) }
     var customFlags by remember { mutableStateOf("") }
     var saveAsProject by remember(filePath) { mutableStateOf(false) }
     var projectName by remember(filePath) { mutableStateOf(defaultProjectName) }
@@ -382,8 +384,30 @@ fun AnalysisConfigScreen(
             // Startup Options
             Text(stringResource(R.string.analysis_startup_options), style = MaterialTheme.typography.titleMedium)
             
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { isWritable = !isWritable }) {
-                Checkbox(checked = isWritable, onCheckedChange = { isWritable = it })
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { writeCacheEnabled = !writeCacheEnabled },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.analysis_write_cache))
+                    Text(
+                        text = stringResource(R.string.analysis_write_cache_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = writeCacheEnabled, onCheckedChange = { writeCacheEnabled = it })
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(enabled = !writeCacheEnabled) { isWritable = !isWritable }
+            ) {
+                Checkbox(
+                    checked = isWritable && !writeCacheEnabled,
+                    onCheckedChange = { isWritable = it },
+                    enabled = !writeCacheEnabled
+                )
                 Text(stringResource(R.string.analysis_writable_mode))
             }
             
@@ -403,7 +427,8 @@ fun AnalysisConfigScreen(
                     val finalCmd = if (selectedLevel == "custom") customCmd else selectedLevel
                     onStartAnalysis(
                         finalCmd,
-                        isWritable,
+                        isWritable && !writeCacheEnabled,
+                        writeCacheEnabled,
                         customFlags,
                         saveAsProject,
                         projectName.ifBlank { defaultProjectName },

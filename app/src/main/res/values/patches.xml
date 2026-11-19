@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="proj_tab_patches">Patches</string>
+    <string name="patches_actions">Patch actions</string>
+    <string name="patches_summary">Pending: %1$d · Written: %2$d</string>
+    <string name="patches_summary_with_superseded">Pending: %1$d · Written: %2$d · Superseded: %3$d</string>
+    <string name="patches_loading">Loading patches…</string>
+    <string name="patches_empty">No cached patches in this session. Edits made through the write cache will appear here.</string>
+    <string name="patches_layered">Multiple cache layers are active. Some entries may be hidden, and actions that need the full cache are unavailable.</string>
+    <string name="patches_pending">Pending</string>
+    <string name="patches_written">Written</string>
+    <string name="patches_superseded">Superseded</string>
+    <plurals name="patches_byte_count">
+        <item quantity="one">%d byte</item>
+        <item quantity="other">%d bytes</item>
+    </plurals>
+    <string name="patches_preview">Showing the first %1$d of %2$d bytes per version.</string>
+    <string name="patches_original">Original bytes</string>
+    <string name="patches_modified">Patched bytes</string>
+    <string name="patches_show_details">Show details</string>
+    <string name="patches_hide_details">Hide details</string>
+    <string name="patches_copy_address">Copy address</string>
+    <string name="patches_jump">Open in Hex</string>
+    <string name="patches_undo">Undo last patch</string>
+    <string name="patches_undo_title">Undo the last patch?</string>
+    <string name="patches_undo_description">Remove only the latest pending patch. Other patches and the original file will not change.</string>
+    <string name="patches_undo_done">Last patch undone.</string>
+    <string name="patches_undo_entry">Undo this patch</string>
+    <string name="patches_undo_entry_title">Undo this patch?</string>
+    <string name="patches_undo_entry_description">Remove only this pending patch. Other patches and the original file will not change.</string>
+    <string name="patches_undo_entry_address">Address: %1$s</string>
+    <string name="patches_undo_entry_done">Patch undone.</string>
+    <string name="patches_undo_overlap">Overlapping patches cannot be undone individually.</string>
+    <string name="patches_reset">Reset patch cache</string>
+    <string name="patches_reset_title">Reset the patch cache?</string>
+    <string name="patches_reset_description">Discard all pending patches and clear this session’s patch history. Changes already written to the file will not be reverted.</string>
+    <string name="patches_reset_done">Patch cache reset.</string>
+    <string name="patches_commit">Write all pending patches</string>
+    <string name="patches_commit_title">Write all pending patches to the original file?</string>
+    <string name="patches_commit_description">This changes the original file. Undo and reset cannot revert changes once they are written. To keep the original untouched, export a patched copy instead.</string>
+    <string name="patches_commit_done">All pending patches written to the original file.</string>
+    <string name="patches_export">Export patched copy</string>
+    <string name="patches_export_hint">Export applies pending patches to a separate copy without changing the original file or the cache.</string>
+    <string name="patches_export_done">Patched copy exported.</string>
+    <string name="patches_load_failed">Could not load the patch cache.</string>
+    <string name="patches_update_failed">The patch action did not complete.</string>
+    <string name="patches_export_failed">Could not export the patched copy.</string>
+    <string name="patches_picker_failed">Could not open the document picker.</string>
+    <string name="patches_export_expired">Export expired. Start it again from the Patches tab.</string>
+    <string name="patches_stale">The session or patch cache changed. Review the refreshed list before trying again.</string>
+</resources>

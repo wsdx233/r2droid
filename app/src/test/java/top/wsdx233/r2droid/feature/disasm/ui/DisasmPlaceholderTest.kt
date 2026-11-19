@@ -59,7 +59,7 @@ class DisasmPlaceholderTest {
                         Box(Modifier.testTag("decoded")) {
                             DisasmRow(
                                 instr = DisasmInstruction(0, "nop", "00", "nop", 1, "nop", null),
-                                isSelected = false,
+                                style = rememberDisasmRowStyle(selected = false),
                                 onClick = { _, _ -> },
                                 onLongClick = { _, _ -> }
                             )
@@ -85,7 +85,7 @@ class DisasmPlaceholderTest {
                         DisasmRow(
                             instr = DisasmInstruction(16, "mov", "00", "mov", 1,
                                 "mov rax, [a_long_symbol_name + a_long_displacement]", null, ptr = 16),
-                            isSelected = false,
+                            style = rememberDisasmRowStyle(selected = false),
                             onGutterClick = { gutterClicks++ },
                             onClick = { _, _ -> rowClicks++ }, onLongClick = { _, _ -> }
                         )

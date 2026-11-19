@@ -49,7 +49,8 @@
 ### 3.2 十六进制视图 (Hex Viewer)
 
 - **数据虚拟化核心**: `app/src/main/java/top/wsdx233/r2droid/feature/hex/data/HexDataManager.kt`
-  - 大文件分块加载（4KB）+ 缓存策略。
+  - 4 KB 分块相对视图起始地址对齐；先加载可见块，再预取最多 4 个相邻块，使用 100 块 LRU 缓存。
+  - 每块独立暴露只读字节数组状态；写入、外部刷新会使相关块失效并阻止旧读取结果回填。
 - **Hex 界面**: `app/src/main/java/top/wsdx233/r2droid/feature/hex/ui/HexScreen.kt`
 - **Hex 组件**: `app/src/main/java/top/wsdx233/r2droid/feature/hex/ui/HexComponents.kt`
 - **Hex 键盘**: `app/src/main/java/top/wsdx233/r2droid/feature/hex/ui/HexKeyboard.kt`

@@ -1,7 +1,17 @@
 package top.wsdx233.r2droid.feature.debug.data
 
-import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.radare.r2pipe.kotlin.R2PipeSession
+import top.wsdx233.r2droid.util.LogManager
+import top.wsdx233.r2droid.util.LogType
 import top.wsdx233.r2droid.util.R2PipeManager
+import java.util.IdentityHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,9 +23,9 @@ class DebuggerRepository @Inject constructor(
     private val fridaBackend: FridaDebuggerBackend,
     private val gdbRemoteBackend: GdbRemoteDebuggerBackend
 ) {
-    private var activeBackend: DebuggerBackend = esilBackend
-    private var activeConfig: DebugSessionConfig = DebugSessionConfig(DebugBackend.ESIL)
-    private var lastSnapshot: DebugStateSnapshot? = null
+    // Confined to Main, like the UI that owns the debug session. Cleanup must outlive its VM.
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val esilCleanups = IdentityHashMap<R2PipeSession, Job>()
 
     private fun backendFor(type: DebugBackend): DebuggerBackend = when (type) {
         DebugBackend.ESIL -> esilBackend
@@ -36,225 +46,93 @@ class DebuggerRepository @Inject constructor(
         return Result.success(Unit)
     }
 
-    private fun validatedBackendFor(type: DebugBackend): Result<DebuggerBackend> {
-        return validateBackendSession(type).map { backendFor(type) }
+    private inline fun <T> withBackend(type: DebugBackend, operation: (DebuggerBackend) -> Result<T>): Result<T> {
+        validateBackendSession(type).getOrElse { return Result.failure(it) }
+        return operation(backendFor(type))
     }
 
-    private fun snapshotToJsonRegisters(snapshot: DebugStateSnapshot): JSONObject {
-        val json = JSONObject()
-        snapshot.registers.forEach { register ->
-            json.put(register.name, register.value)
+    suspend fun probe(backend: DebugBackend) = withBackend(backend) { it.probe() }
+
+    suspend fun start(config: DebugSessionConfig) = withBackend(config.backend) { it.start(config) }
+
+    suspend fun reset(config: DebugSessionConfig) = withBackend(config.backend) { it.reset(config) }
+
+    suspend fun stop(backend: DebugBackend) = withBackend(backend) { it.stop() }
+
+    suspend fun stepInto(backend: DebugBackend) = withBackend(backend) { it.stepInto() }
+
+    suspend fun stepOver(backend: DebugBackend) = withBackend(backend) { it.stepOver() }
+
+    suspend fun continueRun(backend: DebugBackend) = withBackend(backend) { it.continueRun() }
+
+    suspend fun pause(backend: DebugBackend) = withBackend(backend) { it.pause() }
+
+    fun requestEsilPause() = esilBackend.requestPause()
+
+    fun releaseEsil(pipe: R2PipeSession) {
+        if (pipe in esilCleanups) return
+        val cleanup = cleanupScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                esilBackend.stopForPipe(pipe)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                LogManager.log(LogType.WARNING, "Unable to clean up ESIL: ${error.message}")
+            } finally {
+                esilCleanups.remove(pipe)
+            }
         }
-        return json
+        esilCleanups[pipe] = cleanup
+        cleanup.start()
     }
 
-    suspend fun probe(backend: DebugBackend): Result<DebugCapabilities> {
-        return validatedBackendFor(backend).fold(
-            onSuccess = { it.probe() },
-            onFailure = { Result.failure(it) }
-        )
+    suspend fun awaitEsilCleanup(pipe: R2PipeSession) {
+        esilCleanups[pipe]?.join()
     }
 
-    suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> {
-        val target = validatedBackendFor(config.backend).getOrElse { return Result.failure(it) }
-        activeBackend = target
-        activeConfig = config
-        return activeBackend.start(config).onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun reset(config: DebugSessionConfig = activeConfig): Result<DebugStateSnapshot> {
-        val target = validatedBackendFor(config.backend).getOrElse { return Result.failure(it) }
-        activeBackend = target
-        activeConfig = config
-        return activeBackend.reset(config).onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun stop(): Result<Unit> {
-        return activeBackend.stop().onSuccess { lastSnapshot = null }
-    }
-
-    suspend fun refresh(): Result<DebugStateSnapshot> {
-        return activeBackend.refresh().onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun stepInto(): Result<DebugStateSnapshot> {
-        return activeBackend.stepInto().onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun stepOver(): Result<DebugStateSnapshot> {
-        return activeBackend.stepOver().onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun stepOut(): Result<DebugStateSnapshot> {
-        return activeBackend.stepOut().onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun continueRun(): Result<DebugStateSnapshot> {
-        val timeoutMs = activeConfig.esilTimeoutMs.takeIf { activeConfig.backend == DebugBackend.ESIL }
-        val result = if (timeoutMs != null && timeoutMs > 0L) {
-            kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
-                if (activeConfig.backend == DebugBackend.ESIL && activeConfig.maxEsilSteps > 0) {
-                    esilBackend.continueRun(activeConfig.maxEsilSteps)
-                } else {
-                    activeBackend.continueRun()
-                }
-            } ?: Result.failure(java.util.concurrent.TimeoutException("ESIL continue timed out after ${timeoutMs}ms"))
-        } else if (activeConfig.backend == DebugBackend.ESIL && activeConfig.maxEsilSteps > 0) {
-            esilBackend.continueRun(activeConfig.maxEsilSteps)
-        } else {
-            activeBackend.continueRun()
-        }
-        return result.onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun pause(): Result<DebugStateSnapshot> {
-        return activeBackend.pause().onSuccess { lastSnapshot = it }
-    }
-
-    suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> {
-        return activeBackend.setBreakpoint(breakpoint)
-    }
-
-    suspend fun removeBreakpoint(address: Long): Result<Unit> {
-        return activeBackend.removeBreakpoint(address)
-    }
-
-    suspend fun listBreakpoints(): Result<List<DebugBreakpoint>> {
-        return activeBackend.listBreakpoints()
-    }
-
-    suspend fun readRegisters(): Result<List<DebugRegister>> {
-        return activeBackend.readRegisters()
-    }
-
-    suspend fun readStack(count: Int = 16): Result<List<DebugStackEntry>> {
-        return activeBackend.readStack(count)
-    }
-
-    suspend fun writeRegister(name: String, value: Long): Result<Unit> {
-        return activeBackend.writeRegister(name, value)
-    }
-
-    suspend fun readMemory(address: Long, size: Int): Result<ByteArray> {
-        return activeBackend.readMemory(address, size)
-    }
-
-    suspend fun getLastSnapshot(): DebugStateSnapshot? = lastSnapshot
-
-    // === Compatibility API used by DisasmViewModel. These wrappers allow phased migration. ===
-
-    suspend fun startDebugging(backend: DebugBackend): Result<String> {
-        val result = start(DebugSessionConfig(backend = backend))
-        return result.map { it.message ?: it.stopReason.message ?: "${backend.displayName} debug started" }
-    }
-
-    suspend fun resetDebugging(backend: DebugBackend, startAddress: Long? = null): Result<String> {
-        val result = reset(activeConfig.copy(backend = backend, startAddress = startAddress))
-        return result.map { it.message ?: it.stopReason.message ?: "${backend.displayName} debug reset" }
-    }
-
-    suspend fun stopDebugging(backend: DebugBackend): Result<String> {
-        val target = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        activeBackend = target
-        return target.stop().map { "${backend.displayName} debug stopped" }
-            .onSuccess { lastSnapshot = null }
-    }
-
-    suspend fun getBreakpoints(): Result<Set<Long>> {
-        return activeBackend.listBreakpoints().map { it.map { bp -> bp.address }.toSet() }
-    }
-
-    suspend fun toggleBreakpoint(addr: Long, isAdd: Boolean): Result<String> {
-        return if (isAdd) {
-            activeBackend.setBreakpoint(DebugBreakpoint(address = addr)).map { "Breakpoint set at 0x${addr.toString(16)}" }
-        } else {
-            activeBackend.removeBreakpoint(addr).map { "Breakpoint removed at 0x${addr.toString(16)}" }
-        }
-    }
-
-    suspend fun stepInto(backend: DebugBackend): Result<String> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return stepInto().map { it.stopReason.message ?: "Step into" }
-    }
-
-    suspend fun stepOver(backend: DebugBackend): Result<String> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return stepOver().map { it.stopReason.message ?: "Step over" }
-    }
-
-    suspend fun continueExecution(backend: DebugBackend): Result<String> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return continueRun().map { it.stopReason.message ?: "Execution stopped" }
-    }
-
-    suspend fun runToCursor(backend: DebugBackend, address: Long): Result<String> = runCatching {
-        activeBackend = validatedBackendFor(backend).getOrThrow()
-        activeBackend.setBreakpoint(DebugBreakpoint(address = address, temporary = true)).getOrThrow()
-        val result = activeBackend.continueRun()
-        activeBackend.removeBreakpoint(address).getOrNull()
-        val snapshot = result.getOrThrow()
-        lastSnapshot = snapshot
-        snapshot.stopReason.message ?: "Run to cursor stopped at 0x${address.toString(16)}"
-    }
-
-    suspend fun setProgramCounter(backend: DebugBackend, address: Long): Result<String> = runCatching {
-        activeBackend = validatedBackendFor(backend).getOrThrow()
-        val registers = activeBackend.readRegisters().getOrThrow()
-        val pcName = registers.firstOrNull { it.role == RegisterRole.PC }?.name ?: "pc"
-        activeBackend.writeRegister(pcName, address).getOrThrow()
-        runner.executeForBackend(backend, "s $address").getOrThrow()
-        lastSnapshot = activeBackend.refresh().getOrNull()
-        "PC set to 0x${address.toString(16)}"
-    }
-
-    suspend fun getStack(backend: DebugBackend, count: Int = 16): Result<List<DebugStackEntry>> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return activeBackend.readStack(count)
-    }
-
-    suspend fun getStackPointer(backend: DebugBackend): Result<Long> = runCatching {
-        activeBackend = validatedBackendFor(backend).getOrThrow()
-        val registers = activeBackend.readRegisters().getOrThrow()
-        registers.firstOrNull { it.role == RegisterRole.SP }?.value
-            ?: registers.firstOrNull { it.name.equals("sp", true) || it.name.equals("rsp", true) || it.name.equals("esp", true) }?.value
-            ?: registers.firstOrNull { it.name.lowercase().endsWith("sp") }?.value
-            ?: throw IllegalStateException("Stack pointer is unavailable")
-    }
-
-    suspend fun readMemory(backend: DebugBackend, address: Long, size: Int): Result<ByteArray> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return activeBackend.readMemory(address, size)
-    }
-
-    suspend fun getRegisters(backend: DebugBackend): Result<JSONObject> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        return activeBackend.readRegisters().map { registers ->
-            JSONObject().also { obj -> registers.forEach { obj.put(it.name, it.value) } }
-        }
-    }
-
-    suspend fun getCurrentPC(backend: DebugBackend): Result<Long> {
-        activeBackend = validatedBackendFor(backend).getOrElse { return Result.failure(it) }
-        val refreshResult = activeBackend.refresh()
-        val snapshot = refreshResult.getOrNull()
-        if (snapshot != null) {
-            lastSnapshot = snapshot
-            return snapshot.pc?.let { Result.success(it) }
-                ?: Result.failure(IllegalStateException("Unable to determine program counter"))
+    suspend fun toggleBreakpoint(backend: DebugBackend, address: Long, add: Boolean): Result<Unit> =
+        withBackend(backend) {
+            if (add) it.setBreakpoint(DebugBreakpoint(address = address)).map { Unit }
+            else it.removeBreakpoint(address)
         }
 
-        val registers = getRegisters(backend).getOrElse {
-            return Result.failure(refreshResult.exceptionOrNull() ?: it)
+    suspend fun listBreakpoints(backend: DebugBackend) = withBackend(backend) { it.listBreakpoints() }
+
+    suspend fun runToCursor(backend: DebugBackend, address: Long): Result<DebugStateSnapshot> =
+        withBackend(backend) { target ->
+            if (backend == DebugBackend.ESIL) {
+                esilBackend.runToCursor(address)
+            } else runCatching {
+                val pipe = R2PipeManager.activeSessionPipe
+                target.setBreakpoint(DebugBreakpoint(address = address, temporary = true)).getOrThrow()
+                check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
+                val result = target.continueRun()
+                val removed = pipe === R2PipeManager.activeSessionPipe && target.removeBreakpoint(address).isSuccess
+                val snapshot = result.getOrThrow()
+                if (removed) snapshot.copy(breakpoints = snapshot.breakpoints.filterNot { it.address == address })
+                else snapshot
+            }
         }
-        val keys = registers.keys().asSequence().toList()
-        val pc = keys.firstOrNull { key ->
-            key.equals("pc", true) || key.equals("rip", true) || key.equals("eip", true) || key.equals("ip", true)
-        }?.let { key -> runner.parseLongFlexible(registers.opt(key)) }
-            ?: keys.firstOrNull { it.lowercase().endsWith("ip") }?.let { key -> runner.parseLongFlexible(registers.opt(key)) }
 
-        return pc?.let { Result.success(it) }
-            ?: Result.failure(refreshResult.exceptionOrNull() ?: IllegalStateException("Unable to determine program counter"))
-    }
+    suspend fun setProgramCounter(backend: DebugBackend, address: Long): Result<DebugStateSnapshot> =
+        withBackend(backend) { target ->
+            if (backend == DebugBackend.ESIL) {
+                esilBackend.setPc(address)
+            } else runCatching {
+                val pipe = R2PipeManager.activeSessionPipe
+                val registers = target.readRegisters().getOrThrow()
+                val pcName = registers.firstOrNull { it.role == RegisterRole.PC }?.name ?: "pc"
+                check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
+                target.writeRegister(pcName, address).getOrThrow()
+                check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
+                runner.executeForBackend(backend, "s $address").getOrThrow()
+                check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
+                target.refresh().getOrThrow()
+            }
+        }
 
-    fun snapshotRegistersAsJson(): JSONObject? = lastSnapshot?.let { snapshotToJsonRegisters(it) }
+    suspend fun readStack(backend: DebugBackend, count: Int = 16) = withBackend(backend) { it.readStack(count) }
+
+    suspend fun readMemory(backend: DebugBackend, address: Long, size: Int) =
+        withBackend(backend) { it.readMemory(address, size) }
 }

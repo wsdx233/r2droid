@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.disasm.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -53,6 +55,8 @@ import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
 import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
+import top.wsdx233.r2droid.core.ui.dialogs.canOpenPatchEditor
+import top.wsdx233.r2droid.core.ui.dialogs.requestByteEditor
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
 
 import androidx.compose.animation.AnimatedVisibility
@@ -92,6 +96,7 @@ import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DisassemblyViewer(
     viewModel: top.wsdx233.r2droid.feature.disasm.DisasmViewModel,
@@ -107,6 +112,7 @@ fun DisassemblyViewer(
     val breakpoints by viewModel.breakpoints.collectAsState()
     val pcAddress by viewModel.pcAddress.collectAsState()
     val debugStatus by viewModel.debugStatus.collectAsState()
+    val debugStopReason by viewModel.debugStopReason.collectAsState()
     val debugError by viewModel.debugError.collectAsState()
     val registers by viewModel.registers.collectAsState()
     val debugStackState by viewModel.debugStackState.collectAsState()
@@ -143,15 +149,17 @@ fun DisassemblyViewer(
     var menuRowHeight by remember { mutableIntStateOf(0) }
 
     var showModifyDialog by remember { mutableStateOf(false) }
+    var modifySession by remember { mutableStateOf<R2PipeManager.R2Session?>(null) }
     var modifyType by remember { mutableStateOf("hex") } // hex, string, asm
     var modifyInitialValue by remember { mutableStateOf<String?>("") }
     var showCustomCommandDialog by remember { mutableStateOf(false) }
 
     // Reopen in write mode dialog
     var showReopenDialog by remember { mutableStateOf(false) }
-    var pendingWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingWriteAction by remember { mutableStateOf<(suspend () -> Unit)?>(null) }
 
     val clipboardManager = LocalClipboardManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     
     if (disasmDataManager == null) {
@@ -184,6 +192,8 @@ fun DisassemblyViewer(
     }
     
     val listState = rememberLazyListState(
+        // Prepare a few measured rows in the direction of travel, not a whole data chunk.
+        cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.25f) },
         initialFirstVisibleItemIndex = initialIndex.coerceIn(0, maxOf(0, loadedCount - 1))
     )
     
@@ -273,6 +283,8 @@ fun DisassemblyViewer(
         // Jump maps are pre-computed in DisasmDataManager on background thread
         val jumpToIndex = dataSnapshot.jumpToIndex
         val targetToIndex = dataSnapshot.targetToIndex
+        val normalStyle = rememberDisasmRowStyle(selected = false)
+        val selectedStyle = rememberDisasmRowStyle(selected = true)
         
         LazyColumn(
             state = listState,
@@ -301,7 +313,7 @@ fun DisassemblyViewer(
                     
                     DisasmRow(
                         instr = instr,
-                        isSelected = instr.addr == cursorAddress,
+                        style = if (instr.addr == cursorAddress) selectedStyle else normalStyle,
                         isMultiSelected = multiSelectState.contains(instr.addr),
                         isPC = instr.addr == pcAddress,
                         isBreakpoint = breakpoints.contains(instr.addr),
@@ -332,8 +344,9 @@ fun DisassemblyViewer(
                                     clipboardManager.setText(AnnotatedString(text))
                                     showMenu = false
                                 },
-                                onModify = { type ->
+                                onModify = edit@{ type ->
                                     showMenu = false
+                                    if (!context.canOpenPatchEditor()) return@edit
                                     val capturedOpcode = instr.opcode
                                     if (type == "comment") {
                                         modifyType = type
@@ -341,11 +354,11 @@ fun DisassemblyViewer(
                                         showModifyDialog = true
                                     } else {
                                         coroutineScope.launch {
-                                            val isWritable = try {
-                                                val ijResult = top.wsdx233.r2droid.util.R2PipeManager.execute("ij").getOrDefault("{}")
-                                                org.json.JSONObject(ijResult).getJSONObject("core").getBoolean("iorw")
-                                            } catch (_: Exception) { false }
-                                            if (isWritable) {
+                                            context.requestByteEditor(onReopen = {
+                                                pendingWriteAction = it
+                                                showReopenDialog = true
+                                            }) {
+                                                modifySession = it
                                                 modifyType = type
                                                 showModifyDialog = true
                                                 modifyInitialValue = when (type) {
@@ -354,18 +367,6 @@ fun DisassemblyViewer(
                                                     "string" -> null
                                                     else -> ""
                                                 }
-                                            } else {
-                                                pendingWriteAction = {
-                                                    modifyType = type
-                                                    showModifyDialog = true
-                                                    modifyInitialValue = when (type) {
-                                                        "asm" -> capturedOpcode
-                                                        "hex" -> ""
-                                                        "string" -> null
-                                                        else -> ""
-                                                    }
-                                                }
-                                                showReopenDialog = true
                                             }
                                         }
                                     }
@@ -552,12 +553,18 @@ fun DisassemblyViewer(
                     initialValue = modifyInitialValue!!,
                     onDismiss = { showModifyDialog = false; modifyInitialValue = "" },
                     onConfirm = { value ->
-                         when(modifyType) {
-                            "hex" -> viewModel.onEvent(DisasmEvent.WriteHex(menuTargetAddress!!, value))
-                            "string" -> viewModel.onEvent(DisasmEvent.WriteString(menuTargetAddress!!, value))
-                            "asm" -> viewModel.onEvent(DisasmEvent.WriteAsm(menuTargetAddress!!, value))
-                            "comment" -> viewModel.onEvent(DisasmEvent.WriteComment(menuTargetAddress!!, value))
-                         }
+                        val address = menuTargetAddress!!
+                        if (modifyType == "comment") {
+                            viewModel.onEvent(DisasmEvent.WriteComment(address, value))
+                        } else {
+                            modifySession?.let { session ->
+                                when (modifyType) {
+                                    "hex" -> viewModel.onEvent(DisasmEvent.WriteHex(session, address, value))
+                                    "string" -> viewModel.onEvent(DisasmEvent.WriteString(session, address, value))
+                                    "asm" -> viewModel.onEvent(DisasmEvent.WriteAsm(session, address, value))
+                                }
+                            }
+                        }
                     }
                 )
             } else {
@@ -592,7 +599,6 @@ fun DisassemblyViewer(
                         val action = pendingWriteAction
                         pendingWriteAction = null
                         coroutineScope.launch {
-                            top.wsdx233.r2droid.util.R2PipeManager.execute("oo+")
                             action?.invoke()
                         }
                     }) {
@@ -745,6 +751,7 @@ fun DisassemblyViewer(
                 debugStatus = debugStatus,
                 debugBackend = debugBackend,
                 pcAddress = pcAddress,
+                stopReason = debugStopReason,
                 registers = registers,
                 breakpoints = breakpoints,
                 stackEntries = debugStackState.entries,

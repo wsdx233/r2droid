@@ -8,7 +8,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** One per local r2 process. Only manual commands, serialized by the session mutex, open a window. */
+/** One per local r2 process; capture windows are serialized by the session mutex. */
 internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger {
     @Volatile private var window: Window? = null
 
@@ -22,30 +22,44 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
         }
     }
 
-    fun execute(pipe: R2PipeSession, command: String): Output {
-        val capture = Window()
+    fun execute(pipe: R2PipeSession, command: String, requireStderr: Boolean = false): Output {
+        val capture = Window(requireStderr)
         window = capture
         try {
             // stdout's NUL (or HTTP response) says nothing about how far the stderr reader has got.
             // Fence fd 2 itself, in separate requests so quotes, comments and compound commands keep
             // their meaning. The dot form executes the echo without replacing r2's last command.
             val beginResponse = pipe.cmd(".?e ?ee ${capture.begin}")
-            // r2 -1 already sends stderr to stdout.
-            if (capture.begin in beginResponse) return Output(pipe.cmd(command), "")
+            // r2 -1 merges stderr into stdout. Preserve manual display, but never mistake a
+            // combined response for a clean, separately scoped diagnostic stream.
+            if (capture.begin in beginResponse) {
+                if (requireStderr) throw IOException("ESIL requires separate stderr; reopen radare2 without -1.")
+                return Output(pipe.cmd(command), "")
+            }
+            if (capture.started?.await(FENCE_TIMEOUT_SECONDS, TimeUnit.SECONDS) == false) {
+                throw IOException("Could not open the ESIL diagnostic window: missing stderr start marker.")
+            }
             val result = try {
                 Result.success(pipe.cmd(command))
             } catch (e: Exception) {
                 Result.failure(e)
             }
+            var closed = false
             if (pipe.isRunning()) {
                 try {
                     pipe.cmd(".?e ?ee ${capture.end}")
-                    // A custom runtime can close/redirect fd 2. Don't hang the command UI for it.
-                    capture.finished.await(2, TimeUnit.SECONDS)
+                    closed = capture.finished.await(FENCE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 } catch (e: RuntimeException) {
-                    // The command may have terminated the process. Keep its own response/error.
-                    result.exceptionOrNull()?.addSuppressed(e)
+                    // For manual commands keep the command's own response/error.
+                    if (requireStderr) throw IOException("Could not close the ESIL diagnostic window.", e)
+                    result.exceptionOrNull()?.let { if (it !== e) it.addSuppressed(e) }
                 }
+            }
+            if (requireStderr && !closed) {
+                throw IOException("Could not close the ESIL diagnostic window: missing stderr end marker.", result.exceptionOrNull())
+            }
+            if (requireStderr && capture.isTruncated()) {
+                throw IOException("The ESIL diagnostic window exceeded its capture limit.", result.exceptionOrNull())
             }
             val stderr = capture.text()
             return Output(result.getOrElse {
@@ -65,10 +79,11 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
         }
     }
 
-    private class Window {
+    private class Window(requireStart: Boolean) {
         private val id = UUID.randomUUID()
         val begin = "r2droid:$id:begin"
         val end = "r2droid:$id:end"
+        val started = if (requireStart) CountDownLatch(1) else null
         val finished = CountDownLatch(1)
         private var recording = false
         private val buffer = StringBuilder()
@@ -95,11 +110,13 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
             }
             if (marker != null) {
                 recording = marker == begin
-                if (!recording) finished.countDown()
+                if (recording) started?.countDown() else finished.countDown()
                 return original.takeIf { text.isNotEmpty() }
             }
             return line
         }
+
+        @Synchronized fun isTruncated(): Boolean = truncated || buffer.length > MAX_STDERR_CHARS
 
         @Synchronized fun text(): String = if (truncated || buffer.length > MAX_STDERR_CHARS) {
             "[earlier stderr omitted]\n" + buffer.substring((buffer.length - MAX_STDERR_CHARS).coerceAtLeast(0))
@@ -107,6 +124,7 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
     }
 
     private companion object {
+        const val FENCE_TIMEOUT_SECONDS = 2L
         const val MAX_STDERR_CHARS = 256 * 1024
         val ANSI_CSI = Regex("\u001b\\[[0-?]*[ -/]*[@-~]")
     }

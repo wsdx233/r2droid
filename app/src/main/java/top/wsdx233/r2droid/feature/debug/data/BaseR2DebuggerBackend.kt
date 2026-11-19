@@ -13,6 +13,9 @@ abstract class BaseR2DebuggerBackend(
     protected abstract val breakpointListCommand: String
     protected abstract val seekCommand: String
 
+    protected open suspend fun query(command: String): Result<String> = runner.executeForBackend(type, command)
+    protected open fun registerRole(name: String): RegisterRole = registerRoleForName(name)
+
     override suspend fun refresh(): Result<DebugStateSnapshot> = runCatching {
         val registers = readRegisters().getOrThrow()
         val pc = extractProgramCounter(registers) ?: readSeekAddress().getOrNull()
@@ -28,14 +31,14 @@ abstract class BaseR2DebuggerBackend(
     }
 
     override suspend fun listBreakpoints(): Result<List<DebugBreakpoint>> = runCatching {
-        val raw = runner.executeForBackend(type, breakpointListCommand).getOrThrow()
+        val raw = query(breakpointListCommand).getOrThrow()
         runner.parseBreakpoints(raw)
     }
 
     override suspend fun readRegisters(): Result<List<DebugRegister>> = runCatching {
         var lastError: Throwable? = null
         for (command in registerCommands) {
-            val output = runner.executeForBackend(type, command).getOrElse {
+            val output = query(command).getOrElse {
                 lastError = it
                 continue
             }
@@ -55,7 +58,7 @@ abstract class BaseR2DebuggerBackend(
     }
 
     protected suspend fun readSeekAddress(): Result<Long> = runCatching {
-        runner.parseAddress(runner.executeForBackend(type, seekCommand).getOrThrow())
+        runner.parseAddress(query(seekCommand).getOrThrow())
             ?: throw IllegalStateException("Unable to determine current seek address")
     }
 
@@ -73,7 +76,7 @@ abstract class BaseR2DebuggerBackend(
                 name = name,
                 value = value,
                 previousValue = lastRegisters[name],
-                role = registerRoleForName(name)
+                role = registerRole(name)
             )
         }.sortedWith(registerComparator())
 
@@ -83,7 +86,7 @@ abstract class BaseR2DebuggerBackend(
 
     override suspend fun readMemory(address: Long, size: Int): Result<ByteArray> = runCatching {
         val safeSize = size.coerceIn(1, 4096)
-        val raw = runner.executeForBackend(type, "pxj $safeSize @ $address").getOrThrow()
+        val raw = query("pxj $safeSize @ $address").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         ByteArray(arr.length()) { index ->
             (runner.parseLongFlexible(arr.opt(index)) ?: 0L).toInt().toByte()
@@ -94,16 +97,21 @@ abstract class BaseR2DebuggerBackend(
         val registers = readRegisters().getOrThrow()
         val sp = extractStackPointer(registers)
             ?: throw IllegalStateException("Stack pointer is unavailable")
-        val bytes = (count.coerceAtLeast(1) * 8).coerceAtMost(512)
-        val raw = runner.executeForBackend(type, "pxqj $bytes @ $sp").getOrThrow()
+        readStackAt(sp, count, 8)
+    }
+
+    protected suspend fun readStackAt(sp: Long, count: Int, wordBytes: Int): List<DebugStackEntry> {
+        val bytes = count.coerceIn(1, 512 / wordBytes) * wordBytes
+        val format = when (wordBytes) { 1 -> "pxj"; 2 -> "pxhj"; 4 -> "pxwj"; 8 -> "pxqj"; else -> error("Invalid stack word size") }
+        val raw = query("$format $bytes @ $sp").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         val entries = mutableListOf<DebugStackEntry>()
         for (i in 0 until arr.length()) {
             runner.parseLongFlexible(arr.opt(i))?.let { value ->
-                entries.add(DebugStackEntry(address = sp + i * 8L, value = value))
+                entries.add(DebugStackEntry(address = sp + i * wordBytes, value = value))
             }
         }
-        entries
+        return entries
     }
 
     protected fun extractProgramCounter(registers: List<DebugRegister>): Long? {

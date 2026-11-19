@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
@@ -29,9 +32,17 @@ import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.debug.data.DebugBackend
 import top.wsdx233.r2droid.feature.debug.data.DebugCapabilities
+import top.wsdx233.r2droid.feature.debug.data.DebugRegister
+import top.wsdx233.r2droid.feature.debug.data.DebugRunState
 import top.wsdx233.r2droid.feature.debug.data.DebugSessionConfig
+import top.wsdx233.r2droid.feature.debug.data.DebugStateSnapshot
+import top.wsdx233.r2droid.feature.debug.data.DebugStopReason
+import top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry
+import top.wsdx233.r2droid.feature.debug.data.RegisterRole
 import top.wsdx233.r2droid.feature.disasm.data.DisasmRepository
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.ViewerByteEdit
+import top.wsdx233.r2droid.util.writeViewerBytes
 import java.util.Locale
 import javax.inject.Inject
 
@@ -146,9 +157,9 @@ sealed interface DisasmEvent {
     data class LoadChunk(val address: Long) : DisasmEvent
     data class Preload(val address: Long) : DisasmEvent
     data class LoadMore(val forward: Boolean) : DisasmEvent
-    data class WriteAsm(val address: Long, val asm: String) : DisasmEvent
-    data class WriteHex(val address: Long, val hex: String) : DisasmEvent
-    data class WriteString(val address: Long, val text: String) : DisasmEvent
+    data class WriteAsm(val session: R2PipeManager.R2Session, val address: Long, val asm: String) : DisasmEvent
+    data class WriteHex(val session: R2PipeManager.R2Session, val address: Long, val hex: String) : DisasmEvent
+    data class WriteString(val session: R2PipeManager.R2Session, val address: Long, val text: String) : DisasmEvent
     data class WriteComment(val address: Long, val comment: String) : DisasmEvent
     object RefreshData : DisasmEvent
     object Reset : DisasmEvent
@@ -243,19 +254,24 @@ class DisasmViewModel @Inject constructor(
     val debugBackend: StateFlow<DebugBackend> = _debugBackend.asStateFlow()
 
     fun setDebugBackend(backend: DebugBackend) {
-        if (_debugStatus.value == DebugStatus.IDLE || _debugStatus.value == DebugStatus.ERROR) {
-            val sanitized = sanitizeDebugBackendForCurrentSession(backend)
-            _debugBackend.value = sanitized
-            _debugCapabilities.value = DebugCapabilities()
-            if (backend != sanitized) {
-                _debugError.value = backendUnavailableMessage(backend)
-                _debugStatus.value = DebugStatus.ERROR
-                return
-            }
-            if (_debugStatus.value == DebugStatus.ERROR) {
-                _debugError.value = null
-                _debugStatus.value = DebugStatus.IDLE
-            }
+        syncDebugPipe()
+        val status = _debugStatus.value
+        val canSelect = status == DebugStatus.IDLE ||
+            (status == DebugStatus.ERROR && debugSession?.esilMayBeActive != true)
+        if (!canSelect) return
+
+        if (status == DebugStatus.ERROR) {
+            retireDebugSession()
+            clearDebugState()
+        } else if (backend != _debugBackend.value) {
+            debugSession = null
+        }
+        val sanitized = sanitizeDebugBackendForCurrentSession(backend)
+        _debugBackend.value = sanitized
+        _debugCapabilities.value = DebugCapabilities()
+        if (backend != sanitized) {
+            _debugError.value = backendUnavailableMessage(backend)
+            _debugStatus.value = DebugStatus.ERROR
         }
     }
 
@@ -266,13 +282,16 @@ class DisasmViewModel @Inject constructor(
     private val _pcAddress = MutableStateFlow<Long?>(null)
     val pcAddress: StateFlow<Long?> = _pcAddress.asStateFlow()
 
+    private val _debugStopReason = MutableStateFlow<DebugStopReason?>(null)
+    val debugStopReason = _debugStopReason.asStateFlow()
+
     // 断点集合
     private val _breakpoints = MutableStateFlow<Set<Long>>(emptySet())
     val breakpoints: StateFlow<Set<Long>> = _breakpoints.asStateFlow()
 
     // 寄存器状态
-    private val _registers = MutableStateFlow<org.json.JSONObject>(org.json.JSONObject())
-    val registers: StateFlow<org.json.JSONObject> = _registers.asStateFlow()
+    private val _registers = MutableStateFlow<List<DebugRegister>>(emptyList())
+    val registers = _registers.asStateFlow()
 
     private val _debugStackState = MutableStateFlow(DebugStackState())
     val debugStackState: StateFlow<DebugStackState> = _debugStackState.asStateFlow()
@@ -280,8 +299,8 @@ class DisasmViewModel @Inject constructor(
     private val _debugMemoryState = MutableStateFlow(DebugMemoryState())
     val debugMemoryState: StateFlow<DebugMemoryState> = _debugMemoryState.asStateFlow()
 
-    private val _debugTraceEntries = MutableStateFlow<List<top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry>>(emptyList())
-    val debugTraceEntries: StateFlow<List<top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry>> = _debugTraceEntries.asStateFlow()
+    private val _debugTraceEntries = MutableStateFlow<List<DebugTraceEntry>>(emptyList())
+    val debugTraceEntries = _debugTraceEntries.asStateFlow()
 
     private val _debugLaunchConfig = MutableStateFlow(DebugLaunchConfigState())
     val debugLaunchConfig: StateFlow<DebugLaunchConfigState> = _debugLaunchConfig.asStateFlow()
@@ -295,6 +314,73 @@ class DisasmViewModel @Inject constructor(
 
     private val _debugError = MutableStateFlow<String?>(null)
     val debugError: StateFlow<String?> = _debugError.asStateFlow()
+
+    private class DebugSession(var pipe: R2PipeSession, val selection: String) {
+        val mutations = Mutex()
+        var started = false
+        var esilMayBeActive = false
+        var openingConfig: DebugSessionConfig? = null
+        var operation = 0L
+        var memoryRead = 0L
+    }
+
+    private var observedDebugPipe = R2PipeManager.activeSessionPipe
+    private var debugSession: DebugSession? = null
+
+    init {
+        viewModelScope.launch {
+            combine(R2PipeManager.activeSessionId, R2PipeManager.sessions) { _, _ -> Unit }
+                .collect { syncDebugPipe() }
+        }
+    }
+
+    private fun syncDebugPipe() {
+        val active = R2PipeManager.activeSession()
+        val pipe = active?.pipe
+        if (pipe === observedDebugPipe) return
+        observedDebugPipe = pipe
+
+        val session = debugSession
+        // Native launch and GDB attach can intentionally reopen the same drawer entry in -d mode.
+        // ESIL never adopts a different pipe: all of its state belongs to the acquired pipe.
+        if (active != null && session != null && active.sessionId == session.selection &&
+            session.openingConfig?.let { config ->
+                when (config.backend) {
+                    DebugBackend.NATIVE_GDB -> "-d" in active.launchFlags.split(Regex("\\s+")) &&
+                        (active.projectPath == config.executablePath ||
+                            active.projectPath?.contains("/debug-targets/") == true)
+                    DebugBackend.GDB_REMOTE -> active.projectPath ==
+                        "gdb://${config.gdbRemoteHost}:${config.gdbRemotePort}"
+                    else -> false
+                }
+            } == true
+        ) {
+            session.pipe = active.pipe
+            return
+        }
+        retireDebugSession()
+        clearDebugState()
+    }
+
+    private fun currentDebugSession(): DebugSession? {
+        syncDebugPipe()
+        val active = R2PipeManager.activeSession() ?: return null
+        return debugSession ?: DebugSession(active.pipe, active.sessionId).also { debugSession = it }
+    }
+
+    private fun ownsDebugSession(session: DebugSession): Boolean =
+        debugSession === session && session.pipe === R2PipeManager.activeSessionPipe
+
+    private fun retireDebugSession() {
+        val previous = debugSession
+        debugSession = null
+        if (previous?.esilMayBeActive == true) debuggerRepository.releaseEsil(previous.pipe)
+    }
+
+    override fun onCleared() {
+        retireDebugSession()
+        super.onCleared()
+    }
 
     fun clearDebugError() {
         _debugError.value = null
@@ -338,8 +424,9 @@ class DisasmViewModel @Inject constructor(
 
     private fun clearDebugState() {
         _pcAddress.value = null
+        _debugStopReason.value = null
         _breakpoints.value = emptySet()
-        _registers.value = org.json.JSONObject()
+        _registers.value = emptyList()
         _debugStackState.value = DebugStackState()
         _debugMemoryState.value = DebugMemoryState()
         _debugTraceEntries.value = emptyList()
@@ -358,9 +445,9 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.LoadChunk -> loadDisasmChunkForAddress(event.address)
             is DisasmEvent.Preload -> preloadDisasmAround(event.address)
             is DisasmEvent.LoadMore -> loadDisasmMore(event.forward)
-            is DisasmEvent.WriteAsm -> writeAsm(event.address, event.asm)
-            is DisasmEvent.WriteHex -> writeHex(event.address, event.hex)
-            is DisasmEvent.WriteString -> writeString(event.address, event.text)
+            is DisasmEvent.WriteAsm -> writeBytes(event.session, event.address, ViewerByteEdit.ASSEMBLY, event.asm)
+            is DisasmEvent.WriteHex -> writeBytes(event.session, event.address, ViewerByteEdit.HEX, event.hex)
+            is DisasmEvent.WriteString -> writeBytes(event.session, event.address, ViewerByteEdit.TEXT, event.text)
             is DisasmEvent.WriteComment -> writeComment(event.address, event.comment)
             is DisasmEvent.RefreshData -> refreshData()
             is DisasmEvent.Reset -> reset()
@@ -391,6 +478,12 @@ class DisasmViewModel @Inject constructor(
      * 重置所有数据，用于切换项目时清理旧数据。
      */
     fun reset() {
+        resetDisassembly()
+        retireDebugSession()
+        clearDebugState()
+    }
+
+    private fun resetDisassembly() {
         navigationRequestId++
         cancelScrollLoads()
         initialLoadJob?.cancel()
@@ -404,7 +497,6 @@ class DisasmViewModel @Inject constructor(
         _disasmCacheVersion.value = 0
         _scrollTarget.value = null
         _multiSelectState.value = MultiSelectState()
-        clearDebugState()
         managerSession = null
     }
 
@@ -522,138 +614,115 @@ class DisasmViewModel @Inject constructor(
         _debugLaunchConfig.value = config
     }
 
-    // 开始调试（根据当前后端自动选择 ESIL / Native / Frida）
-    fun startDebugging() {
-        if (_debugStatus.value == DebugStatus.STARTING || _debugStatus.value == DebugStatus.RUNNING) return
+    fun startDebugging() = openDebugger(reset = false)
 
-        viewModelScope.launch {
-            val config = buildDebugSessionConfig().getOrElse {
-                setDebugError(it)
-                return@launch
-            }
-            _debugStatus.value = DebugStatus.STARTING
-            _debugError.value = null
-            _debugCapabilities.value = debuggerRepository.probe(config.backend).getOrDefault(DebugCapabilities())
-            val result = debuggerRepository.start(config)
-            if (result.isSuccess) {
-                updateDebugState()
-            } else {
-                setDebugError(result.exceptionOrNull())
-            }
+    fun resetDebugging() = openDebugger(reset = true)
+
+    private fun openDebugger(reset: Boolean) {
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || (!reset && session.started)) return
+        val config = buildDebugSessionConfig().getOrElse {
+            setDebugError(it)
+            return
+        }.let { if (reset && it.backend != DebugBackend.ESIL) it.copy(startAddress = _pcAddress.value ?: it.startAddress) else it }
+
+        runDebugOperation(if (reset) "reset" else "start", session, DebugStatus.STARTING) {
+            debuggerRepository.awaitEsilCleanup(session.pipe)
+            if (!ownsDebugSession(session)) return@runDebugOperation Result.failure(IllegalStateException("Debug session changed"))
+            val capabilities = debuggerRepository.probe(config.backend)
+            if (!ownsDebugSession(session)) return@runDebugOperation Result.failure(IllegalStateException("Debug session changed"))
+            _debugCapabilities.value = capabilities.getOrDefault(_debugCapabilities.value)
+            session.started = true
+            session.esilMayBeActive = config.backend == DebugBackend.ESIL
+            session.openingConfig = config
+            if (reset) debuggerRepository.reset(config) else debuggerRepository.start(config)
         }
     }
 
-    // 兼容旧调用
-    fun initEsil() = startDebugging()
+    private fun debugBusy(): Boolean = when (_debugStatus.value) {
+        DebugStatus.STARTING, DebugStatus.RUNNING, DebugStatus.STOPPING -> true
+        else -> false
+    }
 
     fun stopDebugging() {
-        if (_debugStatus.value == DebugStatus.RUNNING || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-
+        val session = currentDebugSession() ?: return
+        if (debugBusy()) return
+        val backend = _debugBackend.value
+        _debugStatus.value = DebugStatus.STOPPING
         viewModelScope.launch {
-            _debugStatus.value = DebugStatus.STOPPING
-            val result = debuggerRepository.stopDebugging(_debugBackend.value)
-            if (result.isSuccess) {
-                clearDebugState()
-            } else {
-                setDebugError(result.exceptionOrNull())
+            session.mutations.withLock {
+                if (!ownsDebugSession(session)) return@launch
+                val result = if (session.started) debuggerRepository.stop(backend) else Result.success(Unit)
+                if (!ownsDebugSession(session)) return@launch
+                if (result.isSuccess) {
+                    debugSession = null
+                    clearDebugState()
+                } else {
+                    setDebugError(result.exceptionOrNull())
+                }
             }
         }
     }
 
-    // 切换断点 (本地管理状态，不依赖R2缓存)
     fun toggleBreakpoint(addr: Long) {
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-        val before = _breakpoints.value
-        val isAdd = !before.contains(addr)
-
-        _breakpoints.value = if (isAdd) before + addr else before - addr
-        _disasmCacheVersion.update { it + 1 }
-
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
         viewModelScope.launch {
-            val result = debuggerRepository.toggleBreakpoint(addr, isAdd)
-            if (result.isFailure) {
-                _breakpoints.value = before
-                _disasmCacheVersion.update { it + 1 }
-                setDebugError(result.exceptionOrNull())
-            } else {
-                debuggerRepository.getBreakpoints().getOrNull()?.let { _breakpoints.value = it }
-                _debugError.value = null
+            session.mutations.withLock {
+                debuggerRepository.awaitEsilCleanup(session.pipe)
+                if (!ownsDebugSession(session)) return@launch
+                val before = _breakpoints.value
+                val add = addr !in before
+                val result = debuggerRepository.toggleBreakpoint(backend, addr, add)
+                if (!ownsDebugSession(session)) return@launch
+                if (result.isSuccess) {
+                    val addresses = debuggerRepository.listBreakpoints(backend).getOrNull()?.map { it.address }?.toSet()
+                    if (!ownsDebugSession(session)) return@launch
+                    _breakpoints.value = addresses ?: if (add) before + addr else before - addr
+                    _disasmCacheVersion.update { it + 1 }
+                    _debugError.value = null
+                } else {
+                    _debugError.value = result.exceptionOrNull()?.message ?: "Breakpoint update failed"
+                }
             }
         }
     }
 
-    fun runToCursor(addr: Long) {
-        if (_debugStatus.value == DebugStatus.RUNNING || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
+    fun runToCursor(addr: Long) = runDebugOperation("run-to-cursor") { debuggerRepository.runToCursor(it, addr) }
+
+    fun setDebugPc(addr: Long) = runDebugOperation("set-pc") { debuggerRepository.setProgramCounter(it, addr) }
+
+    private fun refreshDebugStack(session: DebugSession, backend: DebugBackend, stackPointer: Long?) {
+        val operation = session.operation
+        _debugStackState.value = DebugStackState(stackPointer = stackPointer, isLoading = true)
         viewModelScope.launch {
-            val previousStatus = _debugStatus.value
-            _debugStatus.value = DebugStatus.RUNNING
-            _debugError.value = null
-            val result = debuggerRepository.runToCursor(_debugBackend.value, addr)
-            if (result.isSuccess) {
-                updateDebugState("run-to-cursor")
-            } else {
-                _debugStatus.value = previousStatus
-                setDebugError(result.exceptionOrNull())
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                val entries = debuggerRepository.readStack(backend).getOrDefault(emptyList())
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                _debugStackState.value = DebugStackState(entries, stackPointer ?: entries.firstOrNull()?.address)
             }
         }
     }
 
-    fun setDebugPc(addr: Long) {
-        if (_debugStatus.value == DebugStatus.RUNNING || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
+    private fun readDebugMemory(address: Long, size: Int = 128) {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        val backend = _debugBackend.value
+        val operation = session.operation
+        val request = ++session.memoryRead
+        _debugMemoryState.value = DebugMemoryState(address = address, isLoading = true)
         viewModelScope.launch {
-            val result = debuggerRepository.setProgramCounter(_debugBackend.value, addr)
-            if (result.isSuccess) {
-                updateDebugState("set-pc")
-            } else {
-                setDebugError(result.exceptionOrNull())
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation || session.memoryRead != request) return@launch
+                val result = debuggerRepository.readMemory(backend, address, size)
+                if (!ownsDebugSession(session) || session.operation != operation || session.memoryRead != request) return@launch
+                _debugMemoryState.value = result.fold(
+                    onSuccess = { bytes -> DebugMemoryState(address = address, bytes = bytes) },
+                    onFailure = { error -> DebugMemoryState(address = address, error = error.message) }
+                )
             }
-        }
-    }
-
-    fun resetDebugging(startAddress: Long? = _pcAddress.value) {
-        if (_debugStatus.value == DebugStatus.RUNNING || _debugStatus.value == DebugStatus.STARTING) return
-        viewModelScope.launch {
-            val config = buildDebugSessionConfig().getOrElse {
-                setDebugError(it)
-                return@launch
-            }.copy(startAddress = startAddress)
-            _debugStatus.value = DebugStatus.STARTING
-            _debugError.value = null
-            _debugCapabilities.value = debuggerRepository.probe(config.backend).getOrDefault(_debugCapabilities.value)
-            val result = debuggerRepository.reset(config)
-            if (result.isSuccess) {
-                clearDebugTrace()
-                updateDebugState("reset")
-            } else {
-                setDebugError(result.exceptionOrNull())
-            }
-        }
-    }
-
-    fun refreshDebugStack() {
-        if (_debugStatus.value == DebugStatus.IDLE || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-        viewModelScope.launch {
-            _debugStackState.value = _debugStackState.value.copy(isLoading = true)
-            val entries = debuggerRepository.getStack(_debugBackend.value, 16).getOrDefault(emptyList())
-            val sp = debuggerRepository.getStackPointer(_debugBackend.value).getOrNull()
-            _debugStackState.value = DebugStackState(entries = entries, stackPointer = sp, isLoading = false)
-        }
-    }
-
-    fun readDebugMemory(address: Long, size: Int = 128) {
-        if (_debugStatus.value == DebugStatus.IDLE || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-        viewModelScope.launch {
-            _debugMemoryState.value = _debugMemoryState.value.copy(address = address, isLoading = true, error = null)
-            val result = debuggerRepository.readMemory(_debugBackend.value, address, size)
-            _debugMemoryState.value = result.fold(
-                onSuccess = { bytes -> DebugMemoryState(address = address, bytes = bytes, isLoading = false) },
-                onFailure = { error -> DebugMemoryState(address = address, isLoading = false, error = error.message) }
-            )
         }
     }
 
@@ -667,117 +736,123 @@ class DisasmViewModel @Inject constructor(
 
     fun clearDebugTrace() {
         _debugTraceEntries.value = emptyList()
-        lastTraceRegisters = currentRegisterMap()
         traceIndex = 0
     }
 
-    private fun currentRegisterMap(): Map<String, Long> {
-        val json = _registers.value
-        val map = mutableMapOf<String, Long>()
-        json.keys().forEach { key ->
-            when (val value = json.opt(key)) {
-                is Number -> map[key] = value.toLong()
-                is String -> value.removePrefix("0x").removePrefix("0X").toLongOrNull(16)?.let { map[key] = it }
-            }
-        }
-        return map
-    }
-
-    private fun appendDebugTrace(action: String, pc: Long?, reason: String? = null) {
-        val current = currentRegisterMap()
+    private fun appendDebugTrace(action: String, snapshot: DebugStateSnapshot) {
+        val current = snapshot.registerMap()
         val changed = current.mapNotNull { (name, value) ->
             val previous = lastTraceRegisters[name]
             if (previous != null && previous != value) name to (previous to value) else null
         }.toMap()
         lastTraceRegisters = current
-        val tracePc = pc ?: _pcAddress.value ?: return
+        val reason = snapshot.stopReason
+        val tracePc = snapshot.pc ?: reason.address ?: return
         traceIndex += 1
-        val next = (_debugTraceEntries.value + top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry(
+        val next = (_debugTraceEntries.value + DebugTraceEntry(
             index = traceIndex,
             pc = tracePc,
             action = action,
             changedRegisters = changed,
-            reason = reason
+            reason = buildString {
+                append(reason.type.name)
+                reason.signal?.let { append(" · ").append(it) }
+                reason.address?.let { append(" · instruction 0x").append(it.toULong().toString(16)) }
+                reason.accessAddress?.let { append(" · access 0x").append(it.toULong().toString(16)) }
+                reason.message?.takeIf { it.isNotBlank() }?.let { append('\n').append(it) }
+            }
         )).takeLast(200)
         _debugTraceEntries.value = next
     }
 
-    // 调试操作 (Step / Continue)
-    fun performDebugAction(action: String) {
-        if (_debugStatus.value == DebugStatus.RUNNING || _debugStatus.value == DebugStatus.STARTING) return
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-
-        viewModelScope.launch {
-            val previousStatus = _debugStatus.value
-            _debugStatus.value = DebugStatus.RUNNING
-            _debugError.value = null
-
-            val result = when (action) {
-                "step" -> debuggerRepository.stepInto(_debugBackend.value)
-                "over" -> debuggerRepository.stepOver(_debugBackend.value)
-                "continue" -> debuggerRepository.continueExecution(_debugBackend.value)
-                else -> Result.failure(IllegalArgumentException("Unknown debug action: $action"))
-            }
-
-            if (result.isSuccess) {
-                // 阻塞命令返回后，更新状态
-                updateDebugState(action)
-            } else {
-                _debugStatus.value = previousStatus
-                setDebugError(result.exceptionOrNull())
-            }
+    fun performDebugAction(action: String) = runDebugOperation(action) { backend ->
+        when (action) {
+            "step" -> debuggerRepository.stepInto(backend)
+            "over" -> debuggerRepository.stepOver(backend)
+            "continue" -> debuggerRepository.continueRun(backend)
+            else -> Result.failure(IllegalArgumentException("Unknown debug action: $action"))
         }
     }
 
-    // 暂停执行
-    fun pauseExecution() {
-        if (!ensureDebugBackendMatchesCurrentSession()) return
-        // 利用已有的 interrupt 发送 SIGINT 给 R2 进程，强行打断 dc/aec 的阻塞
-        R2PipeManager.interrupt()
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(150L)
-            val result = debuggerRepository.pause()
-            if (result.isSuccess) {
-                updateDebugState("pause")
-            } else {
-                setDebugError(result.exceptionOrNull())
-            }
-        }
-    }
-
-    // 获取 PC 和 寄存器更新 UI，并自动滚动到 PC 位置
-    suspend fun updateDebugState(traceAction: String? = null) {
-        if (!ensureDebugBackendMatchesCurrentSession()) return
+    private fun runDebugOperation(
+        action: String,
+        session: DebugSession? = currentDebugSession(),
+        status: DebugStatus = DebugStatus.RUNNING,
+        command: suspend (DebugBackend) -> Result<DebugStateSnapshot>
+    ) {
+        if (session == null || debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        if (status == DebugStatus.RUNNING && !session.started) return
         val backend = _debugBackend.value
-        val pcResult = debuggerRepository.getCurrentPC(backend)
-        val regsResult = debuggerRepository.getRegisters(backend)
-        val pc = pcResult.getOrNull()
-        val regs = regsResult.getOrNull()
+        val operation = ++session.operation
+        // A queued command isn't pausable yet. Publish RUNNING only as it enters the backend.
+        _debugStatus.value = if (session.mutations.isLocked) DebugStatus.STARTING else status
+        _debugError.value = null
+        _debugStackState.value = _debugStackState.value.copy(isLoading = false)
+        _debugMemoryState.value = _debugMemoryState.value.copy(isLoading = false)
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session)) return@launch
+                _debugStatus.value = status
+                val result = command(backend)
+                syncDebugPipe()
+                session.openingConfig = null
+                if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != status) return@launch
+                result.fold(
+                    onSuccess = { snapshot ->
+                        if (action == "reset") clearDebugTrace()
+                        applyDebugSnapshot(session, snapshot, action)
+                    },
+                    onFailure = { setDebugError(it) }
+                )
+            }
+        }
+    }
 
-        if (pc == null && regs == null) {
-            setDebugError(pcResult.exceptionOrNull() ?: regsResult.exceptionOrNull())
+    fun pauseExecution() {
+        val session = currentDebugSession() ?: return
+        if (_debugStatus.value != DebugStatus.RUNNING) return
+        val backend = _debugBackend.value
+        if (backend == DebugBackend.ESIL) {
+            // The in-flight operation alone publishes the stop and its reason.
+            debuggerRepository.requestEsilPause()
             return
         }
 
-        _pcAddress.value = pc
-        _debugStatus.value = DebugStatus.SUSPENDED
+        val operation = session.operation
+        R2PipeManager.interrupt()
+        // Preserve the other backends' interrupt path, without replacing a stop already published.
+        viewModelScope.launch {
+            delay(150L)
+            if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@launch
+            val result = debuggerRepository.pause(backend)
+            if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@launch
+            result.onSuccess { applyDebugSnapshot(session, it, "pause") }
+        }
+    }
+
+    private fun applyDebugSnapshot(session: DebugSession, snapshot: DebugStateSnapshot, action: String) {
+        _pcAddress.value = snapshot.pc
+        _debugStopReason.value = snapshot.stopReason
+        _registers.value = snapshot.registers
+        _breakpoints.value = snapshot.breakpointAddresses()
         _debugError.value = null
-
-        _registers.value = regs ?: org.json.JSONObject()
-        debuggerRepository.getBreakpoints().getOrNull()?.let { _breakpoints.value = it }
-        refreshDebugStack()
-        pc?.let { readDebugMemory(it) }
-
-        if (traceAction != null) {
-            appendDebugTrace(traceAction, pc)
-        } else if (lastTraceRegisters.isEmpty()) {
-            lastTraceRegisters = currentRegisterMap()
+        _debugStatus.value = when (snapshot.runState) {
+            DebugRunState.IDLE -> DebugStatus.IDLE
+            DebugRunState.STARTING -> DebugStatus.STARTING
+            DebugRunState.SUSPENDED -> DebugStatus.SUSPENDED
+            DebugRunState.RUNNING -> DebugStatus.RUNNING
+            DebugRunState.STOPPING -> DebugStatus.STOPPING
+            DebugRunState.TERMINATED, DebugRunState.ERROR -> DebugStatus.ERROR
         }
+        appendDebugTrace(action, snapshot)
 
-        // 自动让反汇编视图滚动到 PC 位置
-        if (pc != null) {
-            loadAndScrollTo(pc)
+        // These are panel-specific reads, not a second debugger snapshot.
+        if (snapshot.runState == DebugRunState.SUSPENDED) {
+            val sp = snapshot.registers.firstOrNull { it.role == RegisterRole.SP }?.value
+            refreshDebugStack(session, snapshot.backend, sp)
+            snapshot.pc?.let { readDebugMemory(it) }
         }
+        if (ownsDebugSession(session)) snapshot.pc?.let(::loadAndScrollTo)
     }
 
     fun clearScrollTarget(target: DisasmScrollTarget) {
@@ -809,8 +884,9 @@ class DisasmViewModel @Inject constructor(
     /** Initialize virtualized disassembly only after the session snapshot is ready. */
     private fun loadDisassembly(session: R2PipeSession, layout: DisasmAddressLayout, currentOffset: Long) {
         val active = R2PipeManager.activeSession()?.takeIf { it.pipe === session } ?: return
+        syncDebugPipe()
         if (session !== managerSession) {
-            reset()
+            resetDisassembly()
             managerSession = session
         }
         if (disasmDataManager != null) {
@@ -879,25 +955,11 @@ class DisasmViewModel @Inject constructor(
         if (forward) forwardLoadJob = job else backwardLoadJob = job
     }
 
-    fun writeAsm(addr: Long, asm: String) {
+    private fun writeBytes(session: R2PipeManager.R2Session, addr: Long, type: ViewerByteEdit, value: String) {
+        if (R2PipeManager.activeSessionPipe !== session.pipe) return
         viewModelScope.launch {
-            // "wa [asm] @ [addr]"
-            disasmRepository.writeAsm(addr, asm)
-
+            if (!session.writeViewerBytes(type, value, listOf(addr)) || R2PipeManager.activeSessionPipe !== session.pipe) return@launch
             resetAndScrollTo(addr)
-
-            // Notify others
-            _dataModifiedEvent.value = System.currentTimeMillis()
-        }
-    }
-    
-    fun writeHex(addr: Long, hex: String) {
-        viewModelScope.launch {
-            // "wx [hex] @ [addr]"
-            top.wsdx233.r2droid.util.R2PipeManager.execute("wx $hex @ $addr")
-
-            resetAndScrollTo(addr)
-
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
     }
@@ -911,17 +973,6 @@ class DisasmViewModel @Inject constructor(
         }
     }
 
-    fun writeString(addr: Long, text: String) {
-        viewModelScope.launch {
-            // "w [text] @ [addr]"
-            val escaped = text.replace("\"", "\\\"")
-            top.wsdx233.r2droid.util.R2PipeManager.execute("w \"$escaped\" @ $addr")
-
-            resetAndScrollTo(addr)
-
-            _dataModifiedEvent.value = System.currentTimeMillis()
-        }
-    }
     
     /**
      * Called when other modules modify data
@@ -1003,6 +1054,7 @@ class DisasmViewModel @Inject constructor(
 
     fun fillSelectedRange(value: String) {
         val state = _multiSelectState.value
+        val session = R2PipeManager.activeSession() ?: return
         if (!state.active) return
         val start = state.rangeStart
         val end = state.rangeEnd
@@ -1018,13 +1070,15 @@ class DisasmViewModel @Inject constructor(
             if (isHex) {
                 val unitLen = (clean.length / 2).coerceAtLeast(1)
                 val repeated = clean.repeat((totalBytes + unitLen - 1) / unitLen).take(totalBytes * 2)
-                R2PipeManager.execute("wx $repeated @ $start")
+                if (!session.writeViewerBytes(ViewerByteEdit.HEX, repeated, listOf(start))) return@launch
+            } else if (session.writeCacheEnabled) {
+                if (!session.writeViewerBytes(ViewerByteEdit.ASSEMBLY, value, instrsInRange.map { it.addr })) return@launch
             } else {
-                // Treat as assembly opcode - write at each instruction
                 for (instr in instrsInRange) {
-                    R2PipeManager.execute("wa $value @ ${instr.addr}")
+                    R2PipeManager.execute(session, "wa $value @ ${instr.addr}")
                 }
             }
+            if (R2PipeManager.activeSessionPipe !== session.pipe) return@launch
             resetAndScrollTo(start)
             _dataModifiedEvent.value = System.currentTimeMillis()
             _multiSelectState.value = MultiSelectState()

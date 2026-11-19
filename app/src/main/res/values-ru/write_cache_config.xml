@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="analysis_write_cache">Кэширование записи</string>
+    <string name="analysis_write_cache_desc">Файл откроется только для чтения в локальном сеансе stdio. Правки будут доступны в разделе «Патчи»; незаписанные правки не сохраняются вместе с проектом.</string>
+    <string name="analysis_write_cache_conflicting_flags">Для правок в памяти нужен локальный файл. Параметры запуска для записи или отладки несовместимы с этим режимом.</string>
+    <string name="analysis_write_cache_start_failed">Не удалось открыть сеанс только для чтения с включённым кешем записи.</string>
+    <string name="analysis_write_cache_edit_unavailable">Для правок в памяти нужен включённый кеш записи и файл, открытый только для чтения. Откройте проект заново, чтобы восстановить этот режим.</string>
+    <string name="analysis_write_cache_close_warning">При закрытии сеанса незаписанные патчи будут потеряны, даже если сохранить проект. Чтобы оставить изменения, экспортируйте копию или запишите их в файл на вкладке «Патчи».</string>
+</resources>

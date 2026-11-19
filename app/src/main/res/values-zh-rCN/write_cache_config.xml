@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="analysis_write_cache">写缓存模式</string>
+    <string name="analysis_write_cache_desc">以只读方式打开本地 stdio 会话（io.cache=true），在「项目 → 补丁」中查看修改。项目会记住此设置，但不保存待写入的补丁。</string>
+    <string name="analysis_write_cache_conflicting_flags">暂存编辑需要本地二进制文件，不能与可写或调试启动参数同时使用。</string>
+    <string name="analysis_write_cache_start_failed">无法启动已启用写入缓存的只读会话。</string>
+    <string name="analysis_write_cache_edit_unavailable">暂存编辑需要启用写入缓存，并以只读方式打开二进制文件。请重新打开项目以恢复此模式。</string>
+    <string name="analysis_write_cache_close_warning">关闭会话会丢弃待写入的补丁，即使已保存项目也是如此。要保留修改，请先在「补丁」页导出副本或写回文件。</string>
+</resources>

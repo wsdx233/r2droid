@@ -5,6 +5,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
@@ -29,17 +30,11 @@ fun ProjectDetailView(
     val uiState by viewModel.uiState.collectAsState()
     val state = uiState as? ProjectUiState.Success ?: return
 
-    val hexDataManager by hexViewModel.hexDataManagerState.collectAsState()
+    val hexDataManager = hexViewModel.hexDataManagerState.collectAsState().value
     val disasmDataManager by disasmViewModel.disasmDataManagerState.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(tabIndex) {
         when (tabIndex) {
-            0 -> {
-                val sections = state.sections ?: emptyList()
-                val path = R2PipeManager.currentFilePath
-                val cursor = state.cursorAddress
-                hexViewModel.onEvent(HexEvent.LoadHex(sections, path, cursor))
-            }
             2 -> viewModel.onEvent(ProjectEvent.LoadDecompilation)
             3 -> viewModel.onEvent(ProjectEvent.LoadGraph(state.graphType))
         }
@@ -47,7 +42,6 @@ fun ProjectDetailView(
     
     androidx.compose.runtime.LaunchedEffect(state.cursorAddress) {
         val cursor = state.cursorAddress
-        if (tabIndex == 0) hexViewModel.onEvent(HexEvent.PreloadHex(cursor))
         if (tabIndex == 1) disasmViewModel.onEvent(DisasmEvent.Preload(cursor))
         if (tabIndex == 2) viewModel.onEvent(ProjectEvent.LoadDecompilation)
         if (tabIndex == 3) viewModel.onEvent(ProjectEvent.LoadGraph(state.graphType))
@@ -55,19 +49,21 @@ fun ProjectDetailView(
     
     when(tabIndex) {
         0 -> {
-            if (hexDataManager == null) {
-                androidx.compose.runtime.LaunchedEffect(Unit) {
-                    val sections = state.sections ?: emptyList()
-                    val path = R2PipeManager.currentFilePath
-                    val cursor = state.cursorAddress
-                    hexViewModel.onEvent(HexEvent.LoadHex(sections, path, cursor))
+            androidx.compose.runtime.LaunchedEffect(state.sessionToken, hexDataManager == null) {
+                if (state.sessionToken === R2PipeManager.activeSessionPipe) {
+                    hexViewModel.onEvent(HexEvent.LoadHex(state.sections.orEmpty(), R2PipeManager.currentFilePath, state.cursorAddress))
                 }
+            }
+            if (hexDataManager == null || hexDataManager !== hexViewModel.hexDataManager ||
+                state.sessionToken !== R2PipeManager.activeSessionPipe
+            ) {
                 androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else {
+            } else key(hexDataManager) {
                 HexViewer(
                     viewModel = hexViewModel,
+                    hexDataManager = hexDataManager,
                     cursorAddress = state.cursorAddress,
                     scrollToSelectionTrigger = viewModel.scrollToSelectionTrigger,
                     onByteClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },

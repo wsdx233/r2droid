@@ -221,14 +221,14 @@ fun ProjectScreen(
             }
 
     // Handle project restoration or custom command
-    androidx.compose.runtime.LaunchedEffect(uiState, R2PipeManager.pendingCustomCommand, R2PipeManager.pendingRestoreFlags) {
+    androidx.compose.runtime.LaunchedEffect(uiState, R2PipeManager.pendingCustomCommand, R2PipeManager.pendingProjectRestore) {
         if (uiState is ProjectUiState.Analyzing && !pendingStartTriggered) {
             when {
                 R2PipeManager.pendingCustomCommand != null -> {
                     viewModel.onEvent(ProjectEvent.StartCustomCommandSession)
                     pendingStartTriggered = true
                 }
-                R2PipeManager.pendingRestoreFlags != null -> {
+                R2PipeManager.pendingProjectRestore != null -> {
                     viewModel.onEvent(ProjectEvent.StartRestoreSession)
                     pendingStartTriggered = true
                 }
@@ -275,10 +275,12 @@ fun ProjectScreen(
                 ))
             },
             text = {
-                Text(stringResource(
-                    if (isExistingProject) R.string.project_exit_update_message
-                    else R.string.project_exit_message
-                ))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(if (isExistingProject) R.string.project_exit_update_message else R.string.project_exit_message))
+                    if (sessions[activeSessionId]?.writeCacheEnabled == true) {
+                        Text(stringResource(R.string.analysis_write_cache_close_warning))
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -389,11 +391,12 @@ fun ProjectScreen(
                     } else {
                         AnalysisConfigScreen(
                             filePath = state.filePath,
-                            onStartAnalysis = { cmd, writable, flags, saveAsProject, projectName, copyBinary ->
+                            onStartAnalysis = { cmd, writable, writeCacheEnabled, flags, saveAsProject, projectName, copyBinary ->
                                 viewModel.onEvent(
                                     ProjectEvent.StartAnalysisSession(
                                         cmd = cmd,
                                         writable = writable,
+                                        writeCacheEnabled = writeCacheEnabled,
                                         flags = flags,
                                         saveAsProject = saveAsProject,
                                         projectName = projectName,
@@ -405,7 +408,7 @@ fun ProjectScreen(
                     }
                 }
                 is ProjectUiState.Analyzing -> {
-                    AnalysisProgressScreen(logs = logs, isRestoring = R2PipeManager.pendingRestoreFlags != null)
+                    AnalysisProgressScreen(logs = logs, isRestoring = R2PipeManager.pendingProjectRestore != null)
                 }
                 else -> {
                     val sid = activeSessionId ?: "legacy-session"

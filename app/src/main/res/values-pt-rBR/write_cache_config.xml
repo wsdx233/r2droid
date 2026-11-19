@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="analysis_write_cache">Modo de cache de escrita</string>
+    <string name="analysis_write_cache_desc">Abre o binário somente para leitura em uma sessão local via stdio e mantém as alterações em Patches. Alterações não aplicadas não são salvas com o projeto.</string>
+    <string name="analysis_write_cache_conflicting_flags">Esse modo exige um binário local e não pode ser combinado com opções de inicialização para escrita ou depuração.</string>
+    <string name="analysis_write_cache_start_failed">Não foi possível iniciar uma sessão somente para leitura com o cache de escrita ativado.</string>
+    <string name="analysis_write_cache_edit_unavailable">Para manter alterações na memória, o cache de escrita deve estar ativo e o binário deve estar em modo somente leitura. Reabra o projeto para restaurar esse modo.</string>
+    <string name="analysis_write_cache_close_warning">Fechar a sessão descarta os patches pendentes, mesmo ao salvar o projeto. Para mantê-los, exporte uma cópia ou grave-os no arquivo pela aba Patches.</string>
+</resources>

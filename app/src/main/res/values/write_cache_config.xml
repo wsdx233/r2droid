@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="analysis_write_cache">Write cache mode</string>
+    <string name="analysis_write_cache_desc">Stage edits in a read-only local stdio session (io.cache=true). Review them in Project → Patches. The project remembers this setting, not the pending patches.</string>
+    <string name="analysis_write_cache_conflicting_flags">Cached editing requires a local binary and cannot be combined with writable or debug startup flags.</string>
+    <string name="analysis_write_cache_start_failed">Could not start a read-only session with the write cache enabled.</string>
+    <string name="analysis_write_cache_edit_unavailable">Cached editing requires an active write cache and a read-only binary. Reopen the project to restore this mode.</string>
+    <string name="analysis_write_cache_close_warning">Closing the session discards pending patches, even if you save the project. To keep them, export a copy or write them back from Patches first.</string>
+</resources>

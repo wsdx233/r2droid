@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="proj_tab_patches">Патчи</string>
+    <string name="patches_actions">Действия с патчами</string>
+    <string name="patches_summary">Ожидают записи: %1$d · Записано: %2$d</string>
+    <string name="patches_summary_with_superseded">Ожидают записи: %1$d · Записано: %2$d · Замещено: %3$d</string>
+    <string name="patches_loading">Загрузка патчей…</string>
+    <string name="patches_empty">В кэше этой сессии нет патчей. Здесь появятся правки, внесённые через кэш записи.</string>
+    <string name="patches_layered">Активно несколько слоёв кэша. Некоторые записи могут быть скрыты, а действия, требующие доступа ко всему кэшу, недоступны.</string>
+    <string name="patches_pending">Ожидает записи</string>
+    <string name="patches_written">Записано</string>
+    <string name="patches_superseded">Замещён</string>
+    <plurals name="patches_byte_count">
+        <item quantity="one">%d байт</item>
+        <item quantity="few">%d байта</item>
+        <item quantity="many">%d байт</item>
+        <item quantity="other">%d байта</item>
+    </plurals>
+    <string name="patches_preview">Показаны первые %1$d из %2$d байт каждой версии.</string>
+    <string name="patches_original">Исходные байты</string>
+    <string name="patches_modified">Изменённые байты</string>
+    <string name="patches_show_details">Показать подробности</string>
+    <string name="patches_hide_details">Скрыть подробности</string>
+    <string name="patches_copy_address">Копировать адрес</string>
+    <string name="patches_jump">Открыть в hex-редакторе</string>
+    <string name="patches_undo">Отменить последний патч</string>
+    <string name="patches_undo_title">Отменить последний патч?</string>
+    <string name="patches_undo_description">Будет удалён только последний патч, ожидающий записи. Остальные патчи и исходный файл не изменятся.</string>
+    <string name="patches_undo_done">Последний патч отменён.</string>
+    <string name="patches_undo_entry">Отменить этот патч</string>
+    <string name="patches_undo_entry_title">Отменить этот патч?</string>
+    <string name="patches_undo_entry_description">Будет удалён только этот патч, ожидающий записи. Остальные патчи и исходный файл не изменятся.</string>
+    <string name="patches_undo_entry_address">Адрес: %1$s</string>
+    <string name="patches_undo_entry_done">Патч отменён.</string>
+    <string name="patches_undo_overlap">Перекрывающиеся патчи нельзя отменять по отдельности.</string>
+    <string name="patches_reset">Сбросить кэш патчей</string>
+    <string name="patches_reset_title">Сбросить кэш патчей?</string>
+    <string name="patches_reset_description">Все патчи, ожидающие записи, и история патчей в этой сессии будут удалены. Изменения, уже записанные в файл, останутся.</string>
+    <string name="patches_reset_done">Кэш патчей сброшен.</string>
+    <string name="patches_commit">Записать все ожидающие патчи</string>
+    <string name="patches_commit_title">Записать все ожидающие патчи в исходный файл?</string>
+    <string name="patches_commit_description">Исходный файл изменится. Отмена и сброс не возвращают данные после записи. Чтобы сохранить исходный файл без изменений, экспортируйте копию с патчами.</string>
+    <string name="patches_commit_done">Все ожидающие патчи записаны в исходный файл.</string>
+    <string name="patches_export">Экспортировать копию с патчами</string>
+    <string name="patches_export_hint">При экспорте патчи, ожидающие записи, применяются к отдельной копии. Исходный файл и кэш не изменяются.</string>
+    <string name="patches_export_done">Копия с патчами экспортирована.</string>
+    <string name="patches_load_failed">Не удалось загрузить кэш патчей.</string>
+    <string name="patches_update_failed">Не удалось завершить действие с патчами.</string>
+    <string name="patches_export_failed">Не удалось экспортировать копию с патчами.</string>
+    <string name="patches_picker_failed">Не удалось открыть окно выбора файла.</string>
+    <string name="patches_export_expired">Запрос на экспорт больше не действует. Запустите экспорт заново на вкладке «Патчи».</string>
+    <string name="patches_stale">Сессия или кэш патчей изменились. Просмотрите обновлённый список и повторите попытку.</string>
+</resources>

@@ -79,7 +79,7 @@ fun TracePanel(
                         .padding(vertical = 4.dp)
                 ) {
                     Text(
-                        text = "#${entry.index}  0x${entry.pc.toString(16).uppercase()}  ${entry.action}",
+                        text = "#${entry.index}  0x${entry.pc.toULong().toString(16).uppercase()}  ${entry.action}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = LocalAppFont.current,
                         color = MaterialTheme.colorScheme.onSurface
