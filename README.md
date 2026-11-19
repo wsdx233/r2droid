@@ -90,6 +90,7 @@ Thanks to the **Radare2**, **Frida**, and **Termux** communities.
 - [@wsdx233](https://github.com/wsdx233)
 - [@binx6](https://github.com/binx6)
 - [@AbhiTheModder](https://github.com/AbhiTheModder)
+- [@VictorGabriel7Dev](https://github.com/VictorGabriel7Dev)
 
 See the latest list on GitHub: [Contributors](https://github.com/wsdx233/r2droid/graphs/contributors)
 
