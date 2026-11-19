@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
+import top.wsdx233.r2droid.feature.disasm.data.SessionAddressLayout
 import java.io.File
 import java.io.InputStream
 import java.util.UUID
@@ -58,7 +59,8 @@ object R2PipeManager {
         val state: MutableStateFlow<State> = MutableStateFlow(State.Idle),
         val isConnected: AtomicBoolean = AtomicBoolean(true),
         var currentProjectId: String? = null,
-        var isDirtyAfterSave: Boolean = false
+        var isDirtyAfterSave: Boolean = false,
+        internal val disasmLayout: SessionAddressLayout = SessionAddressLayout()
     )
 
     private val _sessions = MutableStateFlow<Map<String, R2Session>>(emptyMap())
@@ -67,7 +69,10 @@ object R2PipeManager {
     private val _activeSessionId = MutableStateFlow<String?>(null)
     val activeSessionId: StateFlow<String?> = _activeSessionId.asStateFlow()
 
-    private fun activeSession(): R2Session? = _activeSessionId.value?.let { _sessions.value[it] }
+    internal fun activeSession(): R2Session? = _activeSessionId.value?.let { _sessions.value[it] }
+
+    /** Stable across metadata edits and distinct when the same drawer entry reconnects. */
+    internal val activeSessionPipe: R2PipeSession? get() = activeSession()?.pipe
 
     // 原子标志位（兼容旧接口）：基于 active session
     val isConnected: Boolean get() = activeSession()?.isConnected?.get() == true
@@ -404,6 +409,11 @@ object R2PipeManager {
     suspend fun execute(sessionId: String, cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {
         val session = _sessions.value[sessionId]
             ?: return Result.failure(IllegalStateException("Session not found: $sessionId"))
+        return execute(session, cmd, markDirty, includeStderr)
+    }
+
+    internal suspend fun execute(session: R2Session, cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {
+        val sessionId = session.sessionId
         if (isR2FridaOnlyCommand(cmd) && !session.isFridaSession) {
             return Result.failure(IllegalStateException("r2frida command requires an active r2frida session: $cmd"))
         }
@@ -477,6 +487,11 @@ object R2PipeManager {
     suspend fun <T> executeStream(sessionId: String, cmd: String, block: suspend (InputStream) -> T): Result<T> {
         val session = _sessions.value[sessionId]
             ?: return Result.failure(IllegalStateException("Session not found: $sessionId"))
+        return executeStream(session, cmd, block)
+    }
+
+    internal suspend fun <T> executeStream(session: R2Session, cmd: String, block: suspend (InputStream) -> T): Result<T> {
+        val sessionId = session.sessionId
 
         return session.mutex.withLock {
             withContext(Dispatchers.IO) {

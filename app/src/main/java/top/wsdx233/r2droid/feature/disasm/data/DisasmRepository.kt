@@ -16,14 +16,27 @@ import top.wsdx233.r2droid.core.data.model.Xref
 import top.wsdx233.r2droid.core.data.model.XrefWithDisasm
 import top.wsdx233.r2droid.core.data.model.XrefsData
 import top.wsdx233.r2droid.core.data.source.R2DataSource
+import top.wsdx233.r2droid.util.R2PipeManager
 
 import javax.inject.Inject
 class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSource) {
 
-    suspend fun getDisassembly(offset: Long, count: Int): Result<List<DisasmInstruction>> = withContext(Dispatchers.Default) {
+    suspend fun getDisassembly(offset: Long, count: Int): Result<List<DisasmInstruction>> =
+        getDisassembly(offset, count, r2DataSource::executeJson, r2DataSource::execute)
+
+    internal suspend fun getDisassembly(session: R2PipeManager.R2Session, offset: Long, count: Int): Result<List<DisasmInstruction>> =
+        getDisassembly(offset, count,
+            { R2PipeManager.execute(session, it, markDirty = false) },
+            { R2PipeManager.execute(session, it) })
+
+    private suspend fun getDisassembly(
+        offset: Long, count: Int,
+        executeJson: suspend (String) -> Result<String>,
+        execute: suspend (String) -> Result<String>
+    ): Result<List<DisasmInstruction>> = withContext(Dispatchers.Default) {
         try {
             // R2 serializes the pipe itself; only CPU parsing/model construction moves off Main.
-            val output = r2DataSource.executeJson("pdj $count @ $offset").getOrThrow()
+            val output = executeJson("pdj $count @ $offset").getOrThrow()
             currentCoroutineContext().ensureActive()
             val list = if (output.isBlank()) emptyList() else {
                 val jsonArray = JSONArray(output)
@@ -32,7 +45,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
                     DisasmInstruction.fromJson(jsonArray.getJSONObject(i))
                 }
             }
-            Result.success(resolveStringRefs(list))
+            Result.success(resolveStringRefs(list, execute))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -43,7 +56,10 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     /**
      * Resolve STRN refs: fetch string content at ref addresses and append to instruction comments.
      */
-    private suspend fun resolveStringRefs(instructions: List<DisasmInstruction>): List<DisasmInstruction> {
+    private suspend fun resolveStringRefs(
+        instructions: List<DisasmInstruction>,
+        execute: suspend (String) -> Result<String>
+    ): List<DisasmInstruction> {
         val strnAddrs = instructions.flatMap { instr ->
             instr.refs.filter { it.type == "STRN" }.map { it.addr }
         }.distinct()
@@ -54,7 +70,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
         for (addr in strnAddrs) {
             try {
                 currentCoroutineContext().ensureActive()
-                val result = r2DataSource.execute("ps @ $addr")
+                val result = execute("ps @ $addr")
                 val str = result.getOrThrow().trim()
                 if (!str.isNullOrEmpty()) stringMap[addr] = str
             } catch (cancelled: CancellationException) {

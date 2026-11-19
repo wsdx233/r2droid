@@ -27,9 +27,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.colorResource
@@ -39,6 +42,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.core.data.model.AddressOverview
+import top.wsdx233.r2droid.core.data.model.RegionKind
+import kotlin.math.roundToInt
 
 /**
  * Auto-hiding scrollbar that appears only during scrolling.
@@ -229,7 +235,7 @@ fun AutoHideAddressScrollbar(
     viewEndAddress: Long,
     currentAddress: () -> Long,
     modifier: Modifier = Modifier,
-    thumbColor: Color = colorResource(R.color.thumb_color),
+    thumbColor: Color = MaterialTheme.colorScheme.onSurface,
     trackWidth: Dp = 16.dp,
     thumbWidth: Dp = 8.dp,
     thumbHeight: Dp = 40.dp,
@@ -239,11 +245,14 @@ fun AutoHideAddressScrollbar(
     onScrollToAddress: (Long) -> Unit = {},
     onDragComplete: (Long) -> Unit = {},
     onDragStateChange: (Boolean) -> Unit = {},
-    isSeeking: Boolean = false
+    isSeeking: Boolean = false,
+    overview: AddressOverview = AddressOverview.Empty,
+    onDragThumbCenter: ((Float) -> Unit)? = null
 ) {
     if (totalItems <= 0 || viewEndAddress <= viewStartAddress) return
 
     val preview by rememberUpdatedState(onScrollToAddress)
+    val reportCenter by rememberUpdatedState(onDragThumbCenter)
     val commit by rememberUpdatedState(onDragComplete)
     val dragStateChange by rememberUpdatedState(onDragStateChange)
     val address by rememberUpdatedState(currentAddress)
@@ -257,7 +266,6 @@ fun AutoHideAddressScrollbar(
         animationSpec = tween(animationDurationMs),
         label = "address_scrollbar_alpha"
     )
-    val color = if (isDragging || isSeeking) MaterialTheme.colorScheme.primary else thumbColor
 
     LaunchedEffect(listState, alwaysShow, hideDelayMs) {
         if (!alwaysShow) {
@@ -280,11 +288,49 @@ fun AutoHideAddressScrollbar(
             .toFloat().coerceIn(0f, 1f)
     }
 
+    // Keep the cache modifier stable across preview/list recompositions. Only overview, range,
+    // size or density changes should rebuild the strip geometry, never a moving thumb.
+    val strip = remember(overview, viewStartAddress, viewEndAddress, thumbWidth, thumbHeight) {
+        Modifier.drawWithCache {
+            val thumbPx = thumbHeight.toPx().coerceAtMost(size.height)
+            val travel = size.height - thumbPx
+            val thumbWidthPx = thumbWidth.toPx().coerceAtMost(size.width)
+            val stripWidth = minOf(5.dp.toPx(), thumbWidthPx)
+            if (overview == AddressOverview.Empty || travel <= 0f || stripWidth <= 0f) {
+                return@drawWithCache onDrawBehind { }
+            }
+
+            val bandsByKind = Array(RegionKind.entries.size) { Path() }
+            val dividers = Path()
+            val rows = travel.roundToInt().coerceAtLeast(1)
+            val left = size.width - (thumbWidthPx + stripWidth) / 2f
+            val right = left + stripWidth
+            // The first/last raster boundaries are the centers of the thumb at either end.
+            fun rowY(row: Int) = thumbPx / 2f + (row.toFloat() / rows) * travel
+            for (band in overview.rasterize(viewStartAddress, viewEndAddress, rows)) {
+                val top = rowY(band.firstRow)
+                val bottom = rowY(band.endRow)
+                bandsByKind[band.kind.ordinal].addRect(Rect(left, top, right, bottom))
+                if (band.separatorBefore) {
+                    dividers.addRect(Rect(left, top, right, minOf(top + 1f, bottom)))
+                }
+            }
+            onDrawBehind {
+                for (kind in RegionKind.entries) {
+                    val path = bandsByKind[kind.ordinal]
+                    if (!path.isEmpty) drawPath(path, BinaryPermissionColors[kind])
+                }
+                if (!dividers.isEmpty) drawPath(dividers, Color.Black.copy(alpha = 0.52f))
+            }
+        }
+    }
+
     Canvas(
         modifier = modifier
             .fillMaxHeight()
             .width(trackWidth)
             .graphicsLayer { this.alpha = alpha.value }
+            .then(strip)
             .pointerInput(viewStartAddress, viewEndAddress, thumbHeight) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
@@ -299,6 +345,7 @@ fun AutoHideAddressScrollbar(
                     fun moveTo(y: Float): Long {
                         val ratio = scrollbarRatioAtPosition(y, height, thumbPx, grabOffset)
                         dragThumbRatio = ratio
+                        reportCenter?.invoke(thumbPx / 2f + ratio * (height - thumbPx))
                         val target = scrollbarAddressAtRatio(viewStartAddress, viewEndAddress, ratio)
                         preview(target)
                         return target
@@ -323,6 +370,12 @@ fun AutoHideAddressScrollbar(
         val height = thumbHeight.toPx().coerceAtMost(size.height)
         val width = thumbWidth.toPx().coerceAtMost(size.width)
         val ratio = dragThumbRatio ?: addressRatio()
-        drawRect(color, Offset(size.width - width, ratio * (size.height - height)), Size(width, height))
+        // The contrasting wings stay visible at either side of the permission strip.
+        drawRect(
+            color = thumbColor,
+            topLeft = Offset(size.width - width, ratio * (size.height - height)),
+            size = Size(width, height),
+            alpha = if (isDragging || seeking) 0.52f else 0.44f
+        )
     }
 }

@@ -40,7 +40,9 @@ class R2FridaRepository {
         FridaExport.fromJson(it)
     }
 
-    suspend fun getMappings(): Result<List<FridaMapping>> = parseJsonArray(":dmj") {
+    suspend fun getMappings(): Result<List<FridaMapping>> = getMappingsForSession(null)
+
+    internal suspend fun getMappingsForSession(session: R2PipeManager.R2Session?): Result<List<FridaMapping>> = parseJsonArray(":dmj", session) {
         FridaMapping.fromJson(it)
     }
 
@@ -51,9 +53,10 @@ class R2FridaRepository {
     }
 
     private suspend fun <T> parseJsonArray(
-        cmd: String, mapper: (JSONObject) -> T
+        cmd: String, session: R2PipeManager.R2Session? = null, mapper: (JSONObject) -> T
     ): Result<List<T>> = runCatching {
-        val raw = seekJson(executeR2Frida(cmd).getOrThrow())
+        val output = if (session == null) executeR2Frida(cmd) else R2PipeManager.execute(session, cmd, markDirty = false)
+        val raw = seekJson(output.getOrThrow())
         val arr = JSONArray(raw)
         (0 until arr.length()).map { mapper(arr.getJSONObject(it)) }
     }

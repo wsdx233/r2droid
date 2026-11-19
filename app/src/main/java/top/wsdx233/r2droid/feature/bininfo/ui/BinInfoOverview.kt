@@ -64,6 +64,8 @@ import top.wsdx233.r2droid.core.data.model.EntryPoint
 import top.wsdx233.r2droid.core.data.model.HashInfo
 import top.wsdx233.r2droid.core.data.model.HeaderInfo
 import top.wsdx233.r2droid.core.data.model.InfoSection
+import top.wsdx233.r2droid.core.data.model.RegionKind
+import top.wsdx233.r2droid.core.ui.components.BinaryPermissionColors
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.core.ui.components.UnifiedListItemWrapper
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
@@ -505,14 +507,8 @@ fun BlockStatsCard(stats: BlockStatsData, actions: ListItemActions) {
         Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
             val stepX = size.width / blocks.size.coerceAtLeast(1)
             blocks.forEachIndexed { index, block ->
-                val color = when {
-                    "x" in block.perm -> Color(0xFF5DADE2)
-                    "w" in block.perm -> Color(0xFF58D68D)
-                    "r" in block.perm -> Color(0xFFCACFD2)
-                    else -> Color(0xFFFACC14)
-                }
                 drawRect(
-                    color = color,
+                    color = BinaryPermissionColors[RegionKind.fromPermissions(block.perm)],
                     topLeft = Offset(index * stepX, 0f),
                     size = Size(stepX, size.height)
                 )
@@ -520,9 +516,9 @@ fun BlockStatsCard(stats: BlockStatsData, actions: ListItemActions) {
         }
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            LegendItem(stringResource(R.string.binary_exec), Color(0xFF5DADE2))
-            LegendItem(stringResource(R.string.binary_write), Color(0xFF58D68D))
-            LegendItem(stringResource(R.string.binary_read), Color(0xFFCACFD2))
+            LegendItem(stringResource(R.string.binary_exec), BinaryPermissionColors[RegionKind.EXECUTABLE])
+            LegendItem(stringResource(R.string.binary_write), BinaryPermissionColors[RegionKind.WRITABLE])
+            LegendItem(stringResource(R.string.binary_read), BinaryPermissionColors[RegionKind.READ_ONLY])
         }
     }
 }

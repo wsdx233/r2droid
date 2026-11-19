@@ -32,14 +32,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
@@ -438,66 +441,71 @@ fun DisassemblyViewer(
             onDismiss = viewModel::dismissScrollbarPreview
         )
 
-        DisasmAddressScrollbar(
-            listState = listState,
-            instructions = instructionSnapshot,
-            manager = disasmDataManager,
-            previewState = viewModel.scrollbarPreview,
-            onPreview = viewModel::previewScrollbarAddress,
-            onCommit = viewModel::scrollbarJumpTo,
-            isSeeking = isScrollbarSeeking,
-            onDragStateChange = {
-                isScrollbarDragging = it
-                viewModel.onScrollbarDragStateChange(it)
-            },
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
+        // Measure the existing footer first; the scrollbar gets exactly the remaining height.
+        Column(Modifier.matchParentSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = AbsoluteAlignment.CenterRight) {
+                DisasmAddressScrollbar(
+                    listState = listState,
+                    instructions = instructionSnapshot,
+                    manager = disasmDataManager,
+                    previewState = viewModel.scrollbarPreview,
+                    onPreview = viewModel::previewScrollbarAddress,
+                    onCommit = viewModel::scrollbarJumpTo,
+                    isSeeking = isScrollbarSeeking,
+                    onDragStateChange = {
+                        isScrollbarDragging = it
+                        viewModel.onScrollbarDragStateChange(it)
+                    }
+                )
+            }
 
-        // Footer: Position Info
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DisasmCurrentAddress(listState, instructionSnapshot, viewModel)
-                if (debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE && pcAddress != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    DisasmCurrentAddress(listState, instructionSnapshot, viewModel, isScrollbarDragging)
+                    if (debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE && pcAddress != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        AssistChip(
+                            onClick = { pcAddress?.let(onInstructionClick) },
+                            label = {
+                                Text(
+                                    stringResource(R.string.debug_footer_next_pc, "0x%X".format(pcAddress)),
+                                    fontSize = 11.sp,
+                                    fontFamily = LocalAppFont.current,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
-                    AssistChip(
-                        onClick = { pcAddress?.let(onInstructionClick) },
-                        label = {
-                            Text(
-                                stringResource(R.string.debug_footer_next_pc, "0x%X".format(pcAddress)),
-                                fontSize = 11.sp,
-                                fontFamily = LocalAppFont.current
-                            )
+                    Text(
+                        "Loaded: $loadedCount instrs",
+                        fontSize = 12.sp,
+                        fontFamily = LocalAppFont.current,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(
+                    onClick = { showDebugControls = !showDebugControls },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.BugReport,
+                        contentDescription = "Toggle Debug Controls",
+                        tint = if (showDebugControls || debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Loaded: $loadedCount instrs", 
-                    fontSize = 12.sp, 
-                    fontFamily = LocalAppFont.current
-                )
-            }
-            IconButton(
-                onClick = { showDebugControls = !showDebugControls },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.BugReport,
-                    contentDescription = "Toggle Debug Controls",
-                    tint = if (showDebugControls || debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
             }
         }
         
@@ -933,12 +941,20 @@ fun DisassemblyViewer(
 private fun DisasmCurrentAddress(
     listState: LazyListState,
     instructions: List<DisasmInstruction>,
-    viewModel: DisasmViewModel
+    viewModel: DisasmViewModel,
+    isDragging: Boolean
 ) {
-    val preview by viewModel.scrollbarPreview.collectAsState()
+    // While dragging, the bubble owns the target address; the footer still describes the list.
+    val preview = if (isDragging) null else viewModel.scrollbarPreview.collectAsState().value
     val hex = preview?.let { formatCompactAddress(it.address) }
         ?: instructions.getOrNull(listState.firstVisibleItemIndex)?.displayAddress ?: "0"
-    Text("Addr: 0x$hex", fontSize = 12.sp, fontFamily = LocalAppFont.current)
+    Text(
+        "Addr: 0x$hex",
+        fontSize = 12.sp,
+        fontFamily = LocalAppFont.current,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -954,6 +970,13 @@ internal fun DisasmAddressScrollbar(
     modifier: Modifier = Modifier
 ) {
     val currentInstructions by rememberUpdatedState(instructions)
+    var dragging by remember(manager) { mutableStateOf(false) }
+    val thumbCenter = remember(manager) { mutableFloatStateOf(0f) }
+    val previewBands = remember(manager) {
+        lazy(LazyThreadSafetyMode.NONE) {
+            manager.addressOverview.rasterize(manager.viewStartAddress, manager.viewEndAddress, PREVIEW_ROWS)
+        }
+    }
     // This is only bookkeeping for pointer callbacks, not observable UI state.
     val lastPreviewIndex = remember(listState) { intArrayOf(-1) }
     // A dwell load (or a distant LRU hit) can replace/prepend the window while the finger is still
@@ -967,6 +990,9 @@ internal fun DisasmAddressScrollbar(
             listState.requestScrollToItem(index)
         }
     }
+    if (dragging) {
+        DisasmDragBubble(previewState, manager, instructions, previewBands.value, thumbCenter)
+    }
     AutoHideAddressScrollbar(
         listState = listState,
         totalItems = instructions.size,
@@ -976,6 +1002,9 @@ internal fun DisasmAddressScrollbar(
         modifier = modifier,
         alwaysShow = true,
         isSeeking = isSeeking,
+        thumbWidth = DisasmThumbWidth,
+        overview = manager.addressOverview,
+        onDragThumbCenter = { thumbCenter.floatValue = it },
         onScrollToAddress = { address ->
             onPreview(address)
             val index = DisasmDataManager.coveredIndex(currentInstructions, address)
@@ -988,6 +1017,7 @@ internal fun DisasmAddressScrollbar(
         },
         onDragComplete = onCommit,
         onDragStateChange = {
+            dragging = it
             lastPreviewIndex[0] = -1
             if (it) {
                 // Stop an existing list fling even when the first preview is a cache miss.

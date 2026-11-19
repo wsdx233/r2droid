@@ -157,7 +157,9 @@ data class Section(
     val vSize: Long,
     val perm: String,
     val vAddr: Long,
-    val pAddr: Long
+    val pAddr: Long,
+    val type: String = "",
+    val flags: Long? = null
 ) {
     companion object {
         fun fromJson(json: JSONObject): Section {
@@ -167,7 +169,9 @@ data class Section(
                 vSize = json.optLong("vsize", 0),
                 perm = json.optString("perm", ""),
                 vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0)
+                pAddr = json.optLong("paddr", 0),
+                type = json.optString("type", ""),
+                flags = if (json.isNull("flags")) null else json.optLong("flags")
             )
         }
     }

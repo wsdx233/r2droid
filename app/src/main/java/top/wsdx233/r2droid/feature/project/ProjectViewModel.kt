@@ -10,24 +10,33 @@ import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import androidx.paging.cachedIn
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import org.radare.r2pipe.kotlin.R2PipeSession
 
 import top.wsdx233.r2droid.core.data.db.*
 import top.wsdx233.r2droid.core.data.model.*
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.bininfo.data.BinInfoRepository
+import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
 import top.wsdx233.r2droid.feature.project.data.ProjectRepository
 import top.wsdx233.r2droid.feature.project.data.SavedProjectRepository
+import top.wsdx233.r2droid.feature.r2frida.data.R2FridaRepository
 import top.wsdx233.r2droid.util.ProjectFileUtils
 import top.wsdx233.r2droid.util.R2PipeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import javax.inject.Inject
 
 /**
@@ -105,7 +114,9 @@ sealed class ProjectUiState {
         val graphData: GraphData? = null,
         val graphType: GraphType = GraphType.FunctionFlow,
         val graphLoading: Boolean = false,
-        val cursorAddress: Long = 0L
+        val cursorAddress: Long = 0L,
+        val sessionToken: R2PipeSession,
+        val disasmLayout: DisasmAddressLayout? = null // null means the initial snapshot is still pending
     ) : ProjectUiState()
     data class Error(val message: String) : ProjectUiState()
 }
@@ -188,9 +199,10 @@ class ProjectViewModel @Inject constructor(
     private val functionDao: FunctionDao
 ) : ViewModel() {
 
-    // Track current r2 session token. It increments on open/switch/close.
-    // Used to detect sidebar session switching and refresh all project-scoped data.
-    private var observedSessionToken: Int = -1
+    // Detect active pipe changes without treating selection of the same pipe as a reconnect.
+    private var observedSessionToken: R2PipeSession? = null
+    private var sectionSyncJob: Job? = null
+    private var sectionSyncSession: R2PipeSession? = null
 
     private val _uiState = MutableStateFlow<ProjectUiState>(ProjectUiState.Idle)
     val uiState: StateFlow<ProjectUiState> = _uiState.asStateFlow()
@@ -531,9 +543,11 @@ class ProjectViewModel @Inject constructor(
     }
 
     private fun onSessionSwitchedIfNeeded(): Boolean {
-        val token = R2PipeManager.sessionId
-        if (token == observedSessionToken) return false
+        val token = R2PipeManager.activeSessionPipe
+        if (token === observedSessionToken) return false
         observedSessionToken = token
+        sectionSyncJob?.cancel()
+        _sectionsSyncing.value = false
 
         // Reset session-scoped UI/cache state to avoid showing old project's data
         currentOffset = 0L
@@ -575,11 +589,7 @@ class ProjectViewModel @Inject constructor(
              if (sessionChanged || _uiState.value is ProjectUiState.Idle || _uiState.value is ProjectUiState.Error) {
                  if (R2PipeManager.isConnected) {
                     if (R2PipeManager.isR2FridaSession) {
-                        // r2frida 会话不支持标准 iIj 概览，切换会话时直接进入 Success 状态
-                        _uiState.value = ProjectUiState.Success(
-                            binInfo = null,
-                            cursorAddress = currentOffset
-                        )
+                        showFridaSession(currentOffset)
                     } else {
                         loadOverview()
                     }
@@ -653,11 +663,7 @@ class ProjectViewModel @Inject constructor(
             if (result.isSuccess) {
                 R2PipeManager.pendingCustomCommand = null
                 if (R2PipeManager.isR2FridaSession) {
-                    // r2frida sessions don't support standard iIj, skip loadOverview
-                    _uiState.value = ProjectUiState.Success(
-                        binInfo = null,
-                        cursorAddress = 0L
-                    )
+                    showFridaSession(0L)
                 } else {
                     loadOverview()
                 }
@@ -812,6 +818,12 @@ class ProjectViewModel @Inject constructor(
                 )
                 return@launch
             }
+            val sessionToken = R2PipeManager.activeSessionPipe ?: return@launch
+            // The drawer ID stays unchanged on reconnect; immediately retire the old layout.
+            (_uiState.value as? ProjectUiState.Success)?.let { _uiState.value = it.copy(disasmLayout = null) }
+            sectionSyncJob?.cancel()
+            _sectionsSyncing.value = false
+            observedSessionToken = sessionToken
 
             var reconnectMessage = context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_success_reopened)
             var restoredProjectId: String? = null
@@ -853,17 +865,16 @@ class ProjectViewModel @Inject constructor(
             }
 
             runCatching { reconnectSnapshot?.delete() }
+            if (sessionToken !== R2PipeManager.activeSessionPipe) return@launch
 
             R2PipeManager.currentProjectId = restoredProjectId
             R2PipeManager.isDirtyAfterSave = restoredDirty
 
             if (R2PipeManager.isR2FridaSession) {
-                _uiState.value = ProjectUiState.Success(
-                    binInfo = null,
-                    cursorAddress = currentOffset
-                )
+                showFridaSession(currentOffset)
             } else {
                 val overviewResult = repository.getOverview()
+                if (sessionToken !== R2PipeManager.activeSessionPipe) return@launch
                 if (overviewResult.isFailure) {
                     val message = overviewResult.exceptionOrNull()?.message
                         ?: context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_failed)
@@ -874,10 +885,11 @@ class ProjectViewModel @Inject constructor(
 
                 _uiState.value = ProjectUiState.Success(
                     binInfo = overviewResult.getOrNull(),
-                    cursorAddress = currentOffset
+                    cursorAddress = currentOffset,
+                    sessionToken = sessionToken
                 )
 
-                loadSections(forceRefresh = true)
+                loadSections()
                 if (previousState?.symbols != null) loadSymbols(forceRefresh = true)
                 if (previousState?.exports != null) loadExports(forceRefresh = true)
                 if (previousState?.imports != null) loadImports(forceRefresh = true)
@@ -898,8 +910,12 @@ class ProjectViewModel @Inject constructor(
     }
 
     private fun loadOverview() {
+        val sessionToken = R2PipeManager.activeSessionPipe ?: return
+        val selection = R2PipeManager.sessionId
+        observedSessionToken = sessionToken
         viewModelScope.launch {
             val binInfoResult = repository.getOverview()
+            if (sessionToken !== R2PipeManager.activeSessionPipe || selection != R2PipeManager.sessionId) return@launch
             if (binInfoResult.isFailure) {
                 _uiState.value = ProjectUiState.Error("Failed to load binary info: ${binInfoResult.exceptionOrNull()?.message}")
                 return@launch
@@ -907,27 +923,98 @@ class ProjectViewModel @Inject constructor(
             
             _uiState.value = ProjectUiState.Success(
                 binInfo = binInfoResult.getOrNull(),
-                cursorAddress = currentOffset
+                cursorAddress = currentOffset,
+                sessionToken = sessionToken
             )
 
-            // Load sections eagerly - hex/disasm views need them for boundary calculation
+            // Populate Room and capture the initial Disassembly overview from the same stream.
             loadSections()
         }
     }
 
     fun loadSections(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.sections != null) return
+        if (sectionSyncSession === session.pipe && sectionSyncJob?.isActive == true) return
+        sectionSyncJob?.cancel()
+        sectionSyncSession = session.pipe
 
-        viewModelScope.launch {
+        val bin = current.binInfo
+        sectionSyncJob = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _sectionsSyncing.value = true
-            binInfoRepository.syncSectionsToDb()
-            _sectionsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(sections = emptyList())
+            try {
+                if (session.isFridaSession) {
+                    syncSections(session, captureSnapshot = false, forceRefresh = forceRefresh)
+                } else {
+                    val (capture, started) = session.disasmLayout.acquire(session.jobScope) {
+                        val sections = syncSections(session, captureSnapshot = true)
+                        val virtual = DisasmAddressLayout.parseIoVa(
+                            R2PipeManager.execute(session, "e io.va", markDirty = false).getOrNull()
+                        )
+                        DisasmAddressLayout.forFile(
+                            sections, virtual, fileLength(session.projectPath, bin),
+                            bin?.binType.equals("elf", ignoreCase = true) ||
+                                bin?.binaryClass?.startsWith("ELF", ignoreCase = true) == true
+                        )
+                    }
+                    val layout = capture.await()
+                    updateSessionState(session.pipe) { it.copy(disasmLayout = layout) }
+                    // An existing live session reuses its layout; only the shared Room table may need syncing.
+                    if (!started) syncSections(session, captureSnapshot = false, forceRefresh = forceRefresh)
+                }
+                currentCoroutineContext().ensureActive()
+                // An empty list is the existing Room readiness sentinel, not disassembly metadata.
+                updateSessionState(session.pipe) { it.copy(sections = emptyList()) }
+            } finally {
+                if (sectionSyncJob === coroutineContext[Job] && session.pipe === R2PipeManager.activeSessionPipe) {
+                    _sectionsSyncing.value = false
+                }
             }
         }
+        sectionSyncJob?.start()
+    }
+
+    private suspend fun syncSections(
+        session: R2PipeManager.R2Session,
+        captureSnapshot: Boolean,
+        forceRefresh: Boolean = false
+    ): List<Section> = try {
+        binInfoRepository.syncSectionsToDb(session, captureSnapshot, forceRefresh).getOrThrow()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("ProjectViewModel", "Failed to sync sections", e)
+        emptyList()
+    }
+
+    private inline fun updateSessionState(token: R2PipeSession, transform: (ProjectUiState.Success) -> ProjectUiState.Success) {
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        if (token === current.sessionToken && token === R2PipeManager.activeSessionPipe) _uiState.value = transform(current)
+    }
+
+    private fun showFridaSession(cursor: Long) {
+        val session = R2PipeManager.activeSession() ?: return
+        val token = session.pipe
+        observedSessionToken = token
+        _uiState.value = ProjectUiState.Success(cursorAddress = cursor, sessionToken = token)
+        val (capture) = session.disasmLayout.acquire(session.jobScope) {
+            val mappings = R2FridaRepository().getMappingsForSession(session).getOrDefault(emptyList())
+            DisasmAddressLayout.forFrida(mappings, fileLength(session.projectPath, null))
+        }
+        viewModelScope.launch {
+            val layout = capture.await()
+            updateSessionState(token) { it.copy(disasmLayout = layout) }
+        }
+    }
+
+    private fun fileLength(path: String?, bin: BinInfo?): Long? {
+        val file = runCatching {
+            sequenceOf(bin?.file, path).filterNotNull().filter { it.isNotBlank() }
+                .map(::File).firstOrNull { it.isFile }?.length()
+        }.getOrNull()
+        return file ?: bin?.size?.takeIf { it in 1 until Long.MAX_VALUE }
     }
 
     fun loadSymbols(forceRefresh: Boolean = false) {

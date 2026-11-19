@@ -14,17 +14,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.core.data.model.FunctionDetailInfo
 import top.wsdx233.r2droid.core.data.model.FunctionVariablesData
 import top.wsdx233.r2droid.core.data.model.FunctionXref
 import top.wsdx233.r2droid.core.data.model.InstructionDetail
-import top.wsdx233.r2droid.core.data.model.Section
 import top.wsdx233.r2droid.core.data.model.XrefsData
 import top.wsdx233.r2droid.feature.ai.data.AiRepository
 import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
+import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.debug.data.DebugBackend
 import top.wsdx233.r2droid.feature.debug.data.DebugCapabilities
@@ -141,7 +142,7 @@ data class DebugLaunchConfigState(
  */
 
 sealed interface DisasmEvent {
-    data class LoadDisassembly(val sections: List<Section>, val currentFilePath: String?, val currentOffset: Long) : DisasmEvent
+    data class LoadDisassembly(val session: R2PipeSession, val layout: DisasmAddressLayout, val currentOffset: Long) : DisasmEvent
     data class LoadChunk(val address: Long) : DisasmEvent
     data class Preload(val address: Long) : DisasmEvent
     data class LoadMore(val forward: Boolean) : DisasmEvent
@@ -183,9 +184,10 @@ class DisasmViewModel @Inject constructor(
 ) : ViewModel() {
 
     // DisasmDataManager for virtualized disassembly viewing
-    @Volatile
-    var disasmDataManager: DisasmDataManager? = null
-        private set
+    @Volatile private var sessionManager: DisasmDataManager? = null
+    @Volatile private var managerSession: R2PipeSession? = null
+    val disasmDataManager: DisasmDataManager?
+        get() = sessionManager?.takeIf { managerSession === R2PipeManager.activeSessionPipe }
 
     private val _disasmDataManagerState = MutableStateFlow<DisasmDataManager?>(null)
     val disasmDataManagerState = _disasmDataManagerState.asStateFlow()
@@ -352,7 +354,7 @@ class DisasmViewModel @Inject constructor(
 
     fun onEvent(event: DisasmEvent) {
         when (event) {
-            is DisasmEvent.LoadDisassembly -> loadDisassembly(event.sections, event.currentFilePath, event.currentOffset)
+            is DisasmEvent.LoadDisassembly -> loadDisassembly(event.session, event.layout, event.currentOffset)
             is DisasmEvent.LoadChunk -> loadDisasmChunkForAddress(event.address)
             is DisasmEvent.Preload -> preloadDisasmAround(event.address)
             is DisasmEvent.LoadMore -> loadDisasmMore(event.forward)
@@ -385,9 +387,6 @@ class DisasmViewModel @Inject constructor(
         }
     }
 
-    // 当前数据管理器对应的会话 ID，用于检测会话变更
-    private var currentSessionId: Int = -1
-
     /**
      * 重置所有数据，用于切换项目时清理旧数据。
      */
@@ -398,15 +397,15 @@ class DisasmViewModel @Inject constructor(
         initialLoadJob = null
         isScrollbarDragging = false
         _isScrollbarSeeking.value = false
-        disasmDataManager?.onChunkLoaded = null
-        disasmDataManager?.clearCache()
-        disasmDataManager = null
+        sessionManager?.onChunkLoaded = null
+        sessionManager?.clearCache()
+        sessionManager = null
         _disasmDataManagerState.value = null
         _disasmCacheVersion.value = 0
         _scrollTarget.value = null
         _multiSelectState.value = MultiSelectState()
         clearDebugState()
-        currentSessionId = -1
+        managerSession = null
     }
 
     private var scrollJob: Job? = null
@@ -807,108 +806,32 @@ class DisasmViewModel @Inject constructor(
         if (index >= 0) _scrollTarget.value = DisasmScrollTarget(addr, index, requestId = requestId)
     }
 
-    /**
-     * Initialize disassembly viewer with virtualization.
-     * Uses Section info to calculate virtual address range.
-     */
-    fun loadDisassembly(sections: List<Section>, currentFilePath: String?, currentOffset: Long) {
-        // 检测会话变更，如果是新项目则重置旧数据
-        val newSessionId = R2PipeManager.sessionId
-        if (newSessionId != currentSessionId) {
+    /** Initialize virtualized disassembly only after the session snapshot is ready. */
+    private fun loadDisassembly(session: R2PipeSession, layout: DisasmAddressLayout, currentOffset: Long) {
+        val active = R2PipeManager.activeSession()?.takeIf { it.pipe === session } ?: return
+        if (session !== managerSession) {
             reset()
-            currentSessionId = newSessionId
+            managerSession = session
         }
         if (disasmDataManager != null) {
-            // Already initialized; schedule a coalesced preload rather than an untracked job
             preloadDisasmAround(currentOffset)
             return
         }
-        if (initialLoadJob?.isActive == true) return
 
+        val manager = DisasmDataManager(
+            layout.startAddress, layout.endAddress,
+            { offset, count -> disasmRepository.getDisassembly(active, offset, count) },
+            addressOverview = layout.overview
+        )
+        manager.onChunkLoaded = {
+            if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
+        }
+        sessionManager = manager
+        _disasmDataManagerState.value = manager
         initialLoadJob = viewModelScope.launch {
-            var startAddress = 0L
-            var endAddress = 0L
-
-            if (sections.isNotEmpty()) {
-                // Filter out non-mapped sections (vAddr=0 are typically debug/metadata sections)
-                val mappedSections = sections.filter { it.vAddr != 0L }
-                // For disassembly, prefer executable sections (containing 'x' in perm)
-                val execSections = mappedSections.filter { it.perm.contains("x") }
-
-                if (execSections.isNotEmpty()) {
-                    // Use executable sections range
-                    startAddress = execSections.minOf { it.vAddr }
-                    endAddress = execSections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
-                } else if (mappedSections.isNotEmpty()) {
-                    // Fallback to all mapped sections
-                    startAddress = mappedSections.minOf { it.vAddr }
-                    endAddress = mappedSections.maxOf { it.vAddr + maxOf(it.vSize, it.size) }
-                }
-            }
-
-            // r2frida mode: use :dmj for address boundaries
-            if (endAddress <= startAddress && R2PipeManager.isR2FridaSession) {
-                try {
-                    val raw = R2PipeManager.execute(":dmj").getOrNull()?.trim() ?: ""
-                    val idx = raw.indexOfFirst { it == '[' }
-                    val json = if (idx > 0) raw.substring(idx) else raw
-                    if (json.startsWith("[")) {
-                        val arr = org.json.JSONArray(json)
-                        var minAddr = Long.MAX_VALUE
-                        var maxAddr = 0L
-                        for (i in 0 until arr.length()) {
-                            val obj = arr.getJSONObject(i)
-                            val base = java.lang.Long.decode(obj.optString("base", "0"))
-                            val size = obj.optLong("size", 0)
-                            if (base > 0 && size > 0) {
-                                minAddr = minOf(minAddr, base)
-                                maxAddr = maxOf(maxAddr, base + size)
-                            }
-                        }
-                        if (maxAddr > minAddr && minAddr != Long.MAX_VALUE) {
-                            startAddress = minAddr
-                            endAddress = maxAddr
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-
-            // Fallback if sections are empty or invalid
-            if (endAddress <= startAddress) {
-                // Try Java File API as fallback (file offset based)
-                currentFilePath?.let { path ->
-                    try {
-                        val file = java.io.File(path)
-                        if (file.exists() && file.isFile) {
-                            startAddress = 0L
-                            endAddress = file.length()
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-
-            // Final fallback - use a reasonable default range
-            if (endAddress <= startAddress) {
-                startAddress = 0L
-                endAddress = 1024L * 1024L // 1MB default
-            }
-
-            // Create DisasmDataManager with virtual address range
-            currentCoroutineContext().ensureActive()
-            val manager = DisasmDataManager(startAddress, endAddress, disasmRepository)
-            manager.onChunkLoaded = {
-                // The manager publishes on its worker dispatcher.
-                if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
-            }
-            disasmDataManager = manager
-            _disasmDataManagerState.value = manager
-
-            // Load initial data around cursor
-            disasmDataManager?.resetAndLoadAround(currentOffset)
-            
-            _disasmCacheVersion.update { it + 1 }
+            if (disasmDataManager !== manager) return@launch
+            manager.resetAndLoadAround(currentOffset)
+            if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
         }
     }
 

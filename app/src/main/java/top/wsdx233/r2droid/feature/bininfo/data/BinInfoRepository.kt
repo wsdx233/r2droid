@@ -1,12 +1,18 @@
 package top.wsdx233.r2droid.feature.bininfo.data
 
 import android.util.JsonReader
+import android.util.JsonToken
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
+import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.core.data.db.*
 import top.wsdx233.r2droid.core.data.model.*
 import top.wsdx233.r2droid.core.data.source.R2DataSource
+import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.InputStreamReader
+import java.lang.ref.WeakReference
 
 import javax.inject.Inject
 
@@ -14,6 +20,16 @@ import javax.inject.Inject
 private fun JsonReader.nextAddr(): Long {
     val s = nextString()  // lenient mode allows reading numbers as strings
     return s.toLongOrNull() ?: s.toULong().toLong()
+}
+
+private fun JsonReader.nextSectionNumber(): Long? {
+    if (peek() != JsonToken.NUMBER && peek() != JsonToken.STRING) {
+        skipValue()
+        return null
+    }
+    val raw = nextString()
+    return if (raw.startsWith("0x", ignoreCase = true)) raw.drop(2).toULongOrNull(16)?.toLong()
+    else raw.toLongOrNull() ?: raw.toULongOrNull()?.toLong()
 }
 
 class BinInfoRepository @Inject constructor(
@@ -25,6 +41,11 @@ class BinInfoRepository @Inject constructor(
     private val relocationDao: RelocationDao,
     private val functionDao: FunctionDao
 ) {
+    private companion object {
+        // The sections table belongs to the active session; old and new writers must not interleave.
+        val sectionSyncMutex = Mutex()
+        var roomSectionOwner: WeakReference<R2PipeSession>? = null
+    }
 
     suspend fun getOverview(): Result<BinInfo> {
         return r2DataSource.executeJson("ij").mapCatching { output ->
@@ -149,36 +170,55 @@ class BinInfoRepository @Inject constructor(
         }
     }
 
-    suspend fun syncSectionsToDb(): Result<Unit> {
-        sectionDao.clearAll()
-        return r2DataSource.executeStream("iSj") { inputStream ->
+    suspend fun syncSectionsToDb(
+        session: R2PipeManager.R2Session,
+        captureSnapshot: Boolean,
+        forceRefresh: Boolean = false
+    ): Result<List<Section>> = sectionSyncMutex.withLock {
+        val writeRoom = R2PipeManager.activeSessionPipe === session.pipe &&
+            (forceRefresh || roomSectionOwner?.get() !== session.pipe)
+        if (!writeRoom && !captureSnapshot) return@withLock Result.success(emptyList())
+        if (writeRoom) {
+            roomSectionOwner = null
+            sectionDao.clearAll()
+        }
+        val result = R2PipeManager.executeStream(session, "iSj") { inputStream ->
             val reader = JsonReader(InputStreamReader(inputStream, "UTF-8"))
             reader.isLenient = true
             val buffer = mutableListOf<SectionEntity>()
+            // Capture before Room's vAddr primary key can collapse sections at the same address.
+            val snapshot = if (captureSnapshot) mutableListOf<Section>() else null
             reader.beginArray()
             while (reader.hasNext()) {
                 reader.beginObject()
-                var name = ""; var size = 0L; var vSize = 0L; var perm = ""; var vAddr = 0L; var pAddr = 0L
+                var name = ""; var size = 0L; var vSize = 0L; var perm = ""
+                var vAddr: Long? = null; var pAddr: Long? = null; var type = ""; var flags: Long? = null
                 while (reader.hasNext()) {
                     when (reader.nextName()) {
                         "name" -> name = reader.nextString()
-                        "size" -> size = reader.nextAddr()
-                        "vsize" -> vSize = reader.nextAddr()
+                        "size" -> size = reader.nextSectionNumber() ?: 0
+                        "vsize" -> vSize = reader.nextSectionNumber() ?: 0
                         "perm" -> perm = reader.nextString()
-                        "vaddr" -> vAddr = reader.nextAddr()
-                        "paddr" -> pAddr = reader.nextAddr()
+                        "vaddr" -> vAddr = reader.nextSectionNumber()
+                        "paddr" -> pAddr = reader.nextSectionNumber()
+                        "type" -> if (reader.peek() == JsonToken.STRING) type = reader.nextString() else reader.skipValue()
+                        "flags" -> flags = reader.nextSectionNumber()
                         else -> reader.skipValue()
                     }
                 }
                 reader.endObject()
-                buffer.add(SectionEntity(vAddr, name, size, vSize, perm, pAddr))
+                if (writeRoom) buffer.add(SectionEntity(vAddr ?: 0, name, size, vSize, perm, pAddr ?: 0))
+                snapshot?.add(Section(name, size, vSize, perm, vAddr ?: -1, pAddr ?: -1, type, flags))
                 if (buffer.size >= 10000) { sectionDao.insertAll(buffer); buffer.clear() }
             }
             reader.endArray()
             check(reader.peek() == android.util.JsonToken.END_DOCUMENT)
             reader.close()
             if (buffer.isNotEmpty()) sectionDao.insertAll(buffer)
+            snapshot.orEmpty()
         }
+        if (writeRoom && result.isSuccess) roomSectionOwner = WeakReference(session.pipe)
+        result
     }
 
     suspend fun syncSymbolsToDb(): Result<Unit> {

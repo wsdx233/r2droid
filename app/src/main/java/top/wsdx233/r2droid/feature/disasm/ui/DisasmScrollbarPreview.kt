@@ -20,14 +20,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
-import top.wsdx233.r2droid.core.data.model.formatCompactAddress
 import top.wsdx233.r2droid.feature.disasm.DisasmScrollbarPreview
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
-import top.wsdx233.r2droid.ui.theme.LocalAppFont
 
 /**
  * Keep high-frequency preview state out of the viewer/menu/debug composition. The original list
@@ -58,12 +55,6 @@ internal fun DisasmScrollbarPreviewLayer(
             }
             .padding(8.dp)
     ) {
-        Text(
-            text = "0x${formatCompactAddress(target.address)}",
-            fontFamily = LocalAppFont.current,
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         if (target.failed) {
             Text(
                 text = stringResource(R.string.disasm_scrollbar_failed),

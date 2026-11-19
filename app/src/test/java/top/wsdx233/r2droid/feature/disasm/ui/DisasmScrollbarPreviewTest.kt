@@ -106,13 +106,17 @@ class DisasmScrollbarPreviewTest {
         assertNoLoadingHints()
         val target = navigator.preview.value!!.address
         compose.onNodeWithText("0x${target.toString(16).uppercase()}").assertIsDisplayed()
+        val bubble = compose.onNodeWithTag("disasm_drag_bubble")
+        bubble.assertIsDisplayed()
         runCurrent()
         advanceTimeBy(300)
         runCurrent()
         compose.onNodeWithTag("disasm_scrollbar_placeholder").assertDoesNotExist()
         compose.onNodeWithText("instruction:$target").assertIsDisplayed()
+        bubble.assertIsDisplayed() // A cache hit removes the placeholder, not the drag hint.
         assertTrue(commits.isEmpty())
         bar.performTouchInput { up() }
+        bubble.assertDoesNotExist()
         advanceUntilIdle()
         assertEquals(listOf(target), commits)
     }
@@ -130,10 +134,13 @@ class DisasmScrollbarPreviewTest {
         bar.performTouchInput { moveTo(Offset(centerX, height * .85f)) }
         val second = navigator.preview.value!!.address
         assertNotEquals(first, second)
+        val bubble = compose.onNodeWithTag("disasm_drag_bubble")
+        bubble.assertIsDisplayed()
         compose.onNodeWithTag("disasm_scrollbar_placeholder").assertIsDisplayed()
         assertNoLoadingHints()
         compose.onNodeWithText("0x${second.toString(16).uppercase()}").assertIsDisplayed()
         bar.performTouchInput { cancel() }
+        bubble.assertDoesNotExist()
         advanceUntilIdle()
         compose.onNodeWithTag("disasm_scrollbar_placeholder").assertDoesNotExist()
         assertTrue(commits.isEmpty())
