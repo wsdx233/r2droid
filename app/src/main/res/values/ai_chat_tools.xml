@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_chat_choose_model">Select model</string>
+    <string name="ai_chat_thinking_level">Thinking level: %1$s</string>
+    <string name="ai_chat_thinking_title">Thinking level</string>
+    <string name="ai_chat_mode_title">Execution mode</string>
+    <string name="ai_chat_message_actions">Message actions</string>
+    <string name="ai_chat_jump_to_latest">Jump to latest message</string>
+    <string name="ai_chat_jump_prev_user">Previous user message</string>
+    <string name="ai_new_chat_running_title">Stop current task?</string>
+    <string name="ai_new_chat_running_message">The assistant is still running in this chat. Starting a new chat will stop the current generation.</string>
+    <string name="ai_new_chat_running_confirm">Stop &amp; New Chat</string>
+    <string name="ai_chat_close">Close</string>
+    <string name="ai_chat_back">Back</string>
+    <string name="ai_chat_empty_title">Start a new analysis</string>
+    <string name="ai_chat_status_thinking">Thinking…</string>
+    <string name="ai_chat_status_running">Running tool…</string>
+    <string name="ai_chat_status_approval">Waiting for approval…</string>
+    <string name="ai_chat_dismiss_error">Dismiss error</string>
+    <string name="ai_chat_thinking_active">Thinking</string>
+    <string name="ai_chat_thought_title">Thought</string>
+
+    <string name="ai_tool_binary_info">Binary information</string>
+    <string name="ai_tool_sections">List sections</string>
+    <string name="ai_tool_r2_command">R2 command</string>
+    <string name="ai_tool_run_js">JavaScript</string>
+    <string name="ai_tool_run_frida">Frida script</string>
+    <string name="ai_tool_js">JavaScript suggestion</string>
+    <string name="ai_tool_frida">Frida script suggestion</string>
+    <string name="ai_tool_legacy_js">JavaScript</string>
+    <string name="ai_tool_legacy_frida">Frida script</string>
+    <string name="ai_tool_unknown">Tool call</string>
+
+    <string name="ai_tool_status_queued">Queued</string>
+    <string name="ai_tool_status_approval">Awaiting approval</string>
+    <string name="ai_tool_status_running">Running</string>
+    <string name="ai_tool_status_succeeded">Completed</string>
+    <string name="ai_tool_status_failed">Failed</string>
+    <string name="ai_tool_status_denied">Denied</string>
+    <string name="ai_tool_status_interrupted">Interrupted</string>
+    <string name="ai_tool_status_manual">Manual only · Not executed</string>
+    <string name="ai_tool_approval_title">Approval required</string>
+    <string name="ai_tool_approval_hint">Review the command before allowing it to run.</string>
+    <string name="ai_tool_approval_always">Always allow in this session</string>
+
+    <string name="ai_tool_expand">Expand tool details</string>
+    <string name="ai_tool_collapse">Collapse tool details</string>
+    <string name="ai_tool_detail">Detail</string>
+    <string name="ai_tool_fullscreen">Full</string>
+    <string name="ai_tool_arguments">Arguments</string>
+    <string name="ai_tool_output">Output</string>
+    <string name="ai_tool_command">Command</string>
+    <string name="ai_tool_source">Source code</string>
+    <string name="ai_tool_copy_command">Copy command</string>
+    <string name="ai_tool_copy_source">Copy source</string>
+    <string name="ai_tool_open_detail">View: %1$s</string>
+    <string name="ai_tool_empty">No content</string>
+    <string name="ai_tool_no_output">Completed with no output</string>
+    <string name="ai_tool_more_lines">%1$d lines · Tap Detail to view all</string>
+    <string name="ai_code_label">Code</string>
+    <string name="ai_code_word_wrap">Word wrap</string>
+    <string name="settings_ai_max_tool_rounds">AI Max Tool Rounds</string>
+    <string name="settings_ai_max_tool_rounds_desc">Max tool rounds per turn (0 = unlimited)</string>
+    <string name="settings_ai_max_tool_rounds_unlimited">Unlimited</string>
+</resources>

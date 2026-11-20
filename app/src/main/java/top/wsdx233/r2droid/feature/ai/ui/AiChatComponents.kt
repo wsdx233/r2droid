@@ -1,587 +1,919 @@
 package top.wsdx233.r2droid.feature.ai.ui
 
-import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.WrapText
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.jeziellago.compose.markdowntext.MarkdownText
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.delay
 import top.wsdx233.r2droid.R
-import top.wsdx233.r2droid.feature.ai.data.ActionResult
-import top.wsdx233.r2droid.feature.ai.data.ActionType
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
-import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
-import top.wsdx233.r2droid.feature.ai.PendingApproval
+import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
+
+// Wawlink M3 Expressive motion curves
+internal val WawEmphEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+internal val WawEmphDecelEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+internal val WawEmphAccelEasing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+internal fun <T> wawSpring() = spring<T>(dampingRatio = 0.65f, stiffness = 380f)
+
+@Immutable
+internal data class AiSemanticColors(
+    val success: Color,
+    val successContainer: Color,
+    val warn: Color,
+    val warnContainer: Color,
+    val onWarnContainer: Color
+)
+
+@Composable
+internal fun rememberAiSemanticColors(): AiSemanticColors {
+    val dark = LocalDarkTheme.current
+    return remember(dark) {
+        if (dark) {
+            AiSemanticColors(
+                success = Color(0xFF8DD8A3),
+                successContainer = Color(0xFF00531E),
+                warn = Color(0xFFFFB77D),
+                warnContainer = Color(0xFF6D3200),
+                onWarnContainer = Color(0xFFFFDCC1)
+            )
+        } else {
+            AiSemanticColors(
+                success = Color(0xFF146C2E),
+                successContainer = Color(0xFFC4EED0),
+                warn = Color(0xFFE65100),
+                warnContainer = Color(0xFFFFDCC1),
+                onWarnContainer = Color(0xFF2E1500)
+            )
+        }
+    }
+}
+
+private const val ThinkOpen = "<think>"
+private const val ThinkClose = "</think>"
+private val thoughtPattern = Regex("<think>(.*?)(?:</think>|\\z)", RegexOption.DOT_MATCHES_ALL)
 
 private data class ThoughtContent(
     val thought: String,
-    val visibleContent: String
+    val visibleContent: String,
+    val thinkingStreaming: Boolean
 )
 
-private fun extractThoughtContent(raw: String): ThoughtContent {
-    val regex = Regex("(?s)<think>(.*?)</think>")
-    val matches = regex.findAll(raw).toList()
-    if (matches.isEmpty()) return ThoughtContent("", raw)
-    val thought = matches.joinToString("\n\n") { it.groupValues[1].trim() }
-    val visible = regex.replace(raw, "").trim()
-    return ThoughtContent(thought = thought, visibleContent = visible)
+private fun String.withoutPartialTag(tag: String): String {
+    for (length in minOf(this.length, tag.length - 1) downTo 1) {
+        if (regionMatches(this.length - length, tag, 0, length)) return dropLast(length)
+    }
+    return this
 }
 
-private fun collapseToLastTwoLines(text: String): String {
-    val lines = text.lines()
-    if (lines.size <= 2) return text
-    return lines.takeLast(2).joinToString("\n")
+private fun extractThoughtContent(raw: String, streaming: Boolean): ThoughtContent {
+    val text = if (streaming) raw.withoutPartialTag(ThinkOpen) else raw
+    if (ThinkOpen !in text) return ThoughtContent("", text, false)
+    val visible = StringBuilder()
+    val thoughts = StringBuilder()
+    var cursor = 0
+    var unclosedThink = false
+    for (match in thoughtPattern.findAll(text)) {
+        visible.append(text, cursor, match.range.first)
+        cursor = match.range.last + 1
+        val thought = match.groupValues[1]
+        val openBlock = !match.value.endsWith(ThinkClose)
+        if (streaming && openBlock) unclosedThink = true
+        val normalized = if (streaming && openBlock) thought.withoutPartialTag(ThinkClose).trim()
+        else thought.trim()
+        if (normalized.isNotEmpty()) {
+            if (thoughts.isNotEmpty()) thoughts.append("\n\n")
+            thoughts.append(normalized)
+        }
+    }
+    visible.append(text, cursor, text.length)
+    return ThoughtContent(thoughts.toString(), visible.toString(), unclosedThink)
 }
 
-// region Message Bubbles
-
-@SuppressLint("ConfigurationScreenWidthHeight")
-@OptIn(ExperimentalFoundationApi::class)
+// Deliberately keyed by content identity in the LazyColumn, never by a streaming delta.
 @Composable
-fun MessageBubble(
+internal fun MessageBubble(
     message: ChatMessage,
+    busy: Boolean,
     onCopy: (String) -> Unit,
-    onSelectCopy: (String) -> Unit,
-    onEdit: ((String) -> Unit)?,
-    onRegenerate: (() -> Unit)?,
-    onDelete: () -> Unit
+    onDetail: (ChatTextDetail) -> Unit,
+    onEdit: () -> Unit,
+    onRegenerate: () -> Unit,
+    onDelete: () -> Unit,
+    onDecideTool: (callId: String, approved: Boolean, alwaysAllow: Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isUser = message.role == ChatRole.User
-    var showMenu by remember { mutableStateOf(false) }
-    var thoughtExpanded by remember { mutableStateOf(false) }
-    val thoughtContent = remember(message.content) { extractThoughtContent(message.content) }
-    val displayThought = if (thoughtExpanded) thoughtContent.thought else collapseToLastTwoLines(thoughtContent.thought)
-    val messageContent = thoughtContent.visibleContent.ifBlank { message.content }
-
-    val maxWidth = LocalConfiguration.current.screenWidthDp.dp * 0.85f
+    val parsed = remember(message.role, message.content, message.reasoning, message.isStreaming) {
+        if (message.role == ChatRole.Assistant) {
+            val extracted = extractThoughtContent(message.content, message.isStreaming)
+            val combinedThought = buildString {
+                if (message.reasoning.isNotBlank()) append(message.reasoning.trim())
+                if (extracted.thought.isNotBlank()) {
+                    if (isNotEmpty()) append("\n\n")
+                    append(extracted.thought)
+                }
+            }
+            val isThinkingActive = extracted.thinkingStreaming ||
+                (message.isStreaming && message.reasoning.isNotBlank() && extracted.visibleContent.isBlank() && message.toolCalls.isEmpty())
+            ThoughtContent(combinedThought, extracted.visibleContent, isThinkingActive)
+        } else {
+            ThoughtContent("", message.content, false)
+        }
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        // Role label
-        Text(
-            text = when (message.role) {
-                ChatRole.User -> stringResource(R.string.ai_role_you)
-                ChatRole.Assistant -> stringResource(R.string.ai_role_assistant)
-                ChatRole.ExecutionResult -> stringResource(R.string.ai_role_execution)
-                ChatRole.System -> stringResource(R.string.ai_role_system)
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-        )
-
-        Box {
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = if (isUser) 16.dp else 4.dp,
-                    topEnd = if (isUser) 4.dp else 16.dp,
-                    bottomStart = 16.dp,
-                    bottomEnd = 16.dp
-                ),
-                color = when {
-                    isUser -> MaterialTheme.colorScheme.primaryContainer
-                    else -> MaterialTheme.colorScheme.surfaceContainerLow
-                },
-                modifier = Modifier
-                    .widthIn(max = maxWidth)
-                    .combinedClickable(
-                        onClick = { },
-                        onLongClick = { showMenu = true }
-                    )
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    if (thoughtContent.thought.isNotBlank()) {
-                        ThoughtBlock(
-                            thought = displayThought,
-                            expanded = thoughtExpanded,
-                            onToggle = { thoughtExpanded = !thoughtExpanded }
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    MarkdownText(
-                        markdown = messageContent,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurface
-                        ),
-                        syntaxHighlightColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        syntaxHighlightTextColor = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    // Action results (collapsible)
-                    if (message.actionResults.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        message.actionResults.forEach { result ->
-                            ActionResultBlock(result)
-                        }
-                    }
-                }
-            }
-
-            // Context menu
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_copy)) },
-                    leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
-                    onClick = {
-                        onCopy(message.content)
-                        showMenu = false
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_select_copy)) },
-                    leadingIcon = { Icon(Icons.Default.SelectAll, null) },
-                    onClick = {
-                        onSelectCopy(message.content)
-                        showMenu = false
-                    }
-                )
-                if (isUser && onEdit != null) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.ai_edit_resend)) },
-                        leadingIcon = { Icon(Icons.Default.Edit, null) },
-                        onClick = {
-                            onEdit(message.content)
-                            showMenu = false
-                        }
-                    )
-                }
-                if (!isUser && onRegenerate != null) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.ai_regenerate)) },
-                        leadingIcon = { Icon(Icons.Default.Refresh, null) },
-                        onClick = {
-                            onRegenerate()
-                            showMenu = false
-                        }
-                    )
-                }
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_delete)) },
-                    leadingIcon = { Icon(Icons.Default.Delete, null) },
-                    onClick = {
-                        onDelete()
-                        showMenu = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-@SuppressLint("ConfigurationScreenWidthHeight")
-@Composable
-fun StreamingMessageBubble(content: String) {
-    val maxWidth = LocalConfiguration.current.screenWidthDp.dp * 0.85f
-    var thoughtExpanded by remember(content) { mutableStateOf(false) }
-    val thoughtContent = remember(content) { extractThoughtContent(content) }
-    val displayThought = if (thoughtExpanded) thoughtContent.thought else collapseToLastTwoLines(thoughtContent.thought)
-    val messageContent = thoughtContent.visibleContent.ifBlank { content }
-    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
-    val cursorAlpha by infiniteTransition.animateFloat(
-        initialValue = 1f, targetValue = 0f,
-        animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
-        label = "cursorBlink"
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.Start
-    ) {
-        Text(
-            text = stringResource(R.string.ai_role_assistant),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-        )
-
-        Surface(
-            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.widthIn(max = maxWidth)
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Box(modifier = Modifier.weight(1f, fill = false)) {
-                    Column {
-                        if (thoughtContent.thought.isNotBlank()) {
-                            ThoughtBlock(
-                                thought = displayThought,
-                                expanded = thoughtExpanded,
-                                onToggle = { thoughtExpanded = !thoughtExpanded }
-                            )
-                            Spacer(Modifier.height(8.dp))
-                        }
-                        MarkdownText(
-                            markdown = messageContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.onSurface
+        if (isUser) {
+            BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 6.dp, bottomStart = 24.dp),
+                    modifier = Modifier.widthIn(max = maxWidth * 0.84f)
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = message.content,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 16.sp,
+                                lineHeight = 24.sp,
+                                letterSpacing = 0.sp
                             ),
-                            syntaxHighlightColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            syntaxHighlightTextColor = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
-                // Blinking cursor
-                Box(
-                    modifier = Modifier
-                        .padding(start = 1.dp, bottom = 2.dp)
-                        .size(width = 2.dp, height = 16.dp)
-                        .alpha(cursorAlpha)
-                        .background(MaterialTheme.colorScheme.primary)
+            }
+        } else {
+            if (message.role != ChatRole.Assistant) {
+                Text(
+                    text = stringResource(if (message.role == ChatRole.System) R.string.ai_role_system else R.string.ai_role_execution),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
-        }
-    }
-}
 
-// endregion
-
-@Composable
-private fun ThoughtBlock(
-    thought: String,
-    expanded: Boolean,
-    onToggle: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f)
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.ai_thought),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.weight(1f)
+            if (parsed.thought.isNotBlank()) {
+                WawThinkingNode(
+                    nodeKey = "think-${message.id}",
+                    thought = parsed.thought,
+                    streaming = parsed.thinkingStreaming,
+                    onCopy = onCopy,
+                    onDetail = onDetail
                 )
-                TextButton(onClick = onToggle) {
-                    Text(
-                        text = if (expanded) stringResource(R.string.ai_show_less)
-                        else stringResource(R.string.ai_thought_expand),
-                        style = MaterialTheme.typography.labelSmall
+            } else if (message.isStreaming && parsed.visibleContent.isBlank() && message.toolCalls.isEmpty()) {
+                WawThinkingPlaceholder(nodeKey = "thinking-wait-${message.id}")
+            }
+
+            if (parsed.visibleContent.isNotBlank()) {
+                AiMarkdown(
+                    text = parsed.visibleContent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = 4.dp,
+                            end = 4.dp,
+                            top = if (parsed.thought.isNotBlank()) 14.dp else 0.dp
+                        ),
+                    onCopy = onCopy,
+                    onOpenCodeDetail = { title, code, language ->
+                        onDetail(ChatTextDetail(title = title, text = code, code = true, language = language))
+                    }
+                )
+            }
+
+            if (message.isStreaming && parsed.visibleContent.isNotBlank()) {
+                StreamingCaret()
+            }
+
+            if (message.toolCalls.isNotEmpty()) {
+                Box(Modifier.padding(top = if (parsed.visibleContent.isNotBlank() || parsed.thought.isNotBlank()) 14.dp else 0.dp)) {
+                    ToolRail(
+                        calls = message.toolCalls,
+                        canDecide = busy,
+                        onCopy = onCopy,
+                        onDetail = onDetail,
+                        onDecide = onDecideTool
                     )
                 }
             }
-            Text(
-                text = thought,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = MaterialTheme.colorScheme.onTertiaryContainer
+
+            message.actionResults.forEachIndexed { index, result ->
+                key(index) { LegacyActionCard(result, onCopy, onDetail) }
+            }
+        }
+
+        if (!message.isStreaming && (!busy || message.toolCalls.all { it.status.isTerminal })) {
+            val copyText = parsed.visibleContent
+            val selectLabel = stringResource(R.string.ai_select_copy)
+            MessageActions(
+                alignEnd = isUser,
+                onCopy = copyText.takeIf(String::isNotBlank)?.let { { onCopy(it) } },
+                onSelect = copyText.takeIf(String::isNotBlank)?.let { { onDetail(ChatTextDetail(selectLabel, it)) } },
+                onEdit = onEdit.takeIf { isUser && !busy },
+                onRegenerate = onRegenerate.takeIf { message.role == ChatRole.Assistant && !busy },
+                onDelete = onDelete.takeUnless { busy }
             )
         }
     }
 }
 
-// region Select & Copy Dialog
+@Composable
+private fun StreamingCaret() {
+    val transition = rememberInfiniteTransition(label = "chat caret")
+    val opacity by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.1f,
+        animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
+        label = "opacity"
+    )
+    Box(
+        Modifier
+            .padding(start = 4.dp, top = 4.dp, bottom = 2.dp)
+            .size(8.dp, 18.dp)
+            .graphicsLayer { alpha = opacity }
+            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+    )
+}
 
 @Composable
-fun SelectCopyDialog(
-    text: String,
+private fun WawThinkingPlaceholder(nodeKey: String) {
+    val title = stringResource(R.string.ai_chat_thinking_active)
+    WawNodeFrame(
+        nodeKey = nodeKey,
+        icon = Icons.Rounded.Psychology,
+        leadStyle = WawLeadStyle.SOFT,
+        open = false,
+        title = title,
+        onToggle = null,
+        status = {
+            CircularProgressIndicator(
+                modifier = Modifier.size(17.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                strokeWidth = 2.dp
+            )
+        },
+        titleContent = { ShimmerTitle(title) }
+    ) {}
+}
+
+@Composable
+private fun WawThinkingNode(
+    nodeKey: String,
+    thought: String,
+    streaming: Boolean,
+    onCopy: (String) -> Unit,
+    onDetail: (ChatTextDetail) -> Unit
+) {
+    var expanded by rememberSaveable(nodeKey) { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    val semantic = rememberAiSemanticColors()
+    val activeTitle = stringResource(R.string.ai_chat_thinking_active)
+    val doneTitle = stringResource(R.string.ai_chat_thought_title)
+    val openDetail = {
+        onDetail(ChatTextDetail(title = doneTitle, text = thought, markdown = true))
+    }
+
+    WawNodeFrame(
+        nodeKey = nodeKey,
+        icon = Icons.Rounded.Psychology,
+        leadStyle = WawLeadStyle.SOFT,
+        open = expanded,
+        title = if (streaming) activeTitle else doneTitle,
+        onToggle = { expanded = !expanded },
+        onIconClick = openDetail,
+        status = {
+            if (streaming) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(17.dp),
+                    color = colors.onSurfaceVariant,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = semantic.success
+                )
+            }
+        },
+        rail = {
+            WawStagedRailButton(
+                open = expanded,
+                delayMs = 0,
+                icon = Icons.Rounded.OpenInFull,
+                label = stringResource(R.string.ai_tool_fullscreen),
+                onClick = openDetail
+            )
+            WawRailCopyButton(
+                open = expanded,
+                delayMs = 60,
+                onCopy = { onCopy(thought) }
+            )
+        },
+        titleContent = {
+            if (streaming) {
+                ShimmerTitle(activeTitle)
+            } else {
+                Text(
+                    text = doneTitle,
+                    fontSize = 16.5.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface
+                )
+            }
+        }
+    ) {
+        ChatExpand(!expanded) {
+            ThoughtPreview(text = thought, tail = streaming)
+        }
+        ChatExpand(expanded) {
+            AiMarkdown(
+                text = thought,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                baseColor = colors.onSurfaceVariant,
+                baseFontSize = 14.5.sp,
+                baseLineHeight = 23.sp,
+                onCopy = onCopy,
+                onOpenCodeDetail = { title, code, language ->
+                    onDetail(ChatTextDetail(title = title, text = code, code = true, language = language))
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShimmerTitle(text: String) {
+    val colors = MaterialTheme.colorScheme
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val shift by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = -1f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing)),
+        label = "shift"
+    )
+    var width by remember { mutableFloatStateOf(160f) }
+    val highlight = colors.primary
+    Text(
+        text = text,
+        fontSize = 16.5.sp,
+        lineHeight = 22.sp,
+        fontWeight = FontWeight.Bold,
+        style = TextStyle(
+            brush = Brush.linearGradient(
+                0f to colors.onSurface,
+                0.35f to colors.onSurface,
+                0.5f to highlight,
+                0.65f to colors.onSurface,
+                1f to colors.onSurface,
+                start = Offset(shift * width * 3f, 0f),
+                end = Offset((shift + 1f) * width * 3f, 0f)
+            )
+        ),
+        onTextLayout = { width = it.size.width.toFloat().coerceAtLeast(1f) }
+    )
+}
+
+/**
+ * Ported from Wawlink's ThoughtPreview.kt:
+ * When streaming (`tail = true`), shows a live single-line right-aligned marquee with a 48dp left-edge alpha fade.
+ * When finished (`tail = false`), shows a crisp single-line head preview with ellipsis.
+ */
+@Composable
+private fun ThoughtPreview(text: String, tail: Boolean) {
+    val style = LocalTextStyle.current.copy(
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 14.5.sp,
+        lineHeight = 20.sp
+    )
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+        val width = constraints.maxWidth
+        val window = remember(text, tail, width, style, measurer) {
+            thoughtPreviewWindow(text, tail, width) { candidate ->
+                measurer.measure(
+                    candidate,
+                    style,
+                    softWrap = false,
+                    maxLines = 1,
+                    constraints = Constraints(maxWidth = width.coerceAtMost(Constraints.Infinity / 3) * 3)
+                )
+            }
+        }
+        val semantics = Modifier.clearAndSetSemantics { this.text = AnnotatedString(text) }
+        if (tail) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        clip = true
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        if (window.overflow) {
+                            drawRect(
+                                brush = Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), endX = 48.dp.toPx()),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                    }
+            ) {
+                Text(
+                    text = window.text,
+                    modifier = semantics
+                        .fillMaxWidth()
+                        .wrapContentWidth(if (window.overflow) Alignment.End else Alignment.Start, unbounded = true),
+                    style = style,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        } else {
+            Text(
+                text = window.text,
+                modifier = semantics.fillMaxWidth(),
+                style = style,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private data class ThoughtPreviewWindow(val text: String, val overflow: Boolean)
+
+private fun thoughtPreviewWindow(
+    source: String,
+    tail: Boolean,
+    width: Int,
+    measure: (String) -> TextLayoutResult
+): ThoughtPreviewWindow {
+    if (source.isEmpty() || width <= 0) return ThoughtPreviewWindow("", false)
+    var count = minOf(128, source.length)
+    while (true) {
+        var start = if (tail) source.length - count else 0
+        var end = if (tail) source.length else count
+        if (start > 0 && source[start].isLowSurrogate() && source[start - 1].isHighSurrogate()) start--
+        if (end < source.length && source[end - 1].isHighSurrogate() && source[end].isLowSurrogate()) end++
+        val candidate = source.substring(start, end).replace('\n', ' ')
+        val layout = measure(candidate)
+        val lineBreak = layout.multiParagraph.didExceedMaxLines
+        val overflow = layout.didOverflowWidth || layout.size.width > width || lineBreak
+        if (count == source.length || layout.size.width >= width * 2f || lineBreak) {
+            return ThoughtPreviewWindow(candidate, overflow)
+        }
+        count = if (count >= source.length - count) source.length else count * 2
+    }
+}
+
+/**
+ * Ported from Wawlink's FeedHistoryActions (AgentChatNavigation.kt):
+ * Direct 1-tap copy with animated check feedback + More button opening a spring-pop WawPopupMenu.
+ */
+@Composable
+private fun MessageActions(
+    alignEnd: Boolean,
+    onCopy: (() -> Unit)?,
+    onSelect: (() -> Unit)?,
+    onEdit: (() -> Unit)?,
+    onRegenerate: (() -> Unit)?,
+    onDelete: (() -> Unit)?
+) {
+    val hasMenu = onSelect != null || onEdit != null || onRegenerate != null || onDelete != null
+    if (onCopy == null && !hasMenu) return
+    val colors = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onCopy != null) {
+            IconButton(
+                onClick = {
+                    onCopy()
+                    copied = true
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                AnimatedContent(
+                    targetState = copied,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + scaleIn(tween(240, easing = WawEmphDecelEasing), initialScale = 0.8f)) togetherWith
+                            fadeOut(tween(120))
+                    },
+                    label = "msg-copy"
+                ) { ok ->
+                    Icon(
+                        imageVector = if (ok) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                        contentDescription = stringResource(if (ok) R.string.ai_copied else R.string.ai_copy),
+                        modifier = Modifier.size(18.dp),
+                        tint = if (ok) colors.primary else colors.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        if (hasMenu) {
+            Box {
+                IconButton(onClick = { open = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Rounded.MoreHoriz,
+                        contentDescription = stringResource(R.string.ai_chat_message_actions),
+                        modifier = Modifier.size(19.dp),
+                        tint = colors.onSurfaceVariant
+                    )
+                }
+                WawPopupMenu(expanded = open, onDismissRequest = { open = false }) {
+                    if (onSelect != null) {
+                        WawPopupMenuItem(
+                            label = stringResource(R.string.ai_select_copy),
+                            icon = Icons.Rounded.SelectAll,
+                            onClick = { open = false; onSelect() }
+                        )
+                    }
+                    if (onEdit != null) {
+                        WawPopupMenuItem(
+                            label = stringResource(R.string.ai_edit_resend),
+                            icon = Icons.Rounded.Edit,
+                            onClick = { open = false; onEdit() }
+                        )
+                    }
+                    if (onRegenerate != null) {
+                        WawPopupMenuItem(
+                            label = stringResource(R.string.ai_regenerate),
+                            icon = Icons.Rounded.Refresh,
+                            onClick = { open = false; onRegenerate() }
+                        )
+                    }
+                    if (onDelete != null) {
+                        WawPopupMenuItem(
+                            label = stringResource(R.string.ai_delete),
+                            icon = Icons.Rounded.Delete,
+                            dangerous = true,
+                            onClick = { open = false; onDelete() }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ChatExpand(visible: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = expandVertically(tween(420, easing = WawEmphEasing), expandFrom = Alignment.Top) +
+            fadeIn(tween(320, delayMillis = 60, easing = WawEmphDecelEasing)),
+        exit = shrinkVertically(tween(360, easing = WawEmphEasing), shrinkTowards = Alignment.Top) +
+            fadeOut(tween(180, easing = WawEmphAccelEasing)),
+        content = { content() }
+    )
+}
+
+internal data class ChatTextDetail(
+    val title: String,
+    val text: String,
+    val code: Boolean = false,
+    val markdown: Boolean = false,
+    val language: String? = null
+)
+
+/**
+ * Full-screen detail viewer ported from Wawlink's CodeDetailScreen & ThinkingDetailScreen.
+ * Uses Dialog(usePlatformDefaultWidth = false) so it renders full-window while preserving Dialog semantics.
+ */
+@Composable
+internal fun SelectCopyDialog(
+    detail: ChatTextDetail,
     onDismiss: () -> Unit,
     onCopyAll: () -> Unit
 ) {
-    AlertDialog(
+    val colors = MaterialTheme.colorScheme
+    var wordWrap by rememberSaveable(detail.title, detail.code) { mutableStateOf(true) }
+    var copied by remember(detail.text) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1600)
+            copied = false
+        }
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(stringResource(R.string.ai_select_copy))
-                TextButton(onClick = onCopyAll) {
-                    Text(stringResource(R.string.ai_copy_all))
-                }
-            }
-        },
-        text = {
-            SelectionContainer {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dialog_cancel))
-            }
-        }
-    )
-}
-
-// endregion
-
-// region Action Result Block
-
-@Composable
-fun ActionResultBlock(result: ActionResult) {
-    var expanded by remember { mutableStateOf(false) }
-    val maxOutputLength = 2000
-    val isLongOutput = result.output.length > maxOutputLength
-    var outputExpanded by remember { mutableStateOf(false) }
-    val displayOutput = if (isLongOutput && !outputExpanded) {
-        result.output.take(maxOutputLength) + "\n..."
-    } else {
-        result.output
-    }
-    val typeLabel = when (result.type) {
-        ActionType.R2Command -> "R2"
-        ActionType.JavaScript -> "JS"
-        ActionType.FridaScript -> "Frida"
-    }
-    val statusColor = if (result.success) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-        ),
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Type badge
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = statusColor.copy(alpha = 0.15f)
+        Surface(Modifier.fillMaxSize(), color = colors.surface) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = typeLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = statusColor
-                        ),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = result.input,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(
-                    onClick = { expanded = !expanded },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFF1E1E1E),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        SelectionContainer {
-                            Text(
-                                text = displayOutput,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFE0E0E0)
-                                )
-                            )
-                        }
-                        if (isLongOutput) {
-                            Text(
-                                text = if (outputExpanded) stringResource(R.string.ai_show_less)
-                                else stringResource(R.string.ai_show_more, result.output.length),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFF64B5F6),
-                                modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .clickable { outputExpanded = !outputExpanded }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// endregion
-
-// region Input Bar
-
-@Composable
-fun ChatInputBar(
-    text: String,
-    onTextChange: (String) -> Unit,
-    isGenerating: Boolean,
-    thinkingLevel: ThinkingLevel,
-    onThinkingLevelChange: (ThinkingLevel) -> Unit,
-    onSend: () -> Unit,
-    onStop: () -> Unit
-) {
-    var showThinkingMenu by remember { mutableStateOf(false) }
-
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 4.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Thinking level button
-            Box {
-                IconButton(onClick = { showThinkingMenu = true }) {
-                    Text(
-                        text = thinkingLevelIcon(thinkingLevel),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (thinkingLevel.apiEffort != null)
-                            MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                DropdownMenu(
-                    expanded = showThinkingMenu,
-                    onDismissRequest = { showThinkingMenu = false }
-                ) {
-                    ThinkingLevel.entries.forEach { level ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    thinkingLevelLabel(level),
-                                    color = if (level == thinkingLevel)
-                                        MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface
-                                )
-                            },
-                            onClick = {
-                                onThinkingLevelChange(level)
-                                showThinkingMenu = false
-                            }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.ai_chat_close),
+                            tint = colors.onSurfaceVariant
                         )
                     }
+                    Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                        Text(
+                            text = detail.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (detail.code && !detail.language.isNullOrBlank()) {
+                            Text(
+                                text = detail.language,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (detail.code) {
+                        IconButton(onClick = { wordWrap = !wordWrap }) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.WrapText,
+                                contentDescription = stringResource(R.string.ai_code_word_wrap),
+                                tint = if (wordWrap) colors.primary else colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                    IconButton(
+                        enabled = detail.text.isNotEmpty(),
+                        onClick = {
+                            onCopyAll()
+                            copied = true
+                        }
+                    ) {
+                        AnimatedContent(
+                            targetState = copied,
+                            transitionSpec = {
+                                (fadeIn(tween(180)) + scaleIn(tween(240, easing = WawEmphDecelEasing), initialScale = 0.8f)) togetherWith
+                                    fadeOut(tween(120))
+                            },
+                            label = "detail-copy"
+                        ) { ok ->
+                            Icon(
+                                imageVector = if (ok) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                contentDescription = stringResource(R.string.ai_copy_all),
+                                tint = if (ok) colors.primary else colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.6f))
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                ) {
+                    when {
+                        detail.text.isEmpty() -> Text(
+                            text = stringResource(R.string.ai_tool_empty),
+                            color = colors.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        detail.code -> HighlightedCodeView(
+                            text = detail.text,
+                            language = detail.language,
+                            modifier = Modifier.fillMaxWidth(),
+                            fontSize = 13.5.sp,
+                            lineHeight = 21.sp,
+                            showLineNumbers = true,
+                            softWrap = wordWrap
+                        )
+                        detail.markdown -> AiMarkdown(
+                            text = detail.text,
+                            modifier = Modifier.fillMaxWidth(),
+                            onCopy = { onCopyAll() }
+                        )
+                        else -> SelectionContainer {
+                            Text(
+                                text = detail.text,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 16.sp,
+                                    lineHeight = 25.sp
+                                ),
+                                color = colors.onSurface
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+}
 
-            OutlinedTextField(
-                value = text,
-                onValueChange = onTextChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(stringResource(R.string.ai_input_hint)) },
-                maxLines = 5,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+/**
+ * Ported from Wawlink's ManagementMenu: spring-scale floating menu with rounded 24dp surface.
+ */
+@Composable
+internal fun WawPopupMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val visible = remember { MutableTransitionState(false) }
+    visible.targetState = expanded
+    val motion = rememberTransition(visible, label = "waw-popup-menu")
+    val scale by motion.animateFloat(
+        transitionSpec = {
+            if (targetState) tween(400, easing = WawEmphDecelEasing) else tween(180, easing = WawEmphAccelEasing)
+        },
+        label = "scale"
+    ) { if (it) 1f else 0.72f }
+    val opacity by motion.animateFloat(
+        transitionSpec = { if (targetState) tween(220) else tween(140) },
+        label = "opacity"
+    ) { if (it) 1f else 0f }
+    val density = LocalDensity.current
+    var pivot by remember { mutableStateOf(TransformOrigin(0.5f, 0f)) }
+    val position = remember(density) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize
+            ): IntOffset {
+                val shadow = with(density) { 24.dp.roundToPx() }
+                val inset = with(density) { 12.dp.roundToPx() }
+                val gap = with(density) { 4.dp.roundToPx() }
+                val width = popupContentSize.width - shadow * 2
+                val height = popupContentSize.height - shadow * 2
+                val x = (anchorBounds.right - width)
+                    .coerceIn(inset, (windowSize.width - width - inset).coerceAtLeast(inset)) - shadow
+                val below = anchorBounds.bottom + gap + height <= windowSize.height - inset
+                val y = (if (below) anchorBounds.bottom + gap else (anchorBounds.top - height - gap).coerceAtLeast(inset)) - shadow
+                pivot = TransformOrigin(
+                    ((anchorBounds.left + anchorBounds.width / 2f - x) / popupContentSize.width.coerceAtLeast(1)).coerceIn(0f, 1f),
+                    if (below) 0f else 1f
                 )
-            )
-            Spacer(Modifier.width(8.dp))
-            if (isGenerating) {
-                FilledIconButton(
-                    onClick = onStop,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.error
+                return IntOffset(x, y)
+            }
+        }
+    }
+    if (visible.currentState || visible.targetState) {
+        Popup(
+            popupPositionProvider = position,
+            onDismissRequest = onDismissRequest,
+            properties = PopupProperties(focusable = true, clippingEnabled = false)
+        ) {
+            Box(
+                Modifier
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = opacity
+                        transformOrigin = pivot
+                        clip = false
+                    }
+                    .padding(24.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(22.dp),
+                    shadowElevation = 10.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(min = 196.dp, max = 280.dp)
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(6.dp),
+                        content = content
                     )
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.ai_stop))
-                }
-            } else {
-                FilledIconButton(
-                    onClick = onSend,
-                    enabled = text.isNotBlank()
-                ) {
-                    Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.ai_send))
                 }
             }
         }
@@ -589,90 +921,93 @@ fun ChatInputBar(
 }
 
 @Composable
-private fun thinkingLevelIcon(level: ThinkingLevel): String = when (level) {
-    ThinkingLevel.None -> "⊘"
-    ThinkingLevel.Auto -> "A"
-    ThinkingLevel.Light -> "L"
-    ThinkingLevel.Normal -> "M"
-    ThinkingLevel.Heavy -> "H"
-}
-
-@Composable
-private fun thinkingLevelLabel(level: ThinkingLevel): String = when (level) {
-    ThinkingLevel.None -> stringResource(R.string.ai_thinking_none)
-    ThinkingLevel.Auto -> stringResource(R.string.ai_thinking_auto)
-    ThinkingLevel.Light -> stringResource(R.string.ai_thinking_light)
-    ThinkingLevel.Normal -> stringResource(R.string.ai_thinking_normal)
-    ThinkingLevel.Heavy -> stringResource(R.string.ai_thinking_heavy)
-}
-
-// endregion
-
-// region Thinking Indicator
-
-@Composable
-fun ThinkingIndicator() {
+internal fun WawPopupMenuItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean = false,
+    dangerous: Boolean = false,
+    onClick: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val fg = when {
+        dangerous -> colors.error
+        selected -> colors.onPrimaryContainer
+        else -> colors.onSurface
+    }
+    val bg = if (selected) colors.primaryContainer else Color.Transparent
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(R.string.ai_thinking),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        CompositionLocalProvider(LocalContentColor provides fg) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (selected) {
+                Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = colors.primary)
+            }
+        }
     }
 }
 
-// endregion
-
-// region Command Approval Dialog
-
+/**
+ * Ported from Wawlink's AgentSheet (AgentTheme.kt).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommandApprovalDialog(
-    pendingApproval: PendingApproval,
-    onApprove: () -> Unit,
-    onDeny: () -> Unit
+internal fun WawSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = { /* Block dismiss, must choose */ },
-        title = { Text(stringResource(R.string.ai_approval_title)) },
-        text = {
-            Column {
-                Text(
-                    text = stringResource(R.string.ai_approval_message),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = pendingApproval.command,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onApprove) {
-                Text(stringResource(R.string.ai_approval_allow))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDeny) {
-                Text(stringResource(R.string.ai_approval_deny))
+    val colors = MaterialTheme.colorScheme
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = colors.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(top = 14.dp, bottom = 6.dp)
+                    .size(32.dp, 4.dp)
+                    .background(colors.outline.copy(alpha = 0.45f), RoundedCornerShape(2.dp))
+            )
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium
+            )
+            actions()
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.ai_chat_close), tint = colors.onSurfaceVariant)
             }
         }
-    )
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 580.dp).padding(contentPadding),
+            content = content
+        )
+    }
 }

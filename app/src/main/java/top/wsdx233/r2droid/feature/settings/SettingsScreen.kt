@@ -181,6 +181,9 @@ class SettingsViewModel : ViewModel() {
     private val _aiOutputTruncateLimit = MutableStateFlow(SettingsManager.aiOutputTruncateLimit)
     val aiOutputTruncateLimit = _aiOutputTruncateLimit.asStateFlow()
 
+    private val _aiMaxToolRounds = MutableStateFlow(SettingsManager.aiMaxToolRounds)
+    val aiMaxToolRounds = _aiMaxToolRounds.asStateFlow()
+
     private val _useHttpMode = MutableStateFlow(SettingsManager.useHttpMode)
     val useHttpMode = _useHttpMode.asStateFlow()
 
@@ -343,6 +346,12 @@ class SettingsViewModel : ViewModel() {
     fun setAiOutputTruncateLimit(value: Int) {
         SettingsManager.aiOutputTruncateLimit = value
         _aiOutputTruncateLimit.value = value
+    }
+
+    fun setAiMaxToolRounds(value: Int) {
+        val normalized = value.coerceAtLeast(0)
+        SettingsManager.aiMaxToolRounds = normalized
+        _aiMaxToolRounds.value = normalized
     }
 
     fun setUseHttpMode(value: Boolean) {
@@ -514,6 +523,7 @@ fun SettingsScreen(
     val menuAtTouch by viewModel.menuAtTouch.collectAsState()
     val aiEnabled by viewModel.aiEnabled.collectAsState()
     val aiOutputTruncateLimit by viewModel.aiOutputTruncateLimit.collectAsState()
+    val aiMaxToolRounds by viewModel.aiMaxToolRounds.collectAsState()
     val useHttpMode by viewModel.useHttpMode.collectAsState()
     val useProotMode by viewModel.useProotMode.collectAsState()
     val prootBuildMode by viewModel.prootBuildMode.collectAsState()
@@ -559,6 +569,8 @@ fun SettingsScreen(
     var tempMaxLog by remember { mutableStateOf("") }
     var showAiTruncateDialog by remember { mutableStateOf(false) }
     var tempAiTruncateLimit by remember { mutableStateOf("") }
+    var showAiMaxRoundsDialog by remember { mutableStateOf(false) }
+    var tempAiMaxRounds by remember { mutableStateOf("") }
     var showHttpPortDialog by remember { mutableStateOf(false) }
     var tempHttpPort by remember { mutableStateOf("") }
     var showDefaultJumpTargetDialog by remember { mutableStateOf(false) }
@@ -779,6 +791,18 @@ fun SettingsScreen(
                     onClick = {
                         tempAiTruncateLimit = aiOutputTruncateLimit.toString()
                         showAiTruncateDialog = true
+                    }
+                )
+            }
+
+            item {
+                SettingsItem(
+                    title = stringResource(R.string.settings_ai_max_tool_rounds),
+                    subtitle = if (aiMaxToolRounds <= 0) stringResource(R.string.settings_ai_max_tool_rounds_unlimited) else aiMaxToolRounds.toString(),
+                    icon = Icons.Default.SmartToy,
+                    onClick = {
+                        tempAiMaxRounds = if (aiMaxToolRounds <= 0) "" else aiMaxToolRounds.toString()
+                        showAiMaxRoundsDialog = true
                     }
                 )
             }
@@ -1449,6 +1473,38 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showAiTruncateDialog = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            }
+        )
+    }
+
+    if (showAiMaxRoundsDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiMaxRoundsDialog = false },
+            title = { Text(stringResource(R.string.settings_ai_max_tool_rounds)) },
+            text = {
+                Column(modifier = Modifier.focusable()) {
+                    OutlinedTextField(
+                        value = tempAiMaxRounds,
+                        onValueChange = { tempAiMaxRounds = it.filter { c -> c.isDigit() } },
+                        label = { Text(stringResource(R.string.settings_ai_max_tool_rounds_desc)) },
+                        placeholder = { Text(stringResource(R.string.settings_ai_max_tool_rounds_unlimited)) },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = tempAiMaxRounds.toIntOrNull() ?: 0
+                    viewModel.setAiMaxToolRounds(value)
+                    showAiMaxRoundsDialog = false
+                }) {
+                    Text(stringResource(R.string.settings_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiMaxRoundsDialog = false }) {
                     Text(stringResource(R.string.settings_cancel))
                 }
             }

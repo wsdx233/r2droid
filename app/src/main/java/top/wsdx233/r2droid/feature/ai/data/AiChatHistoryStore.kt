@@ -310,6 +310,10 @@ class AiChatHistoryStore(context: Context) {
         var timestamp = System.currentTimeMillis()
         var isStreaming = false
         val actionResults = mutableListOf<ActionResult>()
+        val toolCalls = mutableListOf<AiToolCall>()
+        var reasoningText = ""
+        val reasoning = mutableListOf<String>()
+        var reasoningOrigin: String? = null
 
         reader.beginObject()
         while (reader.hasNext()) {
@@ -326,6 +330,18 @@ class AiChatHistoryStore(context: Context) {
                     }
                     reader.endArray()
                 }
+                "toolCalls" -> {
+                    reader.beginArray()
+                    while (reader.hasNext()) readToolCall(reader)?.let(toolCalls::add)
+                    reader.endArray()
+                }
+                "reasoning" -> reasoningText = reader.nextNullableString().orEmpty()
+                "responsesReasoning" -> {
+                    reader.beginArray()
+                    while (reader.hasNext()) reader.nextNullableString()?.let(reasoning::add)
+                    reader.endArray()
+                }
+                "reasoningOrigin" -> reasoningOrigin = reader.nextNullableString()
                 else -> reader.skipValue()
             }
         }
@@ -337,8 +353,12 @@ class AiChatHistoryStore(context: Context) {
             content = content,
             timestamp = timestamp,
             isStreaming = isStreaming,
-            actionResults = actionResults
-        )
+            actionResults = actionResults,
+            toolCalls = toolCalls,
+            reasoning = reasoningText,
+            responsesReasoning = reasoning,
+            reasoningOrigin = reasoningOrigin
+        ).settledAfterInterruption()
     }
 
     private fun writeMessage(writer: JsonWriter, message: ChatMessage) {
@@ -352,7 +372,51 @@ class AiChatHistoryStore(context: Context) {
         writer.beginArray()
         message.actionResults.forEach { writeActionResult(writer, it) }
         writer.endArray()
+        if (message.toolCalls.isNotEmpty()) {
+            writer.name("toolCalls").beginArray()
+            for (call in message.toolCalls) {
+                writer.beginObject()
+                writer.name("id").value(call.id)
+                writer.name("name").value(call.name)
+                writer.name("arguments").value(call.arguments)
+                writer.name("status").value(call.status.name)
+                writer.name("output").value(call.output)
+                call.durationMillis?.let { writer.name("durationMillis").value(it) }
+                writer.endObject()
+            }
+            writer.endArray()
+        }
+        if (message.reasoning.isNotEmpty()) {
+            writer.name("reasoning").value(message.reasoning)
+        }
+        if (message.responsesReasoning.isNotEmpty() && message.reasoningOrigin != null) {
+            writer.name("reasoningOrigin").value(message.reasoningOrigin)
+            writer.name("responsesReasoning").beginArray()
+            message.responsesReasoning.forEach { writer.value(it) }
+            writer.endArray()
+        }
         writer.endObject()
+    }
+
+    private fun readToolCall(reader: JsonReader): AiToolCall? {
+        var id = ""
+        var name = ""
+        var arguments = ""
+        var status = ToolCallStatus.Interrupted
+        var output = ""
+        var durationMillis: Long? = null
+        reader.beginObject()
+        while (reader.hasNext()) when (reader.nextName()) {
+            "id" -> id = reader.nextNullableString().orEmpty()
+            "name" -> name = reader.nextNullableString().orEmpty()
+            "arguments" -> arguments = reader.nextNullableString().orEmpty()
+            "status" -> status = reader.nextEnumOrDefault(ToolCallStatus.Interrupted)
+            "output" -> output = reader.nextNullableString().orEmpty()
+            "durationMillis" -> durationMillis = reader.nextLongLenient(-1L).takeIf { it >= 0L }
+            else -> reader.skipValue()
+        }
+        reader.endObject()
+        return if (id.isBlank() || name.isBlank()) null else AiToolCall(id, name, arguments, status, output, durationMillis = durationMillis)
     }
 
     private fun readActionResult(reader: JsonReader): ActionResult {

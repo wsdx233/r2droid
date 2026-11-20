@@ -1,32 +1,32 @@
 package top.wsdx233.r2droid.feature.ai
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import top.wsdx233.r2droid.feature.ai.data.ActionType
-import top.wsdx233.r2droid.feature.ai.data.AiExecutionMode
-import top.wsdx233.r2droid.feature.ai.data.AiProviderConfig
-import top.wsdx233.r2droid.feature.ai.data.AiRepository
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
-import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
-import top.wsdx233.r2droid.feature.ai.data.ChatMessage
-import top.wsdx233.r2droid.feature.ai.data.ChatRole
-import top.wsdx233.r2droid.feature.ai.data.ChatSession
-import top.wsdx233.r2droid.feature.ai.data.ChatSessionMetadata
-import top.wsdx233.r2droid.feature.ai.data.R2ActionExecutor
-import top.wsdx233.r2droid.feature.ai.data.ActionResult
-import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
-import kotlinx.coroutines.CompletableDeferred
-import top.wsdx233.r2droid.feature.r2frida.data.R2FridaRepository
+import top.wsdx233.r2droid.feature.ai.data.*
 import top.wsdx233.r2droid.util.R2PipeManager
+import java.util.UUID
 import javax.inject.Inject
 
 sealed interface AiEvent {
@@ -35,6 +35,7 @@ sealed interface AiEvent {
     data class RegenerateFrom(val messageId: String) : AiEvent
     data class DeleteMessage(val messageId: String) : AiEvent
     object StopGeneration : AiEvent
+    object DismissError : AiEvent
     object NewChat : AiEvent
     data class SetProvider(val providerId: String, val modelName: String) : AiEvent
     data class SetModel(val modelName: String) : AiEvent
@@ -43,27 +44,19 @@ sealed interface AiEvent {
     object SaveChat : AiEvent
     data class LoadChat(val sessionId: String) : AiEvent
     data class DeleteChat(val sessionId: String) : AiEvent
-    object ApproveCommand : AiEvent
-    object DenyCommand : AiEvent
+    data class DecideTool(val messageId: String, val callId: String, val approved: Boolean, val alwaysAllow: Boolean = false) : AiEvent
     data class SetThinkingLevel(val level: ThinkingLevel) : AiEvent
     data class SetExecutionMode(val mode: AiExecutionMode) : AiEvent
 }
 
-data class PendingApproval(
-    val command: String,
-    val type: ActionType
-)
-
 data class AiUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
-    val streamingContent: String = "",
     val error: String? = null,
     val config: AiProviderConfig = AiProviderConfig(),
     val systemPrompt: String = AiSettingsManager.DEFAULT_SYSTEM_PROMPT,
     val chatSessions: List<ChatSessionMetadata> = emptyList(),
     val currentChatId: String? = null,
-    val pendingApproval: PendingApproval? = null,
     val thinkingLevel: ThinkingLevel = ThinkingLevel.Auto,
     val executionMode: AiExecutionMode = AiExecutionMode.R2
 )
@@ -73,35 +66,37 @@ class AiViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(AiUiState())
+    private val _uiState = MutableStateFlow(AiUiState(
+        config = AiSettingsManager.configFlow.value,
+        systemPrompt = AiSettingsManager.systemPrompt,
+        executionMode = if (R2PipeManager.isR2FridaSession) AiExecutionMode.Frida else AiExecutionMode.R2
+    ))
     val uiState: StateFlow<AiUiState> = _uiState.asStateFlow()
 
-    private var generationJob: Job? = null
-    private val actionExecutor = R2ActionExecutor()
-    private val r2FridaRepository = R2FridaRepository()
-    private var approvalDeferred: CompletableDeferred<Boolean>? = null
+    private val executor = R2ActionExecutor(context.cacheDir)
+    private var generation: Job? = null
+    private var target: R2ActionExecutor.Target? = null
+    private var approval: Approval? = null
+    private var live: LiveReply? = null
+    private var sessionAutoApprove = false
+    private val historyLock = Mutex()
+    private var loadingChat: Job? = null
+
+    private data class ApprovalResult(val approved: Boolean, val alwaysAllow: Boolean)
+    private class Approval(val messageId: String, val callId: String, val answer: CompletableDeferred<ApprovalResult>)
+    private class LiveReply(
+        val id: String,
+        val text: StringBuilder = StringBuilder(),
+        val reasoning: StringBuilder = StringBuilder()
+    )
 
     init {
-        loadSettings()
-    }
-
-    private fun loadSettings() {
+        viewModelScope.launch { AiSettingsManager.configFlow.collect { config -> _uiState.update { it.copy(config = config) } } }
+        viewModelScope.launch { AiSettingsManager.sessionsFlow.collect { chats -> _uiState.update { it.copy(chatSessions = chats) } } }
         viewModelScope.launch {
-            AiSettingsManager.configFlow.collect { config ->
-                _uiState.update { it.copy(config = config) }
-            }
-        }
-        viewModelScope.launch {
-            AiSettingsManager.sessionsFlow.collect { sessions ->
-                _uiState.update { it.copy(chatSessions = sessions) }
-            }
-        }
-        _uiState.update {
-            it.copy(
-                systemPrompt = AiSettingsManager.systemPrompt,
-                executionMode = if (R2PipeManager.isR2FridaSession) AiExecutionMode.Frida else AiExecutionMode.R2
-            )
+            combine(R2PipeManager.activeSessionId, R2PipeManager.sessions, R2PipeManager.state) { _, _, _ ->
+                target?.isCurrent() == false
+            }.collect { changed -> if (changed && target?.isCurrent() == false) stopGeneration(TARGET_CHANGED) }
         }
     }
 
@@ -111,298 +106,243 @@ class AiViewModel @Inject constructor(
             is AiEvent.EditMessage -> editAndResend(event.messageId, event.newText)
             is AiEvent.RegenerateFrom -> regenerateFrom(event.messageId)
             is AiEvent.DeleteMessage -> deleteMessage(event.messageId)
-            is AiEvent.StopGeneration -> stopGeneration()
-            is AiEvent.NewChat -> newChat()
-            is AiEvent.SetProvider -> setProvider(event.providerId, event.modelName)
-            is AiEvent.SetModel -> setModel(event.modelName)
+            AiEvent.StopGeneration -> stopGeneration()
+            AiEvent.DismissError -> _uiState.update { it.copy(error = null) }
+            AiEvent.NewChat -> newChat()
+            is AiEvent.SetProvider -> AiSettingsManager.setActiveProvider(event.providerId, event.modelName)
+            is AiEvent.SetModel -> AiSettingsManager.setActiveModel(event.modelName)
             is AiEvent.UpdateSystemPrompt -> updateSystemPrompt(event.prompt)
-            is AiEvent.ResetSystemPrompt -> resetSystemPrompt()
-            is AiEvent.SaveChat -> saveCurrentChat()
+            AiEvent.ResetSystemPrompt -> updateSystemPrompt(AiSettingsManager.DEFAULT_SYSTEM_PROMPT)
+            AiEvent.SaveChat -> saveCurrentChat()
             is AiEvent.LoadChat -> loadChat(event.sessionId)
             is AiEvent.DeleteChat -> deleteChat(event.sessionId)
-            is AiEvent.ApproveCommand -> resolveApproval(true)
-            is AiEvent.DenyCommand -> resolveApproval(false)
+            is AiEvent.DecideTool -> approval?.takeIf { it.messageId == event.messageId && it.callId == event.callId }
+                ?.answer?.complete(ApprovalResult(event.approved, event.alwaysAllow))
             is AiEvent.SetThinkingLevel -> _uiState.update { it.copy(thinkingLevel = event.level) }
             is AiEvent.SetExecutionMode -> _uiState.update { it.copy(executionMode = event.mode) }
         }
     }
 
     private fun sendMessage(text: String) {
-        val userMsg = ChatMessage(role = ChatRole.User, content = text)
-        _uiState.update { it.copy(messages = it.messages + userMsg, error = null) }
+        if (text.isBlank() || _uiState.value.isGenerating) return
+        loadingChat?.cancel()
+        val message = ChatMessage(role = ChatRole.User, content = text)
+        _uiState.update { it.copy(currentChatId = it.currentChatId ?: UUID.randomUUID().toString(),
+            messages = it.messages + message, error = null) }
+        saveCurrentChat()
         startGeneration()
     }
 
     private fun startGeneration() {
         val state = _uiState.value
-        val config = state.config
-        val turnMode = state.executionMode
-        val turnHasFridaSession = R2PipeManager.isR2FridaSession
-        val provider = config.providers.find { it.id == config.activeProviderId }
-        if (provider == null) {
-            _uiState.update { it.copy(error = "No AI provider configured") }
+        val provider = state.config.providers.find { it.id == state.config.activeProviderId }
+        val model = state.config.activeModelName ?: provider?.models?.firstOrNull()
+        if (provider == null || model.isNullOrBlank()) {
+            _uiState.update { it.copy(error = if (provider == null) "No AI provider configured" else "No model selected") }
             return
         }
-        val model = config.activeModelName ?: provider.models.firstOrNull()
-        if (model == null) {
-            _uiState.update { it.copy(error = "No model selected") }
-            return
+        val bound = executor.capture(state.executionMode)
+        target = bound
+        val tools = bound?.definitions.orEmpty()
+        val modeNote = when {
+            bound == null -> "No active radare2 session is connected; answer in text."
+            state.executionMode == AiExecutionMode.Frida && tools.any { it.name == R2ActionExecutor.RUN_FRIDA } ->
+                "Active mode: Frida (r2frida connected). Prefer `run_frida` for runtime instrumentation and `r2_command` for session checks."
+            else ->
+                "Active mode: Radare2. Use `r2_command` and `run_js` tools to inspect and analyze the binary."
         }
-
-        aiRepository.configure(provider)
-        _uiState.update { it.copy(isGenerating = true, streamingContent = "", error = null) }
-
-        generationJob = viewModelScope.launch {
+        val prompt = "${state.systemPrompt}\n\n$modeNote"
+        _uiState.update { it.copy(isGenerating = true, error = null) }
+        generation = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val owner = currentCoroutineContext().job
             try {
-                val fullResponse = StringBuilder()
-
-                aiRepository.streamChat(
-                    messages = state.messages,
-                    modelName = model,
-                    systemPrompt = buildSystemPromptForMode(state.systemPrompt, turnMode, turnHasFridaSession),
-                    useResponsesApi = provider.useResponsesApi,
-                    thinkingLevel = state.thinkingLevel
-                )
-                    .collect { delta ->
-                        fullResponse.append(delta)
-                        _uiState.update { it.copy(streamingContent = fullResponse.toString()) }
-                    }
-
-                val responseText = fullResponse.toString()
-                val parsed = actionExecutor.parseResponse(responseText)
-
-                if (parsed.actions.isNotEmpty()) {
-                    // Execute actions
-                    val results = mutableListOf<ActionResult>()
-                    val feedbackBuilder = StringBuilder("Execution Results:\n")
-
-                    for (action in parsed.actions) {
-                        // Check if command requires user approval
-                        if (action.type == ActionType.R2Command && AiSettingsManager.requiresApproval(action.content)) {
-                            _uiState.update {
-                                it.copy(
-                                    pendingApproval = PendingApproval(action.content, action.type),
-                                    streamingContent = responseText + "\n\n⚠️ Waiting for approval: [[${action.content}]]"
-                                )
-                            }
-                            val deferred = CompletableDeferred<Boolean>()
-                            approvalDeferred = deferred
-                            val approved = deferred.await()
-                            _uiState.update { it.copy(pendingApproval = null) }
-                            if (!approved) {
-                                val denied = ActionResult(
-                                    type = action.type,
-                                    input = action.content,
-                                    output = "Command denied by user",
-                                    success = false
-                                )
-                                results.add(denied)
-                                feedbackBuilder.appendLine("R2 Command: ${action.content}")
-                                feedbackBuilder.appendLine("Output:")
-                                feedbackBuilder.appendLine("Command denied by user")
-                                feedbackBuilder.appendLine()
-                                continue
-                            }
-                        }
-
-                        val result = when (action.type) {
-                            ActionType.R2Command -> {
-                                _uiState.update {
-                                    it.copy(streamingContent = responseText + "\n\n⏳ Running: [[${action.content}]]...")
+                val seen = mutableSetOf<String>()
+                var round = 0
+                while (true) {
+                    round++
+                    currentCoroutineContext().ensureActive()
+                    check(bound?.isCurrent() != false) { TARGET_CHANGED }
+                    val prior = _uiState.value.messages
+                    val row = ChatMessage(role = ChatRole.Assistant, content = "", isStreaming = true)
+                    _uiState.update { it.copy(messages = it.messages + row) }
+                    val draft = LiveReply(row.id)
+                    live = draft
+                    var completed: AiTurnEvent.Completed? = null
+                    var lastPaint = 0L
+                    aiRepository.streamTurn(provider, prior, model, prompt, state.thinkingLevel, tools).collect { event ->
+                        currentCoroutineContext().ensureActive()
+                        check(completed == null) { "Unexpected data after the end of the model turn" }
+                        when (event) {
+                            is AiTurnEvent.Text -> {
+                                draft.text.append(event.delta)
+                                val now = SystemClock.uptimeMillis()
+                                if (now - lastPaint >= 32L) {
+                                    updateReply(row.id) { it.copy(content = draft.text.toString(), reasoning = draft.reasoning.toString()) }
+                                    lastPaint = now
                                 }
-                                actionExecutor.executeR2Command(action.content)
                             }
-                            ActionType.JavaScript -> {
-                                _uiState.update {
-                                    it.copy(streamingContent = "$responseText\n\n⏳ Running JavaScript...")
+                            is AiTurnEvent.Reasoning -> {
+                                draft.reasoning.append(event.delta)
+                                val now = SystemClock.uptimeMillis()
+                                if (now - lastPaint >= 32L) {
+                                    updateReply(row.id) { it.copy(reasoning = draft.reasoning.toString()) }
+                                    lastPaint = now
                                 }
-                                actionExecutor.executeJavaScript(action.content)
                             }
-                            ActionType.FridaScript -> {
-                                _uiState.update {
-                                    it.copy(streamingContent = "$responseText\n\n⏳ Running Frida script...")
+                            is AiTurnEvent.Completed -> completed = event
+                        }
+                    }
+                    currentCoroutineContext().ensureActive()
+                    check(bound?.isCurrent() != false) { TARGET_CHANGED }
+                    val end = checkNotNull(completed) { "Incomplete model response. No tool was run." }
+                    val calls = end.calls
+                    check(calls.all { it.id.isNotBlank() && seen.add(it.id) }) {
+                        "Invalid or repeated tool call ID. No tool from this response was run."
+                    }
+                    check(calls.isEmpty() || tools.isNotEmpty()) { "Unexpected tool request in a text-only conversation" }
+                    check(calls.isNotEmpty() || draft.text.isNotBlank() || draft.reasoning.isNotBlank()) { "AI returned an empty response" }
+                    updateReply(row.id) { it.copy(
+                        content = draft.text.toString(),
+                        reasoning = draft.reasoning.toString(),
+                        isStreaming = false,
+                        toolCalls = calls,
+                        responsesReasoning = end.responsesReasoning,
+                        reasoningOrigin = if (end.responsesReasoning.isEmpty()) null else provider.reasoningOrigin(model)
+                    ) }
+                    live = null
+                    if (calls.isEmpty()) break
+
+                    val activeTarget = checkNotNull(bound)
+                    var pause = false
+                    for (call in calls) {
+                        currentCoroutineContext().ensureActive()
+                        check(activeTarget.isCurrent()) { TARGET_CHANGED }
+                        val result = when {
+                            pause -> call.copy(status = ToolCallStatus.Interrupted, output = "Not run: this turn was paused.")
+                            !sessionAutoApprove && activeTarget.requiresApproval(call) -> {
+                                val decision = awaitApproval(row.id, call)
+                                if (decision.approved && decision.alwaysAllow) sessionAutoApprove = true
+                                if (!decision.approved) {
+                                    call.copy(status = ToolCallStatus.Denied, output = "Denied by user; not executed.")
+                                } else {
+                                    executeCall(activeTarget, row.id, call)
                                 }
-                                executeFridaScript(action.content, turnMode, turnHasFridaSession)
                             }
+                            else -> executeCall(activeTarget, row.id, call)
                         }
-                        results.add(result)
-
-                        val typeLabel = when (action.type) {
-                            ActionType.R2Command -> "R2 Command"
-                            ActionType.JavaScript -> "JavaScript"
-                            ActionType.FridaScript -> "Frida Script"
-                        }
-                        feedbackBuilder.appendLine("$typeLabel: ${action.content}")
-                        feedbackBuilder.appendLine("Output:")
-                        feedbackBuilder.appendLine(result.output)
-                        feedbackBuilder.appendLine()
+                        currentCoroutineContext().ensureActive()
+                        check(activeTarget.isCurrent()) { TARGET_CHANGED }
+                        val limit = SettingsManager.aiOutputTruncateLimit.coerceAtLeast(1)
+                        updateCall(row.id, if (result.output.length <= limit) result else result.copy(
+                            output = result.output.take(limit) + "\n[Output truncated]"))
+                        if (result.status in setOf(ToolCallStatus.Manual, ToolCallStatus.Interrupted)) pause = true
                     }
-
-                    // Add assistant message with action results
-                    val assistantMsg = ChatMessage(
-                        role = ChatRole.Assistant,
-                        content = responseText,
-                        actionResults = results
-                    )
-                    _uiState.update {
-                        it.copy(messages = it.messages + assistantMsg, streamingContent = "")
-                    }
-
-                    // If not complete, feed results back and continue
-                    if (!parsed.isComplete && !parsed.hasAsk) {
-                        var feedbackText = feedbackBuilder.toString()
-                        val truncateLimit = SettingsManager.aiOutputTruncateLimit
-                        if (feedbackText.length > truncateLimit) {
-                            feedbackText = feedbackText.take(truncateLimit) + "\n... [Output Truncated] ..."
-                        }
-                        val feedbackMsg = ChatMessage(
-                            role = ChatRole.ExecutionResult,
-                            content = feedbackText
-                        )
-                        _uiState.update { it.copy(messages = it.messages + feedbackMsg) }
-                        startGeneration()
-                        return@launch
-                    }
-                } else {
-                    // Plain text response
-                    val assistantMsg = ChatMessage(
-                        role = ChatRole.Assistant,
-                        content = responseText
-                    )
-                    _uiState.update {
-                        it.copy(messages = it.messages + assistantMsg, streamingContent = "")
+                    if (pause) break
+                    val maxRounds = SettingsManager.aiMaxToolRounds
+                    if (maxRounds > 0 && round >= maxRounds) {
+                        error("Tool round limit ($maxRounds) reached; send a new message to continue.")
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _uiState.update { it.copy(error = failure.message ?: "AI request failed") }
+            } finally {
+                // A stopped request can unwind after a new conversation has already started.
+                if (generation === owner) finishRun()
+            }
+        }
+        generation?.start()
+    }
 
-                _uiState.update { it.copy(isGenerating = false) }
-                autoSaveChat()
+    private suspend fun executeCall(
+        activeTarget: R2ActionExecutor.Target,
+        messageId: String,
+        call: AiToolCall
+    ): AiToolCall {
+        currentCoroutineContext().ensureActive()
+        check(activeTarget.isCurrent()) { TARGET_CHANGED }
+        val running = call.copy(status = ToolCallStatus.Running, startedAtMillis = System.currentTimeMillis())
+        updateCall(messageId, running)
+        return activeTarget.execute(running)
+    }
 
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isGenerating = false,
-                        streamingContent = "",
-                        error = e.message ?: "Unknown error"
-                    )
+    private suspend fun awaitApproval(messageId: String, call: AiToolCall): ApprovalResult {
+        val waiting = Approval(messageId, call.id, CompletableDeferred())
+        approval = waiting
+        return try {
+            updateCall(messageId, call.copy(status = ToolCallStatus.AwaitingApproval))
+            saveCurrentChat()
+            waiting.answer.await()
+        } finally {
+            if (approval === waiting) approval = null
+        }
+    }
+
+    // Only the last row can be live. Replacing an item preserves both the Compose key and the wire ID.
+    private inline fun updateReply(id: String, change: (ChatMessage) -> ChatMessage) {
+        _uiState.update { state ->
+            val row = state.messages.lastOrNull()
+            if (row == null || row.id != id) state else state.copy(messages = state.messages.toMutableList().apply {
+                this[lastIndex] = change(row)
+            })
+        }
+    }
+
+    private fun updateCall(messageId: String, call: AiToolCall) = updateReply(messageId) { row ->
+        row.copy(toolCalls = row.toolCalls.map { if (it.id == call.id) call else it })
+    }
+
+    private fun stopGeneration(error: String? = null) {
+        val job = generation ?: return
+        generation = null
+        job.cancel()
+        finishRun(error)
+    }
+
+    private fun finishRun(error: String? = null) {
+        generation = null
+        target = null
+        approval = null
+        live?.let { draft -> updateReply(draft.id) { it.copy(content = draft.text.toString(), reasoning = draft.reasoning.toString()) } }
+        live = null
+        _uiState.update { state ->
+            val last = state.messages.lastOrNull()
+            val messages = when {
+                last == null -> state.messages
+                last.isStreaming && last.content.isBlank() && last.reasoning.isBlank() && last.toolCalls.isEmpty() -> state.messages.dropLast(1)
+                else -> last.settledAfterInterruption().let { settled ->
+                    if (last === settled) state.messages else state.messages.toMutableList().apply { this[lastIndex] = settled }
                 }
             }
+            state.copy(messages = messages, isGenerating = false, error = error ?: state.error)
         }
+        saveCurrentChat()
     }
 
-    private fun resolveApproval(approved: Boolean) {
-        approvalDeferred?.complete(approved)
-        approvalDeferred = null
+    private fun editAndResend(id: String, text: String) {
+        val state = _uiState.value
+        if (state.isGenerating || text.isBlank()) return
+        val index = state.messages.indexOfFirst { it.id == id && it.role == ChatRole.User }
+        if (index < 0) return
+        _uiState.update { it.copy(messages = it.messages.take(index)) }
+        sendMessage(text)
     }
 
-    private suspend fun executeFridaScript(
-        script: String,
-        turnMode: AiExecutionMode,
-        turnHasFridaSession: Boolean
-    ): ActionResult {
-        val fridaReady = turnMode == AiExecutionMode.Frida && turnHasFridaSession
-        return if (!fridaReady) {
-            ActionResult(
-                type = ActionType.FridaScript,
-                input = script,
-                output = "Frida script rejected: Frida mode/session is not active",
-                success = false
-            )
-        } else {
-            val result = r2FridaRepository.executeScript(script, context.cacheDir.absolutePath)
-            ActionResult(
-                type = ActionType.FridaScript,
-                input = script,
-                output = result.getOrElse { "Frida Error: ${it.message}" },
-                success = result.isSuccess
-            )
-        }
-    }
-
-    private fun buildSystemPromptForMode(
-        basePrompt: String,
-        mode: AiExecutionMode,
-        hasFridaSession: Boolean
-    ): String {
-        val effectiveFridaMode = mode == AiExecutionMode.Frida && hasFridaSession
-        val modeContext = when (mode) {
-            AiExecutionMode.R2 -> {
-                "[Runtime Mode]\nselected_mode=R2\nfrida_session_active=$hasFridaSession\nis_frida_mode=false\nUse [[cmd]] and <js> as primary tools. Do not emit <frida> blocks."
-            }
-            AiExecutionMode.Frida -> {
-                "[Runtime Mode]\nselected_mode=Frida\nfrida_session_active=$hasFridaSession\nis_frida_mode=$effectiveFridaMode\n" +
-                        if (effectiveFridaMode) {
-                            "Prefer <frida>...</frida> for runtime instrumentation. Use [[cmd]] only when necessary for session checks."
-                        } else {
-                            "Frida session is not active now. Do not emit <frida> blocks; use [[cmd]] and <js> instead."
-                        }
-            }
-        }
-        return "$basePrompt\n\n$modeContext"
-    }
-
-    private fun stopGeneration() {
-        approvalDeferred?.complete(false)
-        approvalDeferred = null
-        generationJob?.cancel()
-        val partial = _uiState.value.streamingContent
-        if (partial.isNotBlank()) {
-            val msg = ChatMessage(role = ChatRole.Assistant, content = partial)
-            _uiState.update {
-                it.copy(messages = it.messages + msg, isGenerating = false, streamingContent = "", pendingApproval = null)
-            }
-        } else {
-            _uiState.update { it.copy(isGenerating = false, streamingContent = "", pendingApproval = null) }
-        }
-    }
-
-    private fun editAndResend(messageId: String, newText: String) {
-        val idx = _uiState.value.messages.indexOfFirst { it.id == messageId }
-        if (idx < 0) return
-        stopGeneration()
-        val truncated = _uiState.value.messages.take(idx)
-        _uiState.update { it.copy(messages = truncated) }
-        sendMessage(newText)
-    }
-
-    private fun regenerateFrom(messageId: String) {
-        val idx = _uiState.value.messages.indexOfFirst { it.id == messageId }
-        if (idx < 0) return
-        stopGeneration()
-        val truncated = _uiState.value.messages.take(idx)
-        _uiState.update { it.copy(messages = truncated) }
+    private fun regenerateFrom(id: String) {
+        val state = _uiState.value
+        if (state.isGenerating) return
+        val index = state.messages.indexOfFirst { it.id == id && it.role == ChatRole.Assistant }
+        if (index <= 0) return
+        loadingChat?.cancel()
+        _uiState.update { it.copy(messages = it.messages.take(index)) }
         startGeneration()
     }
 
-    private fun deleteMessage(messageId: String) {
-        _uiState.update { state ->
-            state.copy(messages = state.messages.filter { it.id != messageId })
-        }
-    }
-
-    private fun newChat() {
-        // Auto-save current chat before starting new one
-        autoSaveChat()
-        stopGeneration()
-        _uiState.update {
-            it.copy(
-                messages = emptyList(),
-                streamingContent = "",
-                error = null,
-                isGenerating = false,
-                currentChatId = null
-            )
-        }
-    }
-
-    private fun setProvider(providerId: String, modelName: String) {
-        AiSettingsManager.setActiveProvider(providerId, modelName)
-        aiRepository.resetClient()
-    }
-
-    private fun setModel(modelName: String) {
-        AiSettingsManager.setActiveModel(modelName)
+    private fun deleteMessage(id: String) {
+        if (_uiState.value.isGenerating) return
+        _uiState.update { state -> state.copy(messages = state.messages.filterNot { it.id == id }) }
+        saveCurrentChat()
     }
 
     private fun updateSystemPrompt(prompt: String) {
@@ -410,61 +350,49 @@ class AiViewModel @Inject constructor(
         _uiState.update { it.copy(systemPrompt = prompt) }
     }
 
-    private fun resetSystemPrompt() {
-        updateSystemPrompt(AiSettingsManager.DEFAULT_SYSTEM_PROMPT)
-    }
-
-    // region Chat History
-
-    private fun autoSaveChat() {
-        val state = _uiState.value
-        val userMessages = state.messages.filter { it.role == ChatRole.User }
-        if (userMessages.isEmpty()) return
-
-        val title = userMessages.first().content.take(50)
-        val chatId = state.currentChatId ?: java.util.UUID.randomUUID().toString()
-        val session = ChatSession(
-            id = chatId,
-            title = title,
-            timestamp = System.currentTimeMillis(),
-            messages = state.messages
-        )
-        AiSettingsManager.saveSession(session)
-        _uiState.update { it.copy(currentChatId = chatId) }
-    }
-
-    private fun saveCurrentChat() {
-        autoSaveChat()
-    }
-
-    private fun loadChat(sessionId: String) {
-        val session = AiSettingsManager.loadSession(sessionId) ?: return
+    private fun newChat() {
+        loadingChat?.cancel()
         stopGeneration()
-        _uiState.update {
-            it.copy(
-                messages = session.messages,
-                currentChatId = session.id,
-                streamingContent = "",
-                error = null,
-                isGenerating = false
-            )
+        sessionAutoApprove = false
+        _uiState.update { it.copy(messages = emptyList(), error = null, currentChatId = null) }
+    }
+
+    // Snapshot before switching chats. FIFO lock admission keeps an older save from replacing a newer edit.
+    private fun saveCurrentChat() {
+        val state = _uiState.value
+        val id = state.currentChatId ?: return
+        val title = state.messages.firstOrNull { it.role == ChatRole.User }?.content?.take(50) ?: "Chat"
+        val session = ChatSession(id, title, System.currentTimeMillis(), state.messages)
+        historyOperation(id) { withContext(Dispatchers.IO) { AiSettingsManager.saveSession(session) } }
+    }
+
+    private fun loadChat(id: String) {
+        loadingChat?.cancel()
+        stopGeneration()
+        sessionAutoApprove = false
+        loadingChat = historyOperation(id) {
+            val session = withContext(Dispatchers.IO) { AiSettingsManager.loadSession(id) } ?: return@historyOperation
+            _uiState.update { it.copy(messages = session.messages, currentChatId = id, error = null) }
         }
     }
 
-    private fun deleteChat(sessionId: String) {
-        AiSettingsManager.deleteSession(sessionId)
-        // If deleting the current chat, clear it
-        if (_uiState.value.currentChatId == sessionId) {
-            _uiState.update {
-                it.copy(
-                    messages = emptyList(),
-                    currentChatId = null,
-                    streamingContent = "",
-                    error = null
-                )
-            }
+    private fun deleteChat(id: String) {
+        loadingChat?.cancel()
+        if (_uiState.value.currentChatId == id) newChat()
+        historyOperation(id) { withContext(Dispatchers.IO) { AiSettingsManager.deleteSession(id) } }
+    }
+
+    private fun historyOperation(id: String, block: suspend () -> Unit) = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            historyLock.withLock { block() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            if (_uiState.value.currentChatId == id) _uiState.update { it.copy(error = "Chat history: ${e.message}") }
         }
     }
 
-    // endregion
+    private companion object {
+        const val TARGET_CHANGED = "The selected r2 session changed or disconnected. Send a new message to continue."
+    }
 }

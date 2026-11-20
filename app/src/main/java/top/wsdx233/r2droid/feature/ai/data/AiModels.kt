@@ -13,6 +13,8 @@ data class AiProvider(
     val useResponsesApi: Boolean = false
 )
 
+internal fun AiProvider.reasoningOrigin(modelName: String) = "${id}\n${baseUrl.trimEnd('/')}\n$modelName"
+
 @Serializable
 data class AiProviderConfig(
     val providers: List<AiProvider> = emptyList(),
@@ -30,8 +32,47 @@ data class ChatMessage(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val isStreaming: Boolean = false,
-    val actionResults: List<ActionResult> = emptyList()
+    val actionResults: List<ActionResult> = emptyList(), // Historical, display-only actions.
+    val toolCalls: List<AiToolCall> = emptyList(),
+    val reasoning: String = "",
+    val responsesReasoning: List<String> = emptyList(),
+    val reasoningOrigin: String? = null
 )
+
+@Serializable
+data class AiToolCall(
+    val id: String,
+    val name: String,
+    val arguments: String,
+    val status: ToolCallStatus = ToolCallStatus.Queued,
+    val output: String = "",
+    val startedAtMillis: Long? = null,
+    val durationMillis: Long? = null
+)
+
+@Serializable
+enum class ToolCallStatus {
+    Queued, AwaitingApproval, Running, Succeeded, Failed, Denied, Interrupted, Manual;
+
+    val isTerminal: Boolean get() = this != Queued && this != AwaitingApproval && this != Running
+}
+
+data class AiToolDefinition(val name: String, val description: String, val parameters: org.json.JSONObject)
+
+sealed interface AiTurnEvent {
+    data class Text(val delta: String) : AiTurnEvent
+    data class Reasoning(val delta: String) : AiTurnEvent
+    data class Completed(val calls: List<AiToolCall>, val responsesReasoning: List<String> = emptyList()) : AiTurnEvent
+}
+
+/** A transcript is not an execution queue. Stopped or restored calls can never regain approval. */
+internal fun ChatMessage.settledAfterInterruption(): ChatMessage {
+    if (!isStreaming && toolCalls.all { it.status.isTerminal }) return this
+    return copy(isStreaming = false, toolCalls = toolCalls.map { call ->
+        if (call.status.isTerminal) call else call.copy(status = ToolCallStatus.Interrupted,
+            output = "Interrupted; no result was confirmed. This call will not be replayed.")
+    })
+}
 
 @Serializable
 data class ActionResult(

@@ -86,9 +86,9 @@
 - **Provider 设置 UI**: `app/src/main/java/top/wsdx233/r2droid/feature/ai/ui/AiProviderSettingsScreen.kt`
 - **提示词管理 UI**: `app/src/main/java/top/wsdx233/r2droid/feature/ai/ui/AiPromptsScreen.kt`
 - **AI 通信仓库**: `app/src/main/java/top/wsdx233/r2droid/feature/ai/data/AiRepository.kt`
-  - OpenAI 兼容接口与流式响应。
+  - `streamTurn` 对接 Chat Completions / Responses 的原生工具调用，完整轮次按调用 ID 回传结果；`streamText` 用于指令解释和反编译润色，不声明工具。
 - **动作执行器**: `app/src/main/java/top/wsdx233/r2droid/feature/ai/data/R2ActionExecutor.kt`
-  - 解析并执行 `[[cmd]]` / `<js>` 动作。
+  - 绑定当前会话管道，支持结构化工具调用执行 `r2_command`、`run_js`（QuickJS）与 `run_frida`（Frida 模式），危险/耗时命令（如 `aa`/`aaa`/`!*`）需用户确认。
 
 ### 3.7 R2Frida (动态插桩)
 

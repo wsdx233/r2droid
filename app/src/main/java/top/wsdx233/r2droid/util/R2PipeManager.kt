@@ -132,6 +132,32 @@ object R2PipeManager {
     internal val activeSessionPipe: R2PipeSession? get() = activeSession()?.pipe
     internal val esilOwnsActivePipe: Boolean get() = activeSession()?.managedPipe?.lease != null
 
+    /** Pinned active radare2 session handle for AI tool execution. Invalidated on session switch or disconnect. */
+    internal class ActiveAiTarget internal constructor(private val session: R2Session, private val generation: Int) {
+        val isFridaSession: Boolean get() = session.isFridaSession
+        val targetLabel: String? get() = session.projectPath ?: session.customCommand
+
+        fun isCurrent(): Boolean = isCurrentConnectedSession(session, generation)
+
+        suspend fun execute(command: String): Result<String> = withSessionCommand(
+            session, command, markDirty = true, lease = null, render = { it },
+            requiredActiveGeneration = generation
+        ) {
+            check(isCurrent()) { "The active radare2 session changed or disconnected." }
+            logStdout(pipeCmd(session, command))
+        }
+    }
+
+    internal fun captureActiveAiTarget(): ActiveAiTarget? = synchronized(sessionsLock) {
+        val session = activeSession()?.takeIf { it.isConnected.get() && pipeIsRunning(it) }
+            ?: return@synchronized null
+        ActiveAiTarget(session, sessionId)
+    }
+
+    private fun isCurrentConnectedSession(session: R2Session, generation: Int): Boolean = synchronized(sessionsLock) {
+        sessionId == generation && activeSessionPipe === session.pipe && session.isConnected.get() && pipeIsRunning(session)
+    }
+
     // 原子标志位（兼容旧接口）：基于 active session
     val isConnected: Boolean get() = activeSession()?.isConnected?.get() == true
 
@@ -602,6 +628,7 @@ object R2PipeManager {
         lease: EsilLease?,
         render: (T) -> String,
         canReadDuringEsil: Boolean = true,
+        requiredActiveGeneration: Int? = null,
         run: suspend () -> T
     ): Result<T> {
         // A writer submitted during teardown must not slip through just because release won
@@ -609,6 +636,9 @@ object R2PipeManager {
         val leasedOnEntry = session.managedPipe.lease != null
         return session.mutex.withLock {
             withContext(Dispatchers.IO) {
+                if (requiredActiveGeneration != null && !isCurrentConnectedSession(session, requiredActiveGeneration)) {
+                    return@withContext Result.failure(IllegalStateException("The active radare2 session changed or disconnected."))
+                }
                 val owner = session.managedPipe.lease
                 try {
                     check(isRegistered(session) && session.isConnected.get()) { "R2Pipe session is not connected." }

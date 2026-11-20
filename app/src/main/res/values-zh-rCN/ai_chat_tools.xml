@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_chat_choose_model">选择模型</string>
+    <string name="ai_chat_thinking_level">思考强度：%1$s</string>
+    <string name="ai_chat_thinking_title">思考强度</string>
+    <string name="ai_chat_mode_title">执行模式</string>
+    <string name="ai_chat_message_actions">消息操作</string>
+    <string name="ai_chat_jump_to_latest">回到最新消息</string>
+    <string name="ai_chat_jump_prev_user">上一条用户消息</string>
+    <string name="ai_new_chat_running_title">停止当前会话并新建？</string>
+    <string name="ai_new_chat_running_message">当前会话仍在运行中，新建对话将停止正在执行的生成或工具调用。</string>
+    <string name="ai_new_chat_running_confirm">停止并新建</string>
+    <string name="ai_chat_close">关闭</string>
+    <string name="ai_chat_back">返回</string>
+    <string name="ai_chat_empty_title">开始新的分析</string>
+    <string name="ai_chat_status_thinking">正在思考…</string>
+    <string name="ai_chat_status_running">正在执行工具…</string>
+    <string name="ai_chat_status_approval">等待批准…</string>
+    <string name="ai_chat_dismiss_error">关闭报错</string>
+    <string name="ai_chat_thinking_active">思考中</string>
+    <string name="ai_chat_thought_title">思考</string>
+
+    <string name="ai_tool_binary_info">二进制信息</string>
+    <string name="ai_tool_sections">节区列表</string>
+    <string name="ai_tool_r2_command">R2 命令</string>
+    <string name="ai_tool_run_js">JavaScript</string>
+    <string name="ai_tool_run_frida">Frida 脚本</string>
+    <string name="ai_tool_js">JavaScript 建议</string>
+    <string name="ai_tool_frida">Frida 脚本建议</string>
+    <string name="ai_tool_legacy_js">JavaScript</string>
+    <string name="ai_tool_legacy_frida">Frida 脚本</string>
+    <string name="ai_tool_unknown">工具调用</string>
+
+    <string name="ai_tool_status_queued">排队中</string>
+    <string name="ai_tool_status_approval">等待批准</string>
+    <string name="ai_tool_status_running">运行中</string>
+    <string name="ai_tool_status_succeeded">已完成</string>
+    <string name="ai_tool_status_failed">失败</string>
+    <string name="ai_tool_status_denied">已拒绝</string>
+    <string name="ai_tool_status_interrupted">已中断</string>
+    <string name="ai_tool_status_manual">仅供手动操作 · 未执行</string>
+    <string name="ai_tool_approval_title">需要批准执行</string>
+    <string name="ai_tool_approval_hint">请先确认命令，再决定是否允许执行。</string>
+    <string name="ai_tool_approval_always">本次会话始终允许</string>
+
+    <string name="ai_tool_expand">展开详情</string>
+    <string name="ai_tool_collapse">收起详情</string>
+    <string name="ai_tool_detail">详情</string>
+    <string name="ai_tool_fullscreen">全屏</string>
+    <string name="ai_tool_arguments">参数</string>
+    <string name="ai_tool_output">输出</string>
+    <string name="ai_tool_command">命令</string>
+    <string name="ai_tool_source">源代码</string>
+    <string name="ai_tool_copy_command">复制命令</string>
+    <string name="ai_tool_copy_source">复制源代码</string>
+    <string name="ai_tool_open_detail">查看%1$s</string>
+    <string name="ai_tool_empty">无内容</string>
+    <string name="ai_tool_no_output">执行完成，无输出</string>
+    <string name="ai_tool_more_lines">共 %1$d 行 · 点击「详情」查看全部</string>
+    <string name="ai_code_label">代码</string>
+    <string name="ai_code_word_wrap">自动换行</string>
+    <string name="settings_ai_max_tool_rounds">AI 最大工具调用轮次</string>
+    <string name="settings_ai_max_tool_rounds_desc">单次对话最多工具轮次（0 或留空为不限制）</string>
+    <string name="settings_ai_max_tool_rounds_unlimited">不限制</string>
+</resources>

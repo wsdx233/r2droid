@@ -13,7 +13,7 @@
 
 ## ✨ Highlights
 
-- 🤖 **AI Assistant (OpenAI-compatible)**: chat-based analysis with streaming output, custom prompts, and optional command/script execution through `[[cmd]]` and `<js>` actions.
+- 🤖 **AI Assistant (OpenAI-compatible)**: Chat Completions and Responses APIs with streaming replies and structured tool calls (`r2_command`, QuickJS `run_js`, and `run_frida` in Frida mode), with user approval prompts for dangerous/heavy commands.
 - 💉 **R2Frida Workflow**: in-app r2frida installer, local/remote process flow, custom script management, and Frida-focused analysis tabs.
 - 📊 **Graph Viewer**: touch-friendly graphs with Sugiyama layout, zoom controls, and PNG export. Supports Function Flow, Xref, Call Graph, Global Call Graph, and Data Reference Graph.
 - 📑 **Report Export**: export analysis as Markdown / HTML / JSON, or generate Frida hook templates from discovered functions/imports/exports.

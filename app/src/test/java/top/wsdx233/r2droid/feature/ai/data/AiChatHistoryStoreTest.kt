@@ -179,6 +179,30 @@ class AiChatHistoryStoreTest {
         assertEquals(after, store.loadSession("same"))
     }
 
+    @Test
+    fun `cold load keeps completed results but never restores a live approval or runs legacy markup`() {
+        val store = AiChatHistoryStore(context)
+        val committed = AiToolCall("a", "get_binary_info", "{}", ToolCallStatus.Succeeded, "64-bit ELF")
+        val pending = AiToolCall("b", "r2_command", "{\"command\":\"ij\"}", ToolCallStatus.AwaitingApproval)
+        val legacy = ChatMessage(role = ChatRole.Assistant, content = "Example: `[[ij]]`",
+            actionResults = listOf(ActionResult(ActionType.R2Command, "ij", "old", true)))
+        val live = ChatMessage(role = ChatRole.Assistant, content = "Checking", isStreaming = true,
+            toolCalls = listOf(committed, pending), responsesReasoning = listOf("{\"type\":\"reasoning\"}"),
+            reasoningOrigin = "local-provider")
+        val chat = session("tools", 1).copy(messages = listOf(legacy, live))
+        store.saveSession(chat)
+
+        val restored = requireNotNull(store.loadSession(chat.id)).messages
+        assertEquals(legacy, restored.first())
+        val reply = restored.last()
+        assertFalse(reply.isStreaming)
+        assertEquals(committed, reply.toolCalls.first())
+        assertEquals("b", reply.toolCalls.last().id)
+        assertEquals(ToolCallStatus.Interrupted, reply.toolCalls.last().status)
+        assertEquals(live.responsesReasoning, reply.responsesReasoning)
+        assertEquals(live.reasoningOrigin, reply.reasoningOrigin)
+    }
+
     private fun launch(): List<String> {
         // initialize opens a new store against the same on-disk files on every launch.
         AiSettingsManager.initialize(context)

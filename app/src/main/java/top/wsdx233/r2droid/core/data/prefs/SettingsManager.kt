@@ -33,6 +33,7 @@ object SettingsManager {
     private const val KEY_MENU_AT_TOUCH = "menu_at_touch"
     private const val KEY_AI_ENABLED = "ai_enabled"
     private const val KEY_AI_OUTPUT_TRUNCATE_LIMIT = "ai_output_truncate_limit"
+    private const val KEY_AI_MAX_TOOL_ROUNDS = "ai_max_tool_rounds"
     private const val KEY_USE_HTTP_MODE = "use_http_mode"
     private const val KEY_USE_PROOT_MODE = "use_proot_mode"
     private const val KEY_TERMINAL_LAUNCH_MODE = "terminal_launch_mode"
@@ -208,6 +209,11 @@ object SettingsManager {
     var aiOutputTruncateLimit: Int
         get() = prefs.getInt(KEY_AI_OUTPUT_TRUNCATE_LIMIT, 100000)
         set(value) { prefs.edit { putInt(KEY_AI_OUTPUT_TRUNCATE_LIMIT, value) } }
+
+    /** 0 means unlimited tool rounds. */
+    var aiMaxToolRounds: Int
+        get() = prefs.getInt(KEY_AI_MAX_TOOL_ROUNDS, 0).coerceAtLeast(0)
+        set(value) { prefs.edit { putInt(KEY_AI_MAX_TOOL_ROUNDS, value.coerceAtLeast(0)) } }
 
     var useHttpMode: Boolean
         get() = prefs.getBoolean(KEY_USE_HTTP_MODE, false)

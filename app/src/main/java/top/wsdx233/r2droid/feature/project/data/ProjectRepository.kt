@@ -340,8 +340,6 @@ class ProjectRepository @Inject constructor(
         val model = config.activeModelName ?: provider.models.firstOrNull()
             ?: throw IllegalStateException("No model selected")
 
-        aiRepository.configure(provider)
-
         val userPrompt = buildString {
             appendLine("Please beautify the following `pdg` output for readability.")
             appendLine("Requirements:")
@@ -359,11 +357,11 @@ class ProjectRepository @Inject constructor(
         }
 
         val output = StringBuilder()
-        aiRepository.streamChat(
+        aiRepository.streamText(
+            provider = provider,
             messages = listOf(ChatMessage(role = ChatRole.User, content = userPrompt)),
             modelName = model,
-            systemPrompt = "You are a reverse engineering assistant. Beautify decompiler output for readability while keeping technical accuracy.",
-            useResponsesApi = provider.useResponsesApi
+            systemPrompt = "You are a reverse engineering assistant. Beautify decompiler output for readability while keeping technical accuracy."
         ).collect { chunk ->
             output.append(chunk)
         }

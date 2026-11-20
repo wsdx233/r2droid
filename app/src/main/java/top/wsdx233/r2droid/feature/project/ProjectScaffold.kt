@@ -3,8 +3,11 @@ package top.wsdx233.r2droid.feature.project
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -55,6 +58,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -83,6 +88,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -96,6 +102,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -103,6 +110,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,6 +135,8 @@ import top.wsdx233.r2droid.core.ui.dialogs.JumpDialog
 import top.wsdx233.r2droid.core.ui.dialogs.XrefsDialog
 import top.wsdx233.r2droid.feature.ai.AiViewModel
 import top.wsdx233.r2droid.feature.ai.ui.AiChatScreen
+import top.wsdx233.r2droid.feature.ai.ui.AiChatTopBarState
+import top.wsdx233.r2droid.feature.ai.ui.AiChatTopBarSubtitle
 import top.wsdx233.r2droid.feature.ai.ui.AiPromptsScreen
 import top.wsdx233.r2droid.feature.ai.ui.AiProviderSettingsScreen
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
@@ -566,10 +576,25 @@ fun ProjectScaffold(
         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
     }
 
+    val aiChatTopBarState = remember(sessionId) { AiChatTopBarState() }
+    val isAiChat = selectedPluginNavigation == null && selectedCategory == MainCategory.AI && selectedAiTabIndex == 0
+    val topBarContainerColor by animateColorAsState(
+        targetValue = if (isAiChat && aiChatTopBarState.isFeedScrolled) {
+            MaterialTheme.colorScheme.surfaceContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        animationSpec = tween(350),
+        label = "project-topbar-color"
+    )
+
     Scaffold(
         topBar = {
             Column {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = topBarContainerColor
+                ),
                 navigationIcon = {
                     if (!isDisasmSelectionMode) {
                         androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
@@ -582,11 +607,32 @@ fun ProjectScaffold(
                 },
                 title = {
                     if (!isDisasmSelectionMode) {
-                        Text(
-                            text = stringResource(top.wsdx233.r2droid.R.string.app_name),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (isAiChat) {
+                            Column(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { aiChatTopBarState.openHistory() }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(top.wsdx233.r2droid.R.string.app_name),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontSize = 18.sp,
+                                        lineHeight = 22.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                AiChatTopBarSubtitle(aiViewModel)
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(top.wsdx233.r2droid.R.string.app_name),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -896,6 +942,19 @@ fun ProjectScaffold(
                                     }
                                 )
                             }
+                        }
+                    } else if (isAiChat) {
+                        androidx.compose.material3.IconButton(onClick = { aiChatTopBarState.openHistory() }) {
+                            Icon(
+                                Icons.Rounded.Forum,
+                                contentDescription = stringResource(R.string.ai_history)
+                            )
+                        }
+                        androidx.compose.material3.IconButton(onClick = { aiChatTopBarState.requestNewChat() }) {
+                            Icon(
+                                Icons.Rounded.EditNote,
+                                contentDescription = stringResource(R.string.ai_new_chat)
+                            )
                         }
                     }
                     visibleProjectActions.forEach { descriptor ->
@@ -1333,7 +1392,7 @@ fun ProjectScaffold(
                         MainCategory.AI -> {
                             if (selectedAiTabIndex < baseAiTabs.size) {
                                 when (selectedAiTabIndex) {
-                                    0 -> AiChatScreen(aiViewModel)
+                                    0 -> AiChatScreen(aiViewModel, topBarState = aiChatTopBarState)
                                     1 -> AiProviderSettingsScreen(aiViewModel)
                                     2 -> AiPromptsScreen()
                                 }

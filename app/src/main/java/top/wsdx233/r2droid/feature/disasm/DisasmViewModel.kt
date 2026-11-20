@@ -1304,8 +1304,6 @@ class DisasmViewModel @Inject constructor(
         val model = config.activeModelName ?: provider.models.firstOrNull()
             ?: throw IllegalStateException("No model selected")
 
-        aiRepository.configure(provider)
-
         val finalPrompt = buildString {
             appendLine(userPrompt.trim())
             appendLine()
@@ -1313,11 +1311,11 @@ class DisasmViewModel @Inject constructor(
         }
 
         val output = StringBuilder()
-        aiRepository.streamChat(
+        aiRepository.streamText(
+            provider = provider,
             messages = listOf(ChatMessage(role = ChatRole.User, content = finalPrompt)),
             modelName = model,
             systemPrompt = systemPrompt,
-            useResponsesApi = provider.useResponsesApi,
             thinkingLevel = ThinkingLevel.Light
         ).collect { chunk ->
             output.append(chunk)

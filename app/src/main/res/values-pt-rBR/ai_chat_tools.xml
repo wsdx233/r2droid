@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_chat_choose_model">Selecionar modelo</string>
+    <string name="ai_chat_thinking_level">Nível de raciocínio: %1$s</string>
+    <string name="ai_chat_thinking_title">Nível de raciocínio</string>
+    <string name="ai_chat_mode_title">Modo de execução</string>
+    <string name="ai_chat_message_actions">Ações da mensagem</string>
+    <string name="ai_chat_jump_to_latest">Ir para a última mensagem</string>
+    <string name="ai_chat_jump_prev_user">Mensagem anterior do usuário</string>
+    <string name="ai_new_chat_running_title">Parar tarefa atual?</string>
+    <string name="ai_new_chat_running_message">O assistente ainda está em execução neste chat. Iniciar um novo chat interromperá a geração atual.</string>
+    <string name="ai_new_chat_running_confirm">Parar e novo chat</string>
+    <string name="ai_chat_close">Fechar</string>
+    <string name="ai_chat_back">Voltar</string>
+    <string name="ai_chat_empty_title">Iniciar nova análise</string>
+    <string name="ai_chat_status_thinking">Pensando…</string>
+    <string name="ai_chat_status_running">Executando ferramenta…</string>
+    <string name="ai_chat_status_approval">Aguardando aprovação…</string>
+    <string name="ai_chat_dismiss_error">Dispensar erro</string>
+    <string name="ai_chat_thinking_active">Pensando</string>
+    <string name="ai_chat_thought_title">Raciocínio</string>
+
+    <string name="ai_tool_binary_info">Informações do binário</string>
+    <string name="ai_tool_sections">Listar seções</string>
+    <string name="ai_tool_r2_command">Comando R2</string>
+    <string name="ai_tool_run_js">JavaScript</string>
+    <string name="ai_tool_run_frida">Script Frida</string>
+    <string name="ai_tool_js">Sugestão de JavaScript</string>
+    <string name="ai_tool_frida">Sugestão de script Frida</string>
+    <string name="ai_tool_legacy_js">JavaScript</string>
+    <string name="ai_tool_legacy_frida">Script Frida</string>
+    <string name="ai_tool_unknown">Chamada de ferramenta</string>
+
+    <string name="ai_tool_status_queued">Na fila</string>
+    <string name="ai_tool_status_approval">Aguardando aprovação</string>
+    <string name="ai_tool_status_running">Em execução</string>
+    <string name="ai_tool_status_succeeded">Concluído</string>
+    <string name="ai_tool_status_failed">Falhou</string>
+    <string name="ai_tool_status_denied">Negado</string>
+    <string name="ai_tool_status_interrupted">Interrompido</string>
+    <string name="ai_tool_status_manual">Apenas manual · Não executado</string>
+    <string name="ai_tool_approval_title">Aprovação necessária</string>
+    <string name="ai_tool_approval_hint">Revise o comando antes de permitir sua execução.</string>
+    <string name="ai_tool_approval_always">Sempre permitir nesta sessão</string>
+
+    <string name="ai_tool_expand">Expandir detalhes</string>
+    <string name="ai_tool_collapse">Recolher detalhes</string>
+    <string name="ai_tool_detail">Detalhes</string>
+    <string name="ai_tool_fullscreen">Tela cheia</string>
+    <string name="ai_tool_arguments">Argumentos</string>
+    <string name="ai_tool_output">Saída</string>
+    <string name="ai_tool_command">Comando</string>
+    <string name="ai_tool_source">Código-fonte</string>
+    <string name="ai_tool_copy_command">Copiar comando</string>
+    <string name="ai_tool_copy_source">Copiar código-fonte</string>
+    <string name="ai_tool_open_detail">Ver: %1$s</string>
+    <string name="ai_tool_empty">Sem conteúdo</string>
+    <string name="ai_tool_no_output">Concluído sem saída</string>
+    <string name="ai_tool_more_lines">%1$d linhas · Toque em Detalhes para ver tudo</string>
+    <string name="ai_code_label">Código</string>
+    <string name="ai_code_word_wrap">Quebra de linha</string>
+    <string name="settings_ai_max_tool_rounds">Máximo de rodadas de ferramentas de IA</string>
+    <string name="settings_ai_max_tool_rounds_desc">Máximo de rodadas por turno (0 = ilimitado)</string>
+    <string name="settings_ai_max_tool_rounds_unlimited">Ilimitado</string>
+</resources>

@@ -3,248 +3,152 @@ package top.wsdx233.r2droid.feature.ai.data
 import com.aallam.openai.client.OpenAI
 import com.aallam.openai.client.OpenAIConfig
 import com.aallam.openai.client.OpenAIHost
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import org.json.JSONArray
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AiRepository @Inject constructor() {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .build()
 
-    private var currentProvider: AiProvider? = null
-
-    fun configure(provider: AiProvider) {
-        currentProvider = provider
-    }
-
-    fun streamChat(
-        messages: List<ChatMessage>,
-        modelName: String,
-        systemPrompt: String,
-        useResponsesApi: Boolean = false,
-        thinkingLevel: ThinkingLevel = ThinkingLevel.Auto
-    ): Flow<String> {
-        val provider = currentProvider ?: throw IllegalStateException("AI provider not configured")
-        if (useResponsesApi) {
-            return streamResponsesApi(provider, messages, modelName, systemPrompt, thinkingLevel)
-        }
-        return streamChatCompletionsApi(provider, messages, modelName, systemPrompt)
-    }
-
-    private fun streamChatCompletionsApi(
+    fun streamText(
         provider: AiProvider,
         messages: List<ChatMessage>,
         modelName: String,
-        systemPrompt: String
-    ): Flow<String> = flow {
-        val endpoint = provider.baseUrl.trimEnd('/') + "/chat/completions"
-        val payload = buildChatCompletionsPayload(messages, modelName, systemPrompt)
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 30_000
-            readTimeout = 120_000
-            doInput = true
-            doOutput = true
-            setRequestProperty("Authorization", "Bearer ${provider.apiKey.trim()}")
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "text/event-stream")
-        }
+        systemPrompt: String,
+        thinkingLevel: ThinkingLevel = ThinkingLevel.Auto
+    ): Flow<String> = streamTurn(provider, messages, modelName, systemPrompt, thinkingLevel, emptyList())
+        .transform { if (it is AiTurnEvent.Text) emit(it.delta) }
 
-        try {
-            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-
-            val responseCode = connection.responseCode
-            if (responseCode !in 200..299) {
-                val errorBody = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                throw IllegalStateException("Chat API failed ($responseCode): $errorBody")
-            }
-
-            connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.forEach { rawLine ->
-                    val line = rawLine.trim()
-                    if (!line.startsWith("data:")) return@forEach
-                    val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]") return@forEach
-                    val delta = extractChatDelta(data)
-                    if (delta.isNotEmpty()) emit(delta)
+    fun streamTurn(
+        provider: AiProvider,
+        messages: List<ChatMessage>,
+        modelName: String,
+        systemPrompt: String,
+        thinkingLevel: ThinkingLevel,
+        tools: List<AiToolDefinition>
+    ): Flow<AiTurnEvent> = flow {
+        var currentTools = tools
+        var includeReasoning = true
+        var includeSummary = true
+        while (true) {
+            try {
+                streamOnce(
+                    provider = provider,
+                    messages = messages,
+                    modelName = modelName,
+                    systemPrompt = systemPrompt,
+                    thinkingLevel = thinkingLevel,
+                    tools = currentTools,
+                    includeReasoningParams = includeReasoning,
+                    includeReasoningSummary = includeSummary
+                ) { emit(it) }
+                break
+            } catch (error: AiHttpException) {
+                // Only a rejected HTTP request reaches this branch; a 2xx stream is never retried.
+                when {
+                    includeSummary && provider.useResponsesApi && thinkingLevel != ThinkingLevel.None && error.reasoningSummaryUnsupported() ->
+                        includeSummary = false
+                    includeReasoning && thinkingLevel != ThinkingLevel.None && error.reasoningUnsupported() -> {
+                        includeReasoning = false
+                        includeSummary = false
+                    }
+                    currentTools.isNotEmpty() && error.toolsUnsupported() ->
+                        currentTools = emptyList()
+                    else -> throw error
                 }
             }
-        } finally {
-            connection.disconnect()
         }
     }.flowOn(Dispatchers.IO)
 
-    private fun buildChatCompletionsPayload(
-        messages: List<ChatMessage>,
-        modelName: String,
-        systemPrompt: String
-    ): String {
-        val msgs = JSONArray()
-        msgs.put(JSONObject().put("role", "system").put("content", systemPrompt))
-        for (msg in messages) {
-            val role = when (msg.role) {
-                ChatRole.User, ChatRole.ExecutionResult -> "user"
-                ChatRole.Assistant -> "assistant"
-                ChatRole.System -> "system"
-            }
-            msgs.put(JSONObject().put("role", role).put("content", msg.content))
-        }
-        return JSONObject()
-            .put("model", modelName)
-            .put("messages", msgs)
-            .put("stream", true)
-            .toString()
-    }
-
-    private fun extractChatDelta(data: String): String {
-        if (data.isBlank()) return ""
-        val json = JSONObject(data)
-        val choices = json.optJSONArray("choices") ?: return ""
-        val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: return ""
-        return delta.optNonNullString("content")
-    }
-
-    private fun streamResponsesApi(
+    private suspend fun streamOnce(
         provider: AiProvider,
         messages: List<ChatMessage>,
         modelName: String,
         systemPrompt: String,
-        thinkingLevel: ThinkingLevel
-    ): Flow<String> = flow {
-        val endpoint = provider.baseUrl.trimEnd('/') + "/responses"
-        val payload = buildResponsesPayload(messages, modelName, systemPrompt, thinkingLevel)
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 30_000
-            readTimeout = 120_000
-            doInput = true
-            doOutput = true
-            setRequestProperty("Authorization", "Bearer ${provider.apiKey.trim()}")
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "text/event-stream")
+        thinkingLevel: ThinkingLevel,
+        tools: List<AiToolDefinition>,
+        includeReasoningParams: Boolean,
+        includeReasoningSummary: Boolean,
+        emit: suspend (AiTurnEvent) -> Unit
+    ): Unit = coroutineScope {
+        val endpoint = if (provider.useResponsesApi) "/responses" else "/chat/completions"
+        val payload = AiRequestWire.build(
+            provider = provider,
+            messages = messages,
+            modelName = modelName,
+            systemPrompt = systemPrompt,
+            thinkingLevel = thinkingLevel,
+            tools = tools,
+            includeReasoningParams = includeReasoningParams,
+            includeReasoningSummary = includeReasoningSummary
+        )
+        val request = Request.Builder().url(provider.baseUrl.trimEnd('/') + endpoint)
+            .header("Authorization", "Bearer ${provider.apiKey.trim()}")
+            .header("Accept", "text/event-stream")
+            .post(payload.body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val call = client.newCall(request)
+        // Cancel the actual socket both before headers and while blocked in a body read.
+        val cancelCall = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                call.cancel()
+            }
         }
-
         try {
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val responseCode = connection.responseCode
-            if (responseCode !in 200..299) {
-                val errorBody = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                throw IllegalStateException("Response API failed (${responseCode}): $errorBody")
-            }
-
-            connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.forEach { rawLine ->
-                    val line = rawLine.trim()
-                    if (!line.startsWith("data:")) return@forEach
-                    val payloadLine = line.removePrefix("data:").trim()
-                    if (payloadLine == "[DONE]") return@forEach
-                    val delta = extractResponseDelta(payloadLine)
-                    if (delta.isNotBlank()) {
-                        emit(delta)
+            ensureActive()
+            call.execute().use { response ->
+                ensureActive()
+                if (!response.isSuccessful) throw AiHttpException(response.code, response.body.string())
+                val text = response.body.charStream().buffered()
+                val events = AiSseReader(text)
+                val names = tools.mapTo(mutableSetOf()) { it.name }
+                val parser = if (provider.useResponsesApi) AiResponsesTurnWire(names) else AiChatTurnWire(names)
+                while (true) {
+                    ensureActive()
+                    val event = events.next() ?: throw AiWireException("AI stream disconnected before a complete turn")
+                    ensureActive()
+                    val completed = parser.accept(
+                        event = event,
+                        emitText = { emit(AiTurnEvent.Text(it)) },
+                        emitReasoning = { emit(AiTurnEvent.Reasoning(it)) }
+                    )
+                    if (completed != null) {
+                        wireCheck(completed.calls.none { it.id in payload.callIds }, "Duplicate historical tool call ID")
+                        ensureActive()
+                        emit(completed)
+                        break
                     }
                 }
             }
+        } catch (error: IOException) {
+            ensureActive() // A cancelled socket read must surface as cancellation, not as a network error.
+            throw error
         } finally {
-            connection.disconnect()
+            cancelCall.cancel()
         }
-    }.flowOn(Dispatchers.IO)
-
-    private fun buildResponsesPayload(
-        messages: List<ChatMessage>,
-        modelName: String,
-        systemPrompt: String,
-        thinkingLevel: ThinkingLevel
-    ): String {
-        val input = JSONArray()
-        input.put(
-            JSONObject()
-                .put("role", "system")
-                .put("content", JSONArray().put(JSONObject().put("type", "input_text").put("text", systemPrompt)))
-        )
-
-        messages.forEach { msg ->
-            val role = when (msg.role) {
-                ChatRole.User, ChatRole.ExecutionResult -> "user"
-                ChatRole.Assistant -> "assistant"
-                ChatRole.System -> "system"
-            }
-            val contentType = if (role == "assistant") "output_text" else "input_text"
-            input.put(
-                JSONObject()
-                    .put("role", role)
-                    .put("content", JSONArray().put(JSONObject().put("type", contentType).put("text", msg.content)))
-            )
-        }
-
-        val root = JSONObject()
-            .put("model", modelName)
-            .put("input", input)
-            .put("stream", true)
-        thinkingLevel.apiEffort?.let { effort ->
-            root.put("reasoning", JSONObject().put("effort", effort))
-        }
-        return root.toString()
-    }
-
-    private fun extractResponseDelta(eventPayload: String): String {
-        if (eventPayload.isBlank()) return ""
-        val json = JSONObject(eventPayload)
-        return when {
-            json.optString("type") == "response.output_text.delta" -> json.optNonNullString("delta")
-            json.has("delta") -> json.optNonNullString("delta")
-            json.optString("type") == "response.completed" -> ""
-            else -> ""
-        }
-    }
-
-    /**
-     * 某些 provider 会返回 `{"content": null}` 或 `{"delta": null}` 这类空增量。
-     * `JSONObject.optString()` 在值为 `JSONObject.NULL` 时会返回字面量 `"null"`，
-     * 从而被上层直接拼进流式文本里，所以这里统一滤掉。
-     */
-    private fun JSONObject.optNonNullString(key: String): String {
-        val value = opt(key)
-        return when (value) {
-            null, JSONObject.NULL -> ""
-            is String -> value
-            else -> value.toString()
-        }
-    }
-
-    private fun extractResponsesText(responseBody: String): String {
-        if (responseBody.isBlank()) return ""
-        val json = JSONObject(responseBody)
-
-        val direct = json.optString("output_text", "")
-        if (direct.isNotBlank()) return direct
-
-        val output = json.optJSONArray("output") ?: return ""
-        val builder = StringBuilder()
-        for (i in 0 until output.length()) {
-            val item = output.optJSONObject(i) ?: continue
-            val content = item.optJSONArray("content") ?: continue
-            for (j in 0 until content.length()) {
-                val part = content.optJSONObject(j) ?: continue
-                val text = when {
-                    part.optString("type") == "output_text" -> part.optString("text", "")
-                    else -> part.optString("text", "")
-                }
-                if (text.isNotBlank()) {
-                    if (builder.isNotEmpty()) builder.append('\n')
-                    builder.append(text)
-                }
-            }
-        }
-        return builder.toString()
     }
 
     suspend fun fetchModels(baseUrl: String, apiKey: String): List<String> {
@@ -257,7 +161,55 @@ class AiRepository @Inject constructor() {
         return client.models().map { it.id.id }.sorted()
     }
 
-    fun resetClient() {
-        currentProvider = null
+    private class AiHttpException(val code: Int, private val body: String) : IOException("AI API failed ($code): $body") {
+        fun toolsUnsupported(): Boolean {
+            if (code != 400 && code != 422) return false
+            val json = runCatching { JSONObject(body) }.getOrNull()
+            val error = json?.optJSONObject("error") ?: json
+            val param = error?.optString("param").orEmpty().takeUnless { it.isBlank() || it == "null" }
+            if (param != null && param != "tools") return false
+            if (param == "tools" && error?.optString("code").orEmpty() in UNSUPPORTED_PARAMETER_CODES) return true
+            val message = error?.optString("message")?.takeIf(String::isNotBlank) ?: body
+            return TOOLS_UNSUPPORTED.any { it.containsMatchIn(message) }
+        }
+        fun reasoningSummaryUnsupported(): Boolean {
+            if (code != 400 && code != 422) return false
+            val json = runCatching { JSONObject(body) }.getOrNull()
+            val error = json?.optJSONObject("error") ?: json
+            val param = error?.optString("param").orEmpty().takeUnless { it.isBlank() || it == "null" }
+            if (param == "reasoning.summary") return true
+            val message = error?.optString("message")?.takeIf(String::isNotBlank) ?: body
+            return REASONING_SUMMARY_UNSUPPORTED.any { it.containsMatchIn(message) }
+        }
+
+        fun reasoningUnsupported(): Boolean {
+            if (code != 400 && code != 422) return false
+            val json = runCatching { JSONObject(body) }.getOrNull()
+            val error = json?.optJSONObject("error") ?: json
+            val param = error?.optString("param").orEmpty().takeUnless { it.isBlank() || it == "null" }
+            if (param != null && param != "reasoning" && param != "reasoning_effort" && !param.startsWith("reasoning.")) return false
+            if (param in setOf("reasoning", "reasoning_effort") && error?.optString("code").orEmpty() in UNSUPPORTED_PARAMETER_CODES) return true
+            val message = error?.optString("message")?.takeIf(String::isNotBlank) ?: body
+            return REASONING_UNSUPPORTED.any { it.containsMatchIn(message) }
+        }
+    }
+
+    private companion object {
+        val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        val UNSUPPORTED_PARAMETER_CODES = setOf("unsupported_parameter", "unknown_parameter", "unrecognized_parameter")
+        val TOOLS_UNSUPPORTED = listOf(
+            """\b(?:does not support|do not support|doesn't support|don't support)\s+(?:the\s+)?["'`]?(?:tools|tool (?:use|calling)|function calling)\b(?!\[|\.\w)""",
+            """\b(?:tools|tool (?:use|calling)|function calling)["'`]?\s+(?:(?:are|is)\s+)?(?:not supported|unsupported)\b""",
+            """\b(?:unsupported|unknown|unrecognized)\s+(?:request\s+)?(?:parameter|argument|field)s?(?:\s+supplied)?\s*[:=]?\s*["'`]?tools\b(?!\[|\.\w)"""
+        ).map { Regex(it, RegexOption.IGNORE_CASE) }
+        val REASONING_SUMMARY_UNSUPPORTED = listOf(
+            """reasoning\.summary""",
+            """\bsummary\b.*\b(?:not supported|unsupported|must be verified|organization must be verified|invalid)\b"""
+        ).map { Regex(it, RegexOption.IGNORE_CASE) }
+        val REASONING_UNSUPPORTED = listOf(
+            """\b(?:reasoning|reasoning_effort)\b.*\b(?:not supported|unsupported|unknown|unrecognized|not allowed|invalid parameter)\b""",
+            """\b(?:unsupported|unknown|unrecognized)\s+(?:request\s+)?(?:parameter|argument|field)s?(?:\s+supplied)?\s*[:=]?\s*["'`]?(?:reasoning|reasoning_effort)\b""",
+            """\b(?:does not support|doesn't support)\s+(?:the\s+)?["'`]?(?:reasoning|reasoning_effort)\b"""
+        ).map { Regex(it, RegexOption.IGNORE_CASE) }
     }
 }

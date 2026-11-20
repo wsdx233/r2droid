@@ -13,7 +13,7 @@
 
 ## ✨ 当前亮点
 
-- 🤖 **AI 逆向助手（OpenAI 兼容）**：支持流式对话、可配置提示词，并可通过 `[[cmd]]` / `<js>` 在会话内执行动作。
+- 🤖 **AI 逆向助手（OpenAI 兼容）**：Chat Completions 与 Responses 接口均支持流式回复与结构化工具调用（`r2_command`、QuickJS `run_js` 与 Frida 模式 `run_frida`），危险或耗时命令支持卡片确认。
 - 💉 **R2Frida 工作流**：内置 r2frida 安装器、本地/远程进程连接流程、自定义脚本管理与专用分析页面。
 - 📊 **图形分析视图**：支持函数流程图、Xref 图、调用图、全局调用图和数据引用图，可触屏缩放和导出 PNG。
 - 📑 **报告导出**：支持导出 Markdown / HTML / JSON 报告，并可根据分析结果生成 Frida Hook 模板。

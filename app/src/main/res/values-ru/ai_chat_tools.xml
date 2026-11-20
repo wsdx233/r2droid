@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_chat_choose_model">Выбрать модель</string>
+    <string name="ai_chat_thinking_level">Уровень рассуждений: %1$s</string>
+    <string name="ai_chat_thinking_title">Уровень рассуждений</string>
+    <string name="ai_chat_mode_title">Режим выполнения</string>
+    <string name="ai_chat_message_actions">Действия с сообщением</string>
+    <string name="ai_chat_jump_to_latest">К последнему сообщению</string>
+    <string name="ai_chat_jump_prev_user">Предыдущее сообщение пользователя</string>
+    <string name="ai_new_chat_running_title">Остановить текущую задачу?</string>
+    <string name="ai_new_chat_running_message">Ассистент ещё работает в этом чате. Создание нового чата остановит текущую генерацию.</string>
+    <string name="ai_new_chat_running_confirm">Остановить и создать</string>
+    <string name="ai_chat_close">Закрыть</string>
+    <string name="ai_chat_back">Назад</string>
+    <string name="ai_chat_empty_title">Начать новый анализ</string>
+    <string name="ai_chat_status_thinking">Размышление…</string>
+    <string name="ai_chat_status_running">Выполнение инструмента…</string>
+    <string name="ai_chat_status_approval">Ожидание разрешения…</string>
+    <string name="ai_chat_dismiss_error">Закрыть ошибку</string>
+    <string name="ai_chat_thinking_active">Размышляет</string>
+    <string name="ai_chat_thought_title">Размышления</string>
+
+    <string name="ai_tool_binary_info">Сведения о бинарном файле</string>
+    <string name="ai_tool_sections">Список секций</string>
+    <string name="ai_tool_r2_command">Команда R2</string>
+    <string name="ai_tool_run_js">JavaScript</string>
+    <string name="ai_tool_run_frida">Скрипт Frida</string>
+    <string name="ai_tool_js">Предложение JavaScript</string>
+    <string name="ai_tool_frida">Предложение скрипта Frida</string>
+    <string name="ai_tool_legacy_js">JavaScript</string>
+    <string name="ai_tool_legacy_frida">Скрипт Frida</string>
+    <string name="ai_tool_unknown">Вызов инструмента</string>
+
+    <string name="ai_tool_status_queued">В очереди</string>
+    <string name="ai_tool_status_approval">Ожидает разрешения</string>
+    <string name="ai_tool_status_running">Выполняется</string>
+    <string name="ai_tool_status_succeeded">Завершено</string>
+    <string name="ai_tool_status_failed">Ошибка</string>
+    <string name="ai_tool_status_denied">Отклонено</string>
+    <string name="ai_tool_status_interrupted">Прервано</string>
+    <string name="ai_tool_status_manual">Только вручную · Не выполнено</string>
+    <string name="ai_tool_approval_title">Требуется разрешение</string>
+    <string name="ai_tool_approval_hint">Проверьте команду, прежде чем разрешить её выполнение.</string>
+    <string name="ai_tool_approval_always">Всегда разрешать в этой сессии</string>
+
+    <string name="ai_tool_expand">Развернуть сведения</string>
+    <string name="ai_tool_collapse">Свернуть сведения</string>
+    <string name="ai_tool_detail">Детали</string>
+    <string name="ai_tool_fullscreen">Экран</string>
+    <string name="ai_tool_arguments">Аргументы</string>
+    <string name="ai_tool_output">Вывод</string>
+    <string name="ai_tool_command">Команда</string>
+    <string name="ai_tool_source">Исходный код</string>
+    <string name="ai_tool_copy_command">Копировать команду</string>
+    <string name="ai_tool_copy_source">Копировать код</string>
+    <string name="ai_tool_open_detail">Просмотр: %1$s</string>
+    <string name="ai_tool_empty">Нет содержимого</string>
+    <string name="ai_tool_no_output">Выполнено без вывода</string>
+    <string name="ai_tool_more_lines">%1$d строк · Нажмите «Детали» для просмотра</string>
+    <string name="ai_code_label">Код</string>
+    <string name="ai_code_word_wrap">Перенос строк</string>
+    <string name="settings_ai_max_tool_rounds">Максимум раундов инструментов ИИ</string>
+    <string name="settings_ai_max_tool_rounds_desc">Максимум раундов за ход (0 = без ограничений)</string>
+    <string name="settings_ai_max_tool_rounds_unlimited">Без ограничений</string>
+</resources>
