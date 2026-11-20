@@ -14,6 +14,7 @@
 ## ✨ Highlights
 
 - 🤖 **AI Assistant (OpenAI-compatible)**: Chat Completions and Responses APIs with streaming replies and structured tool calls (`r2_command`, QuickJS `run_js`, and `run_frida` in Frida mode), with user approval prompts for dangerous/heavy commands.
+  - Long chats aren't shortened based on a guessed token count. Only an explicit input-window rejection starts compaction: the current model summarizes older turns without tools, then the chat retries once with that summary and the current turn intact. The summary is cached with the conversation; reopening the chat preserves the full transcript. If the current turn alone is too large, shorten it or switch models.
 - 💉 **R2Frida Workflow**: in-app r2frida installer, local/remote process flow, custom script management, and Frida-focused analysis tabs.
 - 📊 **Graph Viewer**: touch-friendly graphs with Sugiyama layout, zoom controls, and PNG export. Supports Function Flow, Xref, Call Graph, Global Call Graph, and Data Reference Graph.
 - 📑 **Report Export**: export analysis as Markdown / HTML / JSON, or generate Frida hook templates from discovered functions/imports/exports.

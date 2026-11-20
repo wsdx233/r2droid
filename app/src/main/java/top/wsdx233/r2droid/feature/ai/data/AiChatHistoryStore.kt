@@ -24,6 +24,8 @@ import java.io.StringReader
  *
  * JSON is read/written with Android's streaming JsonReader/JsonWriter instead of building one huge
  * JSON string in memory.
+ * The optional compaction checkpoint follows the full transcript in the same atomic file.
+ * Index recovery reads only the bounded metadata prefix and a short completion suffix.
  */
 class AiChatHistoryStore(context: Context) {
     private val historyDir = File(context.filesDir, HISTORY_DIR).apply { mkdirs() }
@@ -183,16 +185,20 @@ class AiChatHistoryStore(context: Context) {
     }
 
     private fun readSessionMetadata(file: File): ChatSessionMetadata {
-        // Both the old and current writer put these fields before messages. Android's
-        // JsonReader.skipValue() can still allocate a huge string, so never enter the body.
-        // The compact writer finishes with ]}; use that to reject obvious truncation.
+        // Never enter the message array or the checkpoint: JsonReader.skipValue() can still
+        // allocate a huge string. Check the compact writer's suffix to reject obvious truncation.
         return RandomAccessFile(file, "r").use { input ->
             val length = input.length()
             check(length >= 2)
-            input.seek(length - 2)
-            check(input.read() == ']'.code && input.read() == '}'.code)
-            input.seek(0)
             val header = ByteArray(minOf(length, MAX_HEADER_BYTES.toLong()).toInt())
+            val suffixLength = minOf(header.size, COMPACTED_SESSION_SUFFIX.length)
+            input.seek(length - suffixLength)
+            input.readFully(header, 0, suffixLength)
+            val endsWithMessages = header[suffixLength - 2].toInt() == ']'.code &&
+                header[suffixLength - 1].toInt() == '}'.code
+            check(endsWithMessages || (suffixLength == COMPACTED_SESSION_SUFFIX.length &&
+                COMPACTED_SESSION_SUFFIX.indices.all { header[it].toInt() == COMPACTED_SESSION_SUFFIX[it].code }))
+            input.seek(0)
             input.readFully(header)
             JsonReader(StringReader(String(header, Charsets.UTF_8))).use { reader ->
                 readMetadata(reader, session = true).also { check(sessionFile(it.id) == file) }
@@ -256,6 +262,7 @@ class AiChatHistoryStore(context: Context) {
         var title = ""
         var timestamp = System.currentTimeMillis()
         val messages = mutableListOf<ChatMessage>()
+        var compaction: ChatCompaction? = null
 
         reader.beginObject()
         while (reader.hasNext()) {
@@ -273,6 +280,7 @@ class AiChatHistoryStore(context: Context) {
                     }
                     reader.endArray()
                 }
+                "compaction" -> compaction = readCompaction(reader)
                 else -> reader.skipValue()
             }
         }
@@ -287,7 +295,8 @@ class AiChatHistoryStore(context: Context) {
             id = checkNotNull(id).also { check(it.isNotBlank()) },
             title = title,
             timestamp = timestamp,
-            messages = messages
+            messages = messages,
+            compaction = compaction
         )
     }
 
@@ -300,7 +309,45 @@ class AiChatHistoryStore(context: Context) {
         writer.beginArray()
         session.messages.forEach { writeMessage(writer, it) }
         writer.endArray()
+        session.compaction?.let { checkpoint ->
+            writer.name("compaction").beginObject()
+            writer.name("origin").value(checkpoint.origin)
+            writer.name("coveredMessages").value(checkpoint.coveredMessages.toLong())
+            writer.name("lastMessageId").value(checkpoint.lastMessageId)
+            writer.name("summary").value(checkpoint.summary)
+            writer.endObject()
+            // A fixed trailer keeps recovery independent of the checkpoint's size and shape.
+            writer.name(SESSION_COMPLETE_FIELD).value(true)
+        }
         writer.endObject()
+    }
+
+    private fun readCompaction(reader: JsonReader): ChatCompaction? {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return null
+        }
+        var origin: String? = null
+        var coveredMessages: Int? = null
+        var lastMessageId: String? = null
+        var summary: String? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val field = reader.nextName()
+            when {
+                field == "origin" && reader.peek() == JsonToken.STRING -> origin = reader.nextString()
+                field == "coveredMessages" && reader.peek() == JsonToken.NUMBER ->
+                    coveredMessages = reader.nextString().toIntOrNull()
+                field == "lastMessageId" && reader.peek() == JsonToken.STRING -> lastMessageId = reader.nextString()
+                field == "summary" && reader.peek() == JsonToken.STRING -> summary = reader.nextString()
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        if (origin.isNullOrBlank() || coveredMessages == null || coveredMessages <= 0 ||
+            lastMessageId.isNullOrBlank() || summary.isNullOrBlank()) return null
+        return ChatCompaction(origin, coveredMessages, lastMessageId, summary)
     }
 
     private fun readMessage(reader: JsonReader): ChatMessage {
@@ -512,6 +559,8 @@ class AiChatHistoryStore(context: Context) {
     companion object {
         private const val TAG = "AiChatHistoryStore"
         private const val MAX_HEADER_BYTES = 8 * 1024
+        private const val SESSION_COMPLETE_FIELD = "complete"
+        private const val COMPACTED_SESSION_SUFFIX = ",\"$SESSION_COMPLETE_FIELD\":true}"
         private val UNSAFE_FILENAME_CHAR = Regex("[^A-Za-z0-9._-]")
         private const val HISTORY_DIR = "ai_chat_history"
         private const val INDEX_FILE_NAME = "index.json"

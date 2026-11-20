@@ -14,6 +14,8 @@
     <string name="ai_chat_back">Back</string>
     <string name="ai_chat_empty_title">Start a new analysis</string>
     <string name="ai_chat_status_thinking">Thinking…</string>
+    <string name="ai_chat_status_compacting">Context full · summarizing earlier turns…</string>
+    <string name="ai_chat_context_limit">The input still exceeds the model’s context window. Shorten the current turn or use a larger-window model. Your chat history is intact.\n%1$s</string>
     <string name="ai_chat_status_running">Running tool…</string>
     <string name="ai_chat_status_approval">Waiting for approval…</string>
     <string name="ai_chat_dismiss_error">Dismiss error</string>

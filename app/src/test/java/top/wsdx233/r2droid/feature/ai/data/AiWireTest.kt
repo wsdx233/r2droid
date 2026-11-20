@@ -1,7 +1,5 @@
 package top.wsdx233.r2droid.feature.ai.data
 
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
@@ -15,9 +13,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
-import java.net.InetSocketAddress
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 class AiWireTest {
@@ -199,6 +195,104 @@ class AiWireTest {
     }
 
     @Test
+    fun `explicit input window rejections keep the HTTP diagnostic and do not retry`() = runBlocking {
+        val rejections = listOf(
+            400 to """{"error":{"type":"invalid_request_error","code":"context_length_exceeded","param":null,"message":"Too long"}}""",
+            422 to """{"error":{"type":"input_context_window_exceeded","param":"input"}}""",
+            413 to """{"code":"context_length_exceeded","param":"messages"}""",
+            400 to """{"error":{"type":"invalid_request_error","message":"Your input exceeds the context window of this model. Please adjust your input and try again."}}""",
+            400 to "This model's maximum context length is 4096 tokens. However, you requested 4600 tokens (4200 in the messages, 400 in the completion).",
+            400 to "This model's maximum context length is 4096 tokens. However, you requested 4097 tokens (4096 in the messages, 1 in the completion).",
+            422 to """{"error":{"type":"invalid_request_error","message":"Prompt is too long: 4200 tokens > 4096 maximum"}}""",
+            // The explicit rejection wins even when a compatibility heuristic also matches the diagnostic.
+            400 to """{"error":{"code":"context_length_exceeded","message":"Your input exceeds the context window of this model. Remove reasoning.summary or shorten the input."}}"""
+        )
+        LocalServer().use { server ->
+            for (responses in listOf(false, true)) {
+                for ((status, body) in rejections) {
+                    server.enqueue(body, status)
+                    val received = mutableListOf<AiTurnEvent>()
+                    val error = runCatching { turn(server.provider(responses)).toList(received) }.exceptionOrNull()
+                    assertTrue("Expected input window rejection for $status $body: $error", error is AiContextLimitException)
+                    assertEquals("AI API failed ($status): $body", error?.message)
+                    assertTrue(received.isEmpty())
+                    assertEquals(1, server.requests.size)
+                    assertEquals(if (responses) "/v1/responses" else "/v1/chat/completions", server.requests.remove().path)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `ambiguous request errors and unrelated HTTP failures stay ordinary HTTP errors`() = runBlocking {
+        val explicitBody = """{"error":{"code":"context_length_exceeded"}}"""
+        val rejections = listOf(
+            413 to "Request Entity Too Large",
+            413 to """{"error":{"message":"Request body exceeds the maximum size."}}""",
+            401 to explicitBody,
+            403 to explicitBody,
+            429 to explicitBody,
+            500 to explicitBody,
+            400 to """{"error":{"code":"rate_limit_exceeded","message":"Your input exceeds the context window of this model."}}""",
+            400 to """{"error":{"message":"Maximum context length exceeded."}}""",
+            400 to """{"error":{"message":"The prompt is too long."}}""",
+            400 to """{"error":{"code":"invalid_value","param":"max_tokens","message":"Invalid max_tokens: must be less than the model's context length."}}""",
+            422 to """{"error":{"code":"context_length_exceeded","param":"max_output_tokens","message":"Your input exceeds the context window of this model."}}""",
+            400 to """{"error":{"code":"context_length_exceeded","message":"max_completion_tokens must not exceed the model limit."}}""",
+            400 to """{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 4096 tokens. However, you requested 4600 tokens (600 in your prompt; 4000 for the completion)."}}""",
+            400 to """{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 4096 tokens. However, you requested 4600 tokens."}}""",
+            400 to """{"error":{"code":"invalid_value","param":"input","message":"Invalid input: exceeds the maximum string length."}}"""
+        )
+        LocalServer().use { server ->
+            for (responses in listOf(false, true)) {
+                for ((status, body) in rejections) {
+                    server.enqueue(body, status)
+                    val received = mutableListOf<AiTurnEvent>()
+                    val error = runCatching { turn(server.provider(responses)).toList(received) }.exceptionOrNull()
+                    assertTrue("Expected ordinary HTTP error for $status $body: $error", error is IOException && error !is AiContextLimitException)
+                    assertEquals("AI API failed ($status): $body", error?.message)
+                    assertTrue(received.isEmpty())
+                    assertEquals(1, server.requests.size)
+                    server.requests.remove()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `successful HTTP streams do not classify length finishes or failed partial turns as input rejections`() = runBlocking {
+        val chatDelta = frame("""{"choices":[{"index":0,"delta":{"content":"Partial"}}]}""")
+        val responseDelta = response("response.output_text.delta", """"output_index":0,"item_id":"m1","content_index":0,"delta":"Partial"""")
+        val cases = listOf(
+            false to (chatDelta + frame("""{"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}""") + done),
+            false to (chatDelta + frame("""{"error":{"code":"context_length_exceeded"}}""")),
+            true to (responseDelta + response("response.failed", """"response":{"status":"failed","error":{"code":"context_length_exceeded"}}""")),
+            true to (responseDelta + response("response.incomplete", """"response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}"""))
+        )
+        LocalServer().use { server ->
+            for ((responses, wire) in cases) {
+                server.enqueue(wire)
+                val received = mutableListOf<AiTurnEvent>()
+                val error = runCatching { turn(server.provider(responses)).toList(received) }.exceptionOrNull()
+                assertTrue("Expected stream failure for $wire: $error", error is AiWireException)
+                assertTrue(received.none { it is AiTurnEvent.Completed })
+                assertEquals(1, server.requests.size)
+                server.requests.remove()
+            }
+        }
+    }
+
+    @Test
+    fun `transport failure before HTTP headers is not an input window rejection`() = runBlocking {
+        LocalServer().use { server ->
+            server.handlers.add { it.close() }
+            val error = runCatching { turn(server.provider()).toList() }.exceptionOrNull()
+            assertTrue("Expected transport failure: $error", error is IOException && error !is AiContextLimitException)
+            assertEquals(1, server.requests.size)
+        }
+    }
+
+    @Test
     fun `text only API supports multi-line SSE and preserves whitespace without sending tools`() = runBlocking {
         LocalServer().use { server ->
             server.enqueue("\uFEFF: comment\r\nevent: message\r\nignored: line\r\n" +
@@ -296,38 +390,6 @@ class AiWireTest {
 
     private fun turn(provider: AiProvider, history: List<ChatMessage> = listOf(user)) =
         repo.streamTurn(provider, history, model, "System", ThinkingLevel.Light, tools)
-
-    private class LocalServer : AutoCloseable {
-        data class SeenRequest(val path: String, val body: JSONObject)
-        val requests = LinkedBlockingQueue<SeenRequest>()
-        val handlers = LinkedBlockingQueue<(HttpExchange) -> Unit>()
-        private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
-            createContext("/") { exchange ->
-                try {
-                    val json = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
-                    requests.add(SeenRequest(exchange.requestURI.path, json))
-                    handlers.poll()?.invoke(exchange) ?: exchange.sendResponseHeaders(500, -1)
-                } finally {
-                    exchange.close()
-                }
-            }
-            start()
-        }
-
-        fun enqueue(body: String, code: Int = 200) {
-            handlers.add { exchange ->
-                val bytes = body.toByteArray(Charsets.UTF_8)
-                exchange.responseHeaders.add("Content-Type", if (code == 200) "text/event-stream" else "application/json")
-                exchange.sendResponseHeaders(code, bytes.size.toLong())
-                exchange.responseBody.write(bytes)
-            }
-        }
-
-        fun provider(responses: Boolean = false) = AiProvider(name = "stub", baseUrl = "http://127.0.0.1:${server.address.port}/v1/",
-            apiKey = "test-token", models = listOf("example-model"), useResponsesApi = responses)
-
-        override fun close() = server.stop(0)
-    }
 
     private companion object {
         fun frame(data: String) = "data: $data\n\n"

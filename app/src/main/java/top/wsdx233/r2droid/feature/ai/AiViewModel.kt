@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.ai.data.*
 import top.wsdx233.r2droid.util.R2PipeManager
@@ -52,6 +53,8 @@ sealed interface AiEvent {
 data class AiUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
+    val isCompacting: Boolean = false,
+    val compaction: ChatCompaction? = null,
     val error: String? = null,
     val config: AiProviderConfig = AiProviderConfig(),
     val systemPrompt: String = AiSettingsManager.DEFAULT_SYSTEM_PROMPT,
@@ -169,7 +172,15 @@ class AiViewModel @Inject constructor(
                     live = draft
                     var completed: AiTurnEvent.Completed? = null
                     var lastPaint = 0L
-                    aiRepository.streamTurn(provider, prior, model, prompt, state.thinkingLevel, tools).collect { event ->
+                    aiRepository.streamChatTurn(
+                        provider, prior, model, prompt, state.thinkingLevel, tools, _uiState.value.compaction,
+                        onCompacting = { _uiState.update { it.copy(isCompacting = true) } },
+                        onCompacted = { checkpoint ->
+                            check(bound?.isCurrent() != false) { TARGET_CHANGED }
+                            _uiState.update { it.copy(isCompacting = false, compaction = checkpoint) }
+                            saveCurrentChat(prior) // Persist the cache, not the empty streaming row.
+                        }
+                    ).collect { event ->
                         currentCoroutineContext().ensureActive()
                         check(completed == null) { "Unexpected data after the end of the model turn" }
                         when (event) {
@@ -245,6 +256,8 @@ class AiViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (limit: AiContextLimitException) {
+                _uiState.update { it.copy(error = context.getString(R.string.ai_chat_context_limit, limit.message)) }
             } catch (failure: Exception) {
                 _uiState.update { it.copy(error = failure.message ?: "AI request failed") }
             } finally {
@@ -315,17 +328,20 @@ class AiViewModel @Inject constructor(
                     if (last === settled) state.messages else state.messages.toMutableList().apply { this[lastIndex] = settled }
                 }
             }
-            state.copy(messages = messages, isGenerating = false, error = error ?: state.error)
+            state.copy(messages = messages, isGenerating = false, isCompacting = false, error = error ?: state.error)
         }
         saveCurrentChat()
     }
+
+    private fun AiUiState.withHistory(rows: List<ChatMessage>) =
+        copy(messages = rows, compaction = compaction?.takeIf { it.matchesPrefix(rows) })
 
     private fun editAndResend(id: String, text: String) {
         val state = _uiState.value
         if (state.isGenerating || text.isBlank()) return
         val index = state.messages.indexOfFirst { it.id == id && it.role == ChatRole.User }
         if (index < 0) return
-        _uiState.update { it.copy(messages = it.messages.take(index)) }
+        _uiState.update { it.withHistory(it.messages.take(index)) }
         sendMessage(text)
     }
 
@@ -335,13 +351,13 @@ class AiViewModel @Inject constructor(
         val index = state.messages.indexOfFirst { it.id == id && it.role == ChatRole.Assistant }
         if (index <= 0) return
         loadingChat?.cancel()
-        _uiState.update { it.copy(messages = it.messages.take(index)) }
+        _uiState.update { it.withHistory(it.messages.take(index)) }
         startGeneration()
     }
 
     private fun deleteMessage(id: String) {
         if (_uiState.value.isGenerating) return
-        _uiState.update { state -> state.copy(messages = state.messages.filterNot { it.id == id }) }
+        _uiState.update { state -> state.withHistory(state.messages.filterNot { it.id == id }) }
         saveCurrentChat()
     }
 
@@ -354,15 +370,15 @@ class AiViewModel @Inject constructor(
         loadingChat?.cancel()
         stopGeneration()
         sessionAutoApprove = false
-        _uiState.update { it.copy(messages = emptyList(), error = null, currentChatId = null) }
+        _uiState.update { it.copy(messages = emptyList(), compaction = null, error = null, currentChatId = null) }
     }
 
     // Snapshot before switching chats. FIFO lock admission keeps an older save from replacing a newer edit.
-    private fun saveCurrentChat() {
+    private fun saveCurrentChat(messages: List<ChatMessage> = _uiState.value.messages) {
         val state = _uiState.value
         val id = state.currentChatId ?: return
-        val title = state.messages.firstOrNull { it.role == ChatRole.User }?.content?.take(50) ?: "Chat"
-        val session = ChatSession(id, title, System.currentTimeMillis(), state.messages)
+        val title = messages.firstOrNull { it.role == ChatRole.User }?.content?.take(50) ?: "Chat"
+        val session = ChatSession(id, title, System.currentTimeMillis(), messages, state.compaction)
         historyOperation(id) { withContext(Dispatchers.IO) { AiSettingsManager.saveSession(session) } }
     }
 
@@ -372,7 +388,9 @@ class AiViewModel @Inject constructor(
         sessionAutoApprove = false
         loadingChat = historyOperation(id) {
             val session = withContext(Dispatchers.IO) { AiSettingsManager.loadSession(id) } ?: return@historyOperation
-            _uiState.update { it.copy(messages = session.messages, currentChatId = id, error = null) }
+            _uiState.update { it.copy(messages = session.messages, compaction = session.compaction?.takeIf { cache ->
+                cache.matchesPrefix(session.messages)
+            }, currentChatId = id, error = null) }
         }
     }
 

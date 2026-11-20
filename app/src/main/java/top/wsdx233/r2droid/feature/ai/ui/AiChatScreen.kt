@@ -267,6 +267,7 @@ fun AiChatScreen(
     val runningStatusText = if (uiState.isGenerating) {
         val lastCalls = displayMessages.lastOrNull()?.toolCalls.orEmpty()
         when {
+            uiState.isCompacting -> stringResource(R.string.ai_chat_status_compacting)
             lastCalls.any { it.status == ToolCallStatus.AwaitingApproval } -> stringResource(R.string.ai_chat_status_approval)
             lastCalls.any { it.status == ToolCallStatus.Running } -> stringResource(R.string.ai_chat_status_running)
             else -> stringResource(R.string.ai_chat_status_thinking)

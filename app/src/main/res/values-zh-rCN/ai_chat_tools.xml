@@ -14,6 +14,8 @@
     <string name="ai_chat_back">返回</string>
     <string name="ai_chat_empty_title">开始新的分析</string>
     <string name="ai_chat_status_thinking">正在思考…</string>
+    <string name="ai_chat_status_compacting">上下文已满，正在压缩早期对话…</string>
+    <string name="ai_chat_context_limit">输入仍超过模型的上下文上限。请缩短当前轮次，或切换到窗口更大的模型。聊天原文已保留。\n%1$s</string>
     <string name="ai_chat_status_running">正在执行工具…</string>
     <string name="ai_chat_status_approval">等待批准…</string>
     <string name="ai_chat_dismiss_error">关闭报错</string>

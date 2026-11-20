@@ -103,10 +103,20 @@ data class ChatSessionMetadata(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/** A cached summary of a transcript prefix, not a replacement for the original messages. */
+@Serializable
+data class ChatCompaction(
+    val origin: String,
+    val coveredMessages: Int,
+    val lastMessageId: String,
+    val summary: String
+)
+
 @Serializable
 data class ChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val messages: List<ChatMessage> = emptyList()
+    val messages: List<ChatMessage> = emptyList(),
+    val compaction: ChatCompaction? = null
 )

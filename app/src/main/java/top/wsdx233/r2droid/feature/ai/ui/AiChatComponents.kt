@@ -321,6 +321,7 @@ internal fun MessageBubble(
             val selectLabel = stringResource(R.string.ai_select_copy)
             MessageActions(
                 alignEnd = isUser,
+                showMenu = message.toolCalls.isEmpty() && message.actionResults.isEmpty(),
                 onCopy = copyText.takeIf(String::isNotBlank)?.let { { onCopy(it) } },
                 onSelect = copyText.takeIf(String::isNotBlank)?.let { { onDetail(ChatTextDetail(selectLabel, it)) } },
                 onEdit = onEdit.takeIf { isUser && !busy },
@@ -591,13 +592,14 @@ private fun thoughtPreviewWindow(
 @Composable
 private fun MessageActions(
     alignEnd: Boolean,
+    showMenu: Boolean,
     onCopy: (() -> Unit)?,
     onSelect: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onRegenerate: (() -> Unit)?,
     onDelete: (() -> Unit)?
 ) {
-    val hasMenu = onSelect != null || onEdit != null || onRegenerate != null || onDelete != null
+    val hasMenu = showMenu && (onSelect != null || onEdit != null || onRegenerate != null || onDelete != null)
     if (onCopy == null && !hasMenu) return
     val colors = MaterialTheme.colorScheme
     var open by remember { mutableStateOf(false) }

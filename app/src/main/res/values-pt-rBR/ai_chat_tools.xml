@@ -14,6 +14,8 @@
     <string name="ai_chat_back">Voltar</string>
     <string name="ai_chat_empty_title">Iniciar nova análise</string>
     <string name="ai_chat_status_thinking">Pensando…</string>
+    <string name="ai_chat_status_compacting">Contexto cheio · resumindo mensagens anteriores…</string>
+    <string name="ai_chat_context_limit">A entrada excede a janela de contexto do modelo. Encurte o turno atual ou use um modelo com uma janela maior. O histórico da conversa foi preservado.\n%1$s</string>
     <string name="ai_chat_status_running">Executando ferramenta…</string>
     <string name="ai_chat_status_approval">Aguardando aprovação…</string>
     <string name="ai_chat_dismiss_error">Dispensar erro</string>

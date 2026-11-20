@@ -61,6 +61,7 @@ class AiChatHistoryStoreTest {
             assertTrue(index.isFile)
             assertEquals("hello first", AiSettingsManager.loadSession("first")?.messages?.single()?.content)
             assertEquals("hello second", AiSettingsManager.loadSession("second")?.messages?.single()?.content)
+            assertNull(AiSettingsManager.loadSession("first")?.compaction)
         }
     }
 
@@ -131,7 +132,7 @@ class AiChatHistoryStoreTest {
         assertEquals(existing, AiSettingsManager.loadSession("existing"))
         assertEquals("hello pending", AiSettingsManager.loadSession("pending")?.messages?.single()?.content)
 
-        val newer = session("pending", 10)
+        val newer = session("pending", 10).let { it.copy(compaction = checkpoint(it)) }
         store.saveSession(newer)
         HostOs.failRenameTo = null
         assertEquals(listOf("pending", "existing"), launch())
@@ -164,9 +165,66 @@ class AiChatHistoryStoreTest {
     }
 
     @Test
+    fun `large checkpoint and complete transcript survive cold load and index recovery`() {
+        val store = AiChatHistoryStore(context)
+        val first = session("compacted", 2)
+        val tool = AiToolCall("a", "get_binary_info", "{}", ToolCallStatus.Succeeded, "64-bit ELF", durationMillis = 42)
+        val assistant = ChatMessage(role = ChatRole.Assistant, content = "Result", toolCalls = listOf(tool))
+        val chat = first.copy(
+            messages = first.messages + assistant + ChatMessage(role = ChatRole.User, content = "Next"),
+            compaction = checkpoint(first).copy(summary = "Line with \"quotes\" and 中文\n".repeat(32_768))
+        )
+        assertTrue(store.saveSession(chat))
+        assertEquals(listOf("compacted.json"), historyDir.list()?.toList())
+
+        val reopened = AiChatHistoryStore(context)
+        assertNull(reopened.loadIndex())
+        assertEquals(chat, reopened.loadSession(chat.id))
+        assertEquals(listOf(chat.id), launch())
+        assertEquals(listOf(ChatSessionMetadata(chat.id, chat.title, chat.timestamp)), reopened.loadIndex())
+        assertEquals(chat, AiSettingsManager.loadSession(chat.id))
+
+        assertTrue(reopened.saveSession(chat.copy(compaction = null)))
+        assertEquals(chat.copy(compaction = null), reopened.loadSession(chat.id))
+    }
+
+    @Test
+    fun `malformed optional checkpoint does not discard the transcript or metadata`() {
+        val store = AiChatHistoryStore(context)
+        val chat = session("malformed", 1)
+        store.saveSession(chat)
+        val transcript = sessionFile(chat.id).readText().dropLast(1)
+        val invalid = listOf(
+            "null",
+            "[{}]",
+            """{"origin":"local-provider","lastMessageId":"message","summary":"Summary"}""",
+            """{"origin":"local-provider","coveredMessages":"1","lastMessageId":"message","summary":"Summary"}""",
+            """{"origin":"local-provider","coveredMessages":1,"lastMessageId":"message","summary":{"text":"Summary"}}"""
+        )
+        for (value in invalid) {
+            sessionFile(chat.id).writeText("""$transcript,"compaction":$value,"complete":true}""")
+            assertEquals(chat, store.loadSession(chat.id))
+            assertEquals(listOf(ChatSessionMetadata(chat.id, chat.title, chat.timestamp)), store.recoverIndex())
+        }
+    }
+
+    @Test
+    fun `recovery ignores a checkpoint file with an incomplete suffix`() {
+        val store = AiChatHistoryStore(context)
+        val chat = session("truncated", 1)
+        store.saveSession(chat.copy(compaction = checkpoint(chat)))
+        val file = sessionFile(chat.id)
+        file.writeText(file.readText().dropLast(1))
+
+        assertEquals(emptyList<ChatSessionMetadata>(), store.recoverIndex())
+        assertNull(store.loadSession(chat.id))
+        assertTrue(file.isFile)
+    }
+
+    @Test
     fun `failed session replacement leaves previous contents available`() {
         val store = AiChatHistoryStore(context)
-        val before = session("same", 1)
+        val before = session("same", 1).let { it.copy(compaction = checkpoint(it)) }
         val after = session("same", 2)
         store.saveSession(before)
         HostOs.failRenameTo = sessionFile("same").absolutePath
@@ -220,6 +278,13 @@ class AiChatHistoryStoreTest {
         title = "New title $id",
         timestamp = timestamp,
         messages = listOf(ChatMessage(role = ChatRole.User, content = "new $id", timestamp = timestamp))
+    )
+
+    private fun checkpoint(chat: ChatSession) = ChatCompaction(
+        origin = "local-provider",
+        coveredMessages = chat.messages.size,
+        lastMessageId = chat.messages.last().id,
+        summary = "Earlier context"
     )
 
     private fun legacySession(id: String, timestamp: Long) =

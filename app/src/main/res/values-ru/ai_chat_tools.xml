@@ -14,6 +14,8 @@
     <string name="ai_chat_back">Назад</string>
     <string name="ai_chat_empty_title">Начать новый анализ</string>
     <string name="ai_chat_status_thinking">Размышление…</string>
+    <string name="ai_chat_status_compacting">Контекст заполнен · сжатие предыдущих сообщений…</string>
+    <string name="ai_chat_context_limit">Ввод превышает контекстное окно модели. Сократите текущий запрос или выберите модель с большим окном. История чата сохранена.\n%1$s</string>
     <string name="ai_chat_status_running">Выполнение инструмента…</string>
     <string name="ai_chat_status_approval">Ожидание разрешения…</string>
     <string name="ai_chat_dismiss_error">Закрыть ошибку</string>

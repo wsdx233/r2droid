@@ -23,6 +23,9 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** The server rejected the request before generation because its input exceeded the model's context window. */
+internal class AiContextLimitException(message: String) : IOException(message)
+
 @Singleton
 class AiRepository @Inject constructor() {
     private val client = OkHttpClient.Builder()
@@ -121,7 +124,12 @@ class AiRepository @Inject constructor() {
             ensureActive()
             call.execute().use { response ->
                 ensureActive()
-                if (!response.isSuccessful) throw AiHttpException(response.code, response.body.string())
+                if (!response.isSuccessful) {
+                    val body = response.body.string()
+                    val diagnostic = "AI API failed (${response.code}): $body"
+                    if (isContextLimitRejection(response.code, body)) throw AiContextLimitException(diagnostic)
+                    throw AiHttpException(response.code, body, diagnostic)
+                }
                 val text = response.body.charStream().buffered()
                 val events = AiSseReader(text)
                 val names = tools.mapTo(mutableSetOf()) { it.name }
@@ -161,7 +169,33 @@ class AiRepository @Inject constructor() {
         return client.models().map { it.id.id }.sorted()
     }
 
-    private class AiHttpException(val code: Int, private val body: String) : IOException("AI API failed ($code): $body") {
+    private fun isContextLimitRejection(status: Int, body: String): Boolean {
+        if (status != 400 && status != 413 && status != 422) return false
+        val json = runCatching { JSONObject(body) }.getOrNull()
+        val error = json?.optJSONObject("error") ?: json
+        // An output-token setting (or any unrelated parameter) is not the input window.
+        if (error != null && !error.isNull("param") && error.optString("param") !in CONTEXT_INPUT_PARAMS) return false
+
+        val code = (error?.opt("code") as? String).orEmpty().lowercase()
+        val type = (error?.opt("type") as? String).orEmpty().lowercase()
+        val explicitCode = code in CONTEXT_LIMIT_CODES || type in CONTEXT_LIMIT_CODES
+        if ((code !in CONTEXT_LIMIT_CODES && code !in GENERIC_REQUEST_ERRORS) ||
+            (type !in CONTEXT_LIMIT_CODES && type !in GENERIC_REQUEST_ERRORS)
+        ) return false
+
+        val message = ((error?.opt("message") as? String) ?: (json?.opt("error") as? String)
+            ?: if (json == null) body else "").trim()
+        if (INPUT_CONTEXT_MESSAGES.any { it.containsMatchIn(message) }) return true
+        LEGACY_CONTEXT_MESSAGE.find(message)?.let { match ->
+            // Some servers report the requested input + completion budget. Only the input count matters.
+            val limit = match.groupValues[1].toLongOrNull() ?: return false
+            val input = (match.groups[2] ?: match.groups[3])?.value?.toLongOrNull() ?: return false
+            return limit > 0 && input >= limit
+        }
+        return explicitCode && !OUTPUT_BUDGET_MENTION.containsMatchIn(message)
+    }
+
+    private class AiHttpException(val code: Int, private val body: String, diagnostic: String) : IOException(diagnostic) {
         fun toolsUnsupported(): Boolean {
             if (code != 400 && code != 422) return false
             val json = runCatching { JSONObject(body) }.getOrNull()
@@ -197,6 +231,30 @@ class AiRepository @Inject constructor() {
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val UNSUPPORTED_PARAMETER_CODES = setOf("unsupported_parameter", "unknown_parameter", "unrecognized_parameter")
+        val CONTEXT_INPUT_PARAMS = setOf("", "input", "messages", "prompt")
+        val CONTEXT_LIMIT_CODES = setOf(
+            "context_length_exceeded", "context_window_exceeded",
+            "input_context_length_exceeded", "input_context_window_exceeded"
+        )
+        val GENERIC_REQUEST_ERRORS = setOf(
+            "", "invalid_request_error", "invalid_request", "invalid_argument", "bad_request", "badrequesterror",
+            "invalid_value", "validation_error"
+        )
+        val INPUT_CONTEXT_MESSAGES = listOf(
+            """^(?:Your |The |This )?(?:input(?: tokens)?|prompt|messages) exceeds? (?:(?:the |this )?model's |the )?(?:maximum )?context (?:window|length)(?: of this model)?(?=[.!]|$)""",
+            """^(?:Your |The |This )?(?:input|prompt) is too long for (?:this|the model's|the) context window(?=[.!]|$)""",
+            """^Prompt is too long: \d+ tokens > \d+ maximum(?=[.!]|$)"""
+        ).map { Regex(it, RegexOption.IGNORE_CASE) }
+        val LEGACY_CONTEXT_MESSAGE = Regex(
+            """^This model's maximum context length is (\d+) tokens[.,]\s*however,? (?:""" +
+                """your (?:input|prompt|messages) resulted in (\d+) tokens\b|""" +
+                """you requested \d+ tokens\b(?: \((\d+) in (?:the|your) (?:input|prompt|messages)[,;)])?)""",
+            RegexOption.IGNORE_CASE
+        )
+        val OUTPUT_BUDGET_MENTION = Regex(
+            """\b(?:max_(?:output_|completion_)?tokens|(?:output|completion) (?:tokens|length|budget))\b""",
+            RegexOption.IGNORE_CASE
+        )
         val TOOLS_UNSUPPORTED = listOf(
             """\b(?:does not support|do not support|doesn't support|don't support)\s+(?:the\s+)?["'`]?(?:tools|tool (?:use|calling)|function calling)\b(?!\[|\.\w)""",
             """\b(?:tools|tool (?:use|calling)|function calling)["'`]?\s+(?:(?:are|is)\s+)?(?:not supported|unsupported)\b""",

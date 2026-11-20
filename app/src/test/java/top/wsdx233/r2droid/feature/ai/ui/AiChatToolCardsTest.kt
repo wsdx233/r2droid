@@ -106,6 +106,25 @@ class AiChatToolCardsTest {
     }
 
     @Test
+    fun toolRowsKeepDirectCopyButOnlyTextRepliesOfferRegeneration() {
+        val tool = toolMessage("tool", "lookup", "{}", ToolCallStatus.Succeeded, "found")
+        var message by mutableStateOf(tool)
+        val copied = mutableListOf<String>()
+        showCards({ listOf(message) }, busy = false, onCopy = { copied.add(it) })
+
+        compose.onNodeWithContentDescription("Message actions").assertDoesNotExist()
+        compose.runOnIdle { message = tool.copy(content = "Looking it up") }
+        compose.onNodeWithContentDescription("Message actions").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Copy").performClick()
+        compose.runOnIdle {
+            assertEquals(listOf("Looking it up"), copied)
+            message = ChatMessage(role = ChatRole.Assistant, content = "Final answer")
+        }
+        compose.onNodeWithContentDescription("Message actions").performClick()
+        compose.onNodeWithText("Regenerate").assertIsDisplayed()
+    }
+
+    @Test
     fun railDetailOpensFullScreenDialogAndCopiesRawPayloadWithoutTrimming() {
         val source = "  const sample = \"one\\two\";\n\n"
         val arguments = JSONObject().put("source", source).toString()
@@ -347,6 +366,7 @@ class AiChatToolCardsTest {
 
     private fun showCards(
         messages: () -> List<ChatMessage>,
+        busy: Boolean = true,
         onCopy: (String) -> Unit = {},
         onDecide: (AiEvent.DecideTool) -> Unit = {}
     ) {
@@ -367,7 +387,7 @@ class AiChatToolCardsTest {
                             key(message.id) {
                                 MessageBubble(
                                     message = message,
-                                    busy = true,
+                                    busy = busy,
                                     onCopy = onCopy,
                                     onDetail = { detail = it },
                                     onEdit = {},
