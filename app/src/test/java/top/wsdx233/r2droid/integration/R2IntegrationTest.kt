@@ -54,7 +54,7 @@ class R2IntegrationTest {
                 )
                 // Quick sanity check
                 val greeting = r2.cmd("?V")
-                assertNotNull("r2 should respond", greeting)
+                assertTrue("Expected a radare2 version, got: $greeting", greeting.contains(Regex("\\d+\\.\\d+")))
                 initialized = true
                 println("[R2IntegrationTest] radare2 ready: $greeting")
             } catch (e: Exception) {
@@ -158,9 +158,13 @@ class R2IntegrationTest {
         // Every real binary should have at least one section
         assertTrue("Should parse at least 1 section", sections.isNotEmpty())
 
-        for (s in sections) {
-            // Name should be non-empty
-            assertTrue("Section name should not be empty", s.name.isNotEmpty())
+        // ELF reserves section zero (SHT_NULL); it legitimately has no name or contents.
+        for ((index, s) in sections.withIndex()) {
+            if (s.name.isEmpty()) {
+                assertEquals(0, index)
+                assertEquals("NULL", s.type)
+                assertEquals(0L, s.size)
+            }
         }
 
         println("  Found ${sections.size} sections:")
@@ -714,31 +718,13 @@ class R2IntegrationTest {
 
     @Test
     fun `CLexer tokenizes real r2 decompilation output`() {
-        // Try r2ghidra (pdg) — may not be available
-        val decompOutput = r2.cmd("pdg @ entry0")
-        if (decompOutput.isBlank() || decompOutput.startsWith("Unknown command") || decompOutput.contains("not found")) {
-            // Try pdc as fallback
-            val pdcOutput = r2.cmd("pdc @ entry0")
-            if (pdcOutput.isBlank()) {
-                println("  No decompiler available, skipping CLexer on real code")
-                return
-            }
-            val annotations = CLexer.tokenize(pdcOutput)
-            println("  CLexer on pdc output: ${annotations.size} annotations")
-            // Just verify it doesn't crash on real C-like code
-            return
-        }
-
-        val annotations = CLexer.tokenize(decompOutput)
-        assertTrue("Should produce some annotations on real decompiled code", annotations.isNotEmpty())
-
-        val highlights = annotations.map { it.syntaxHighlight }.distinct()
-        println("  CLexer produced ${annotations.size} annotations, types: $highlights")
-
-        // Real decompiled C code should have at least keywords
-        val hasKeywords = annotations.any { it.syntaxHighlight == "keyword" }
-        val hasDatatypes = annotations.any { it.syntaxHighlight == "datatype" }
-        println("  Has keywords: $hasKeywords, Has datatypes: $hasDatatypes")
+        // pdc ships with the core. Exercise its actual output without depending on host plugins.
+        r2.cmd("af @ entry0")
+        val code = r2.cmd("pdc @ entry0")
+        val annotations = CLexer.tokenize(code)
+        assertTrue("Expected type/keyword tokens in: ${code.take(150)}", annotations.any {
+            it.syntaxHighlight == "keyword" || it.syntaxHighlight == "datatype"
+        })
     }
 
     // ============================================================

@@ -156,8 +156,10 @@
     <string name="about_contact_comment">// Entre em contato</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// Código-fonte</string>
-    <string name="about_core_value">radare2 @ 6.1.0</string>
-    <string name="about_core_comment">// Movendo o motor</string>
+    <string name="about_core_value">radare2 @ %1$s</string>
+    <string name="about_core_not_bundled">Não incluído (compilação apenas com PRoot)</string>
+    <string name="about_core_unavailable">Não foi possível ler a versão incluída</string>
+    <string name="about_core_comment">// Conteúdo do APK, não o motor em uso</string>
     <string name="about_contributors_comment">// Colaboradores do GitHub (ao vivo)</string>
     <string name="about_contributors_loading">// carregando colaboradores da API do GitHub...</string>
     <string name="about_contributors_error">// falha na obtenção: %1$s</string>
@@ -175,6 +177,7 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_chinese">中文</string>
     <string name="settings_language_russian">Русский</string>
+    <string name="settings_language_portuguese_brazil">Português (Brasil)</string>
     <string name="settings_cancel">Cancelar</string>
     <string name="settings_save">Salvar</string>
     <string name="settings_content_label">Conteúdo</string>
@@ -947,14 +950,15 @@
     <string name="r2frida_install_installing">Instalando…</string>
     <string name="r2frida_install_fetching">Obtendo informações da versão…</string>
     <string name="r2frida_install_downloading">Baixando o plugin…</string>
-    <string name="r2frida_install_extracting">Extraindo os arquivos…</string>
     <string name="r2frida_installing_in_proot">Instalando o r2frida no proot…</string>
     <string name="r2frida_install_proot_desc">O modo Proot está habilitado. O r2frida será instalado dentro do ambiente proot através do r2pm, em vez de baixar o pacote do plugin para Android.</string>
     <string name="r2frida_install_done">Instalação concluída</string>
     <string name="r2frida_install_continue">Continuar</string>
     <string name="r2frida_install_switch_hint">Tente trocar a fonte de download abaixo e tentar novamente</string>
     <string name="r2frida_source_github">Fonte: GitHub (Internacional)</string>
-    <string name="r2frida_source_gitee">Fonte: Gitee (China)</string>
+    <string name="r2frida_source_gitee">Fonte: Gitee (GitHub como alternativa)</string>
+    <string name="r2frida_install_no_github_asset">Não foi possível encontrar no GitHub um download do r2frida compatível com o radare2 %1$s incluído. Verifique a conexão ou tente o Gitee.</string>
+    <string name="r2frida_install_no_mirror_or_github_asset">Não foi possível encontrar no Gitee nem no GitHub um download do r2frida compatível com o radare2 %1$s incluído. Verifique a conexão com o GitHub e tente novamente.</string>
     <!-- Keep Alive / Background -->
     <string name="settings_background">Segundo Plano</string>
 
@@ -988,7 +992,7 @@
     <string name="terminal_launch_proot_title">Terminal proot</string>
     <string name="terminal_launch_proot_desc">Entrar no ambiente proot Ubuntu configurado com as ferramentas do radare2.</string>
     <string name="terminal_launch_system_title">Terminal do sistema</string>
-    <string name="terminal_launch_system_desc">Usar o shell do Android e o ambiente embutido do radare2 sem entrar no proot.</string>
+    <string name="terminal_launch_system_desc">Usar o shell do sistema Android sem entrar no PRoot.</string>
     <string name="terminal_launch_do_not_ask_again">Não perguntar novamente</string>
     <string name="terminal_launch_confirm">Abrir terminal</string>
 

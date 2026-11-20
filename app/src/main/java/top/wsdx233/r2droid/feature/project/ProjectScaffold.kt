@@ -173,7 +173,7 @@ fun ProjectScaffold(
     r2fridaViewModel: R2FridaViewModel = hiltViewModel(key = "frida-$sessionId"),
     r2flutterViewModel: R2FlutterViewModel = hiltViewModel(key = "flutter-$sessionId"),
     onOpenDrawer: () -> Unit = {},
-    onNavigateBack: () -> Unit
+    onReconnect: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -1274,7 +1274,7 @@ fun ProjectScaffold(
                         MainCategory.Project -> {
                             val logs by viewModel.logs.collectAsState()
                             when {
-                                selectedProjectTabIndex == 0 -> ProjectSettingsScreen(viewModel, r2fridaViewModel)
+                                selectedProjectTabIndex == 0 -> ProjectSettingsScreen(viewModel, r2fridaViewModel, onReconnect)
                                 selectedProjectTabIndex == 1 -> CommandScreen(
                                     command = cmdInput,
                                     onCommandChange = { cmdInput = it },

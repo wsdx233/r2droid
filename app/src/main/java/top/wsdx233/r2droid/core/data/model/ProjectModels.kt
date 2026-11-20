@@ -11,7 +11,7 @@ import java.io.File
 data class SavedProject(
     val id: String,                     // Unique identifier (UUID or hash)
     val name: String,                   // Display name (usually filename)
-    val binaryPath: String,             // Path to the original binary file
+    val binaryPath: String,             // Target to open before replaying scriptPath
     val scriptPath: String,             // Path to the .r2 script file
     val createdAt: Long,                // Creation timestamp
     val lastModified: Long,             // Last modification timestamp

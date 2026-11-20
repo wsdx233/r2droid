@@ -39,13 +39,6 @@ object R2PipeManager {
         val subtitle: String = ""
     )
 
-    data class SessionLaunchConfig(
-        val filePath: String?,
-        val flags: String,
-        val rawArgs: String?,
-        val writeCacheEnabled: Boolean
-    )
-
     @ConsistentCopyVisibility
     data class R2Session internal constructor(
         val sessionId: String,
@@ -187,7 +180,9 @@ object R2PipeManager {
             synchronized(sessionsLock) { activeSession()?.isDirtyAfterSave = value }
         }
 
-    internal fun recordProjectSave(session: R2Session, projectId: String) {
+    internal fun recordProjectSave(session: R2Session, projectId: String, binaryPath: String) {
+        // A project can become active only if it saves the binary already open on this pipe.
+        check(binaryPath == (session.projectPath ?: session.customCommand))
         synchronized(sessionsLock) {
             _sessions.value[session.sessionId]?.takeIf { it.pipe === session.pipe }?.let {
                 it.currentProjectId = projectId
@@ -200,26 +195,29 @@ object R2PipeManager {
     val isR2FridaSession: Boolean
         get() = activeSession()?.isFridaSession == true
 
-    val activeSessionLaunchConfig: SessionLaunchConfig?
-        get() = activeSession()?.let { session ->
-            SessionLaunchConfig(
-                filePath = session.projectPath,
-                flags = session.launchFlags,
-                rawArgs = session.customCommand,
-                writeCacheEnabled = session.writeCacheEnabled
-            )
+    internal suspend fun <T> exportProjectReplay(
+        session: R2Session,
+        block: (InputStream, Int?) -> T
+    ): Result<T> = withSessionCommand(session, "PS /dev/stdout", markDirty = false, lease = null,
+        render = { "Project replay exported" }) {
+        // Check against the live descriptor, not just the launch path: the console can open
+        // another file, and older app versions could associate a copy without reopening it.
+        val fd = session.projectPath?.let { expectedPath ->
+            val descriptors = org.json.JSONArray(pipeCmd(session, "oj"))
+            val raised = (0 until descriptors.length()).firstNotNullOfOrNull { index ->
+                descriptors.getJSONObject(index).takeIf { it.optBoolean("raised") }
+            }
+            val uri = raised?.optString("uri").orEmpty()
+            check(uri.isNotEmpty() && File(uri).canonicalFile == File(expectedPath).canonicalFile) {
+                "Current radare2 descriptor doesn't match the session binary. Reopen the project before saving."
+            }
+            checkNotNull(raised).getInt("fd")
         }
+        pipeCmdStream(session, "PS /dev/stdout").use { block(it, fd) }
+    }
 
-    fun updateCurrentFilePath(path: String) {
-        val id = _activeSessionId.value ?: return
-        synchronized(sessionsLock) {
-            val session = _sessions.value[id] ?: return
-            val updated = session.copy(
-                projectPath = path,
-                projectInfo = buildProjectInfo(path, session.customCommand)
-            )
-            _sessions.value = _sessions.value + (id to updated)
-        }
+    internal fun openProjectBinaryPaths(): List<String> = synchronized(sessionsLock) {
+        _sessions.value.values.mapNotNull { it.projectPath }
     }
 
     /**
@@ -415,12 +413,16 @@ object R2PipeManager {
         flags: String = "",
         rawArgs: String? = null,
         writeCacheEnabled: Boolean = false,
-        expectedSession: R2Session? = null
-    ): Result<Unit> {
+        expectedSession: R2Session? = null,
+        discardWriteCache: Boolean = false
+    ): Result<R2Session> {
         val oldSession = activeSession()
             ?: return Result.failure(IllegalStateException("No active session."))
         if (expectedSession != null && expectedSession.pipe !== oldSession.pipe) {
             return Result.failure(IllegalStateException("The R2Pipe session changed while reconnecting."))
+        }
+        if (oldSession.writeCacheEnabled && !(discardWriteCache && expectedSession != null)) {
+            return Result.failure(IllegalStateException(context.getString(R.string.write_cache_replace_blocked)))
         }
 
         return withContext(Dispatchers.IO) {
@@ -442,7 +444,7 @@ object R2PipeManager {
                 )
 
                 val replaced = synchronized(sessionsLock) {
-                    if (!isRegistered(oldSession) || (expectedSession != null && activeSessionPipe !== oldSession.pipe)) {
+                    if (activeSessionPipe !== oldSession.pipe) {
                         false
                     } else {
                         oldSession.isConnected.set(false)
@@ -459,6 +461,7 @@ object R2PipeManager {
                     error("The R2Pipe session changed while reconnecting.")
                 }
                 closeSessionPipe(oldSession, force = true)
+                newSession
             }
         }
     }
@@ -485,16 +488,20 @@ object R2PipeManager {
         true
     }
 
-    suspend fun closeSession(id: String): Result<Unit> {
-        val session = _sessions.value[id] ?: return Result.success(Unit)
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                if (detachSession(session)) {
-                    // Don't submit a graceful quit command to an ESIL-owned transport.
-                    closeSessionPipe(session, force = session.managedPipe.lease != null)
-                }
-            }
+    /** Close only the requested pipe: reconnect can reuse a drawer ID for a different pipe. */
+    internal suspend fun closeSession(
+        session: R2Session,
+        requireActive: Boolean,
+        discardWriteCache: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val detached = synchronized(sessionsLock) {
+            (!session.writeCacheEnabled || discardWriteCache) &&
+                (!requireActive || activeSessionPipe === session.pipe) && detachSession(session)
         }
+        if (detached) {
+            closeSessionPipe(session, force = session.managedPipe.lease != null)
+        }
+        detached
     }
 
     /**
@@ -718,29 +725,11 @@ object R2PipeManager {
         }
     }
 
-    /**
-     * 关闭当前会话并释放资源
-     */
-    suspend fun quit() {
-        val sid = _activeSessionId.value ?: return
-        closeSession(sid)
-    }
-
-    /**
-     * 非挂起版本的关闭方法，用于 ViewModel.onCleared 等场景。
-     * 使用 forceClose 强制终止，避免在长时间命令执行时因 mutex 死锁。
-     */
-    fun close() {
-        forceClose()
-    }
-
-    /**
-     * 强制关闭当前会话，不等待 mutex。
-     * 直接杀死 R2 进程，使任何正在持有 mutex 的 execute() 调用因 IO 异常而退出。
-     * 用于：退出项目时需要立即终止（即使 aaa 等耗时命令正在执行）。
-     */
-    fun forceClose() {
-        val session = synchronized(sessionsLock) { activeSession()?.takeIf { detachSession(it) } } ?: return
+    /** View model teardown is not consent to discard a write cache. */
+    internal fun closeOwnedNonCacheSession(pipe: R2PipeSession) {
+        val session = synchronized(sessionsLock) {
+            activeSession()?.takeIf { it.pipe === pipe && !it.writeCacheEnabled && detachSession(it) }
+        } ?: return
         closeSessionPipe(session, force = true)
     }
 

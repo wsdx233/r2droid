@@ -15,8 +15,9 @@
 
 - 🤖 **AI 逆向助手（OpenAI 兼容）**：支持流式对话、可配置提示词，并可通过 `[[cmd]]` / `<js>` 在会话内执行动作。
 - 💉 **R2Frida 工作流**：内置 r2frida 安装器、本地/远程进程连接流程、自定义脚本管理与专用分析页面。
-- 📊 **图形分析视图**：触屏友好的图形界面，采用 Sugiyama 分层布局；支持函数流程图、Xref 图、调用图、全局调用图和数据引用图。
+- 📊 **图形分析视图**：支持函数流程图、Xref 图、调用图、全局调用图和数据引用图，可触屏缩放和导出 PNG。
 - 📑 **报告导出**：支持导出 Markdown / HTML / JSON 报告，并可根据分析结果生成 Frida Hook 模板。
+- **Flutter AOT**：从「功能 → Flutter AOT」进入，可选择 APK 或 `libapp.so` 分析。
 
 ## 🛠️ 核心能力
 
@@ -50,8 +51,8 @@
 
 1. 克隆仓库。
 2. 使用 Android Studio（建议 Ladybug 或更新版本）打开。
-3. Gradle JVM 选择 **JDK 17**。
-4. 在 Android 设备/模拟器上构建并运行 Debug 变体（**minSdk 24**）。
+3. Gradle 守护进程使用 JDK 21，项目使用 JDK 17 工具链编译 Kotlin/Java。
+4. 运行设备需要 **Android 7.0+（API 24）、ARM64**；两个 APK 均含 ARM64 原生组件。
 
 Release 变体会在打包前刷新 ARM64 原生运行时。本地与 GitHub Actions 共用构建入口，解析官方最新稳定版 `radare2`、`termux/proot` 的 `master` 提交及内置 `r2ghidra` / `r2dec` 源码，使用 Android NDK `28.2.13676358` / API 24 交叉编译。
 
@@ -66,7 +67,7 @@ python -m pip install meson==1.7.2
 
 默认每次 Release 构建都会刷新一份两版共用的源码锁；源码未变化时复用经过校验的原生构建缓存。生成的源码锁位于 `app/build/generated/nativeRuntime/source-lock.json`。使用 `-PnativeRuntimeLock=/absolute/path/source-lock.json` 可按已有不可变源码锁构建，不再解析上游新提交。`-PnativeRuntimeJobs=N` 控制原生编译并行度；`-PnativeRuntimePython=/path/to/python` 指定解释器（Meson 仍须在 `PATH` 中）。本地可选设置 `GITHUB_TOKEN` 以提高 GitHub API 限额。
 
-推送 `v*` 标签后，GitHub Actions 会执行同一组 Gradle 任务，发布两版签名 APK、源码锁和各变体的运行时清单。清单记录源码提交、工具链版本及生成资源的哈希。Android 资源合并器可能将生成的 `.tar.gz` 展开为 APK 内的 `.tar`，安装器兼容两种格式。
+发版工作流先运行单元测试，再构建两版签名 APK、共用源码锁和各变体的运行时清单。手动运行或推送 `vX.Y.Z-rcN` 只上传 Actions 构件，**不创建 GitHub Release**；仅与两个 APK 的 `versionName` 完全匹配的 `vX.Y.Z` 标签才发布正式版。优先使用 `.github/release-notes/` 中对应版本的说明，没有时使用自动日志。清单记录源码提交、工具链版本及资源哈希；安装器兼容生成的 `.tar.gz` 和 APK 中展开的 `.tar`。
 
 Debug 原生资源准备同样需要 Python 3.11+，但使用仓库内预编译文件，不刷新上游源码，也不编译 radare2/插件。
 Full Debug 当前内置 radare2 6.2.6。
@@ -79,6 +80,8 @@ Full APK 按需安装 [r2frida](https://github.com/wsdx233/r2frida-android-arm64
 
 新建 PRoot 环境默认从 Ubuntu 官方下载 [Ubuntu Base 24.04.5 LTS](https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/)。覆盖更新应用不会替换已安装的容器。
 
+项目另存为、聊天记录迁移、未提交补丁以及按需插件重装须知见 [v0.4.0 升级说明](.github/release-notes/v0.4.0.md)。
+
 ## 📄 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
@@ -89,6 +92,8 @@ Full APK 按需安装 [r2frida](https://github.com/wsdx233/r2frida-android-arm64
 
 - [@wsdx233](https://github.com/wsdx233)
 - [@binx6](https://github.com/binx6)
+- [@AbhiTheModder](https://github.com/AbhiTheModder)
+- [@VictorGabriel7Dev](https://github.com/VictorGabriel7Dev)（巴西葡语）
 
 最新完整列表请查看 GitHub: [Contributors](https://github.com/wsdx233/r2droid/graphs/contributors)
 

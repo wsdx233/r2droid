@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.core.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.content.edit
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import top.wsdx233.r2droid.util.AppVariant
 import top.wsdx233.r2droid.util.ProotInstaller
 import java.io.File
+import java.util.Locale
 
 object SettingsManager {
     private const val PREFS_NAME = "r2droid_settings"
@@ -126,6 +128,20 @@ object SettingsManager {
     var language: String
         get() = prefs.getString(KEY_LANGUAGE, "system") ?: "system"
         set(value) { prefs.edit { putString(KEY_LANGUAGE, value) } }
+
+    /** Applies the saved UI language before the activity initializes settings. */
+    fun withAppLanguage(context: Context): Context {
+        val savedLanguage = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_LANGUAGE, null)
+        val locale = appLocale(savedLanguage) ?: return context
+        return context.createConfigurationContext(Configuration().apply { setLocale(locale) })
+    }
+
+    internal fun appLocale(language: String?): Locale? = when (language) {
+        null, "system" -> null
+        "zh" -> Locale.SIMPLIFIED_CHINESE
+        else -> Locale.forLanguageTag(language).takeIf { it.language.isNotEmpty() }
+    }
 
     var projectHome: String?
         get() = prefs.getString(KEY_PROJECT_HOME, null)

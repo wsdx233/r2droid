@@ -132,8 +132,10 @@
     <string name="about_contact_comment">// Связаться</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// Исходный код</string>
-    <string name="about_core_value">radare2 @ 6.1.0</string>
-    <string name="about_core_comment">// Ядро движка</string>
+    <string name="about_core_value">radare2 @ %1$s</string>
+    <string name="about_core_not_bundled">Не входит в APK (сборка только с PRoot)</string>
+    <string name="about_core_unavailable">Не удалось прочитать версию встроенного radare2</string>
+    <string name="about_core_comment">// Содержимое APK, не версия запущенного движка</string>
     <string name="about_contributors_comment">// Контрибьюторы GitHub</string>
     <string name="about_contributors_loading">// загрузка контрибьюторов из GitHub API...</string>
     <string name="about_contributors_error">// ошибка загрузки: %1$s</string>
@@ -150,6 +152,8 @@
     <string name="settings_language_system">Системный</string>
     <string name="settings_language_english">English</string>
     <string name="settings_language_chinese">中文</string>
+    <string name="settings_language_russian">Русский</string>
+    <string name="settings_language_portuguese_brazil">Português (Brasil)</string>
     <string name="settings_cancel">Отмена</string>
     <string name="settings_save">Сохранить</string>
     <string name="settings_content_label">Контент</string>
@@ -821,7 +825,9 @@
     <string name="r2frida_install_continue">Продолжить</string>
     <string name="r2frida_install_switch_hint">Попробуйте сменить источник загрузки ниже и повторите</string>
     <string name="r2frida_source_github">Источник: GitHub (Международный)</string>
-    <string name="r2frida_source_gitee">Источник: Gitee (Китай)</string>
+    <string name="r2frida_source_gitee">Источник: Gitee (резервный — GitHub)</string>
+    <string name="r2frida_install_no_github_asset">Не удалось найти на GitHub версию r2frida для встроенного radare2 %1$s. Проверьте подключение или попробуйте Gitee.</string>
+    <string name="r2frida_install_no_mirror_or_github_asset">Не удалось найти на Gitee или GitHub версию r2frida для встроенного radare2 %1$s. Проверьте подключение к GitHub и повторите попытку.</string>
     
     <!-- Keep Alive / Background -->
     <string name="settings_background">Фоновый режим</string>
@@ -1068,4 +1074,7 @@
     <string name="switch_arch_thumb32">32-бит ARM Thumb</string>
     <string name="switch_arch_arm64">64-бит ARM</string>
     <string name="switch_arch_x64">x64 (x86-64)</string>
+
+    <string name="terminal_launch_system_title">Системный терминал</string>
+    <string name="terminal_launch_system_desc">Использовать системную оболочку Android без входа в PRoot.</string>
 </resources>

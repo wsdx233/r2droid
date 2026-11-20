@@ -64,7 +64,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProjectSettingsScreen(
     viewModel: ProjectViewModel,
-    r2fridaViewModel: R2FridaViewModel
+    r2fridaViewModel: R2FridaViewModel,
+    onReconnect: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -122,7 +123,7 @@ fun ProjectSettingsScreen(
             R2ManualScreen(
                 onBack = { showManual = false },
                 reconnecting = reconnectState is ReconnectState.Reconnecting,
-                onReconnect = { viewModel.onEvent(ProjectEvent.ReconnectCurrentSession) }
+                onReconnect = onReconnect
             )
         }
     }
@@ -655,9 +656,7 @@ fun ProjectSettingsScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = reconnectState !is ReconnectState.Reconnecting) {
-                    viewModel.onEvent(ProjectEvent.ReconnectCurrentSession)
-                },
+                .clickable(enabled = reconnectState !is ReconnectState.Reconnecting, onClick = onReconnect),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer
             )

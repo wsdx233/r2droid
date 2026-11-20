@@ -79,6 +79,14 @@ import top.wsdx233.r2droid.util.TerminalLauncher
 import top.wsdx233.r2droid.util.UpdateManager
 import java.io.File
 
+private val appLanguageOptions = mapOf(
+    "system" to R.string.settings_language_system,
+    "en" to R.string.settings_language_english,
+    "zh" to R.string.settings_language_chinese,
+    "ru" to R.string.settings_language_russian,
+    "pt-BR" to R.string.settings_language_portuguese_brazil
+)
+
 data class PersistedTreeAccess(
     val uri: Uri,
     val title: String,
@@ -978,12 +986,7 @@ fun SettingsScreen(
             }
             
             item {
-                val languageLabel = when(language) {
-                    "en" -> stringResource(R.string.settings_language_english)
-                    "zh" -> stringResource(R.string.settings_language_chinese)
-                    "ru" -> stringResource(R.string.settings_language_russian)
-                    else -> stringResource(R.string.settings_font_default) // "Default" (System)
-                }
+                val languageLabel = stringResource(appLanguageOptions[language] ?: R.string.settings_language_system)
                 SettingsItem(
                     title = stringResource(R.string.settings_language),
                     subtitle = languageLabel,
@@ -1167,10 +1170,13 @@ fun SettingsScreen(
             title = { Text(stringResource(R.string.settings_language)) },
             text = {
                 Column {
-                    LanguageOption(stringResource(R.string.settings_language_system), "system", language) { viewModel.setLanguage(it); showLanguageDialog = false; showRestartDialog = true }
-                    LanguageOption(stringResource(R.string.settings_language_english), "en", language) { viewModel.setLanguage(it); showLanguageDialog = false; showRestartDialog = true }
-                    LanguageOption(stringResource(R.string.settings_language_chinese), "zh", language) { viewModel.setLanguage(it); showLanguageDialog = false; showRestartDialog = true }
-                    LanguageOption(stringResource(R.string.settings_language_russian), "ru", language) { viewModel.setLanguage(it); showLanguageDialog = false; showRestartDialog = true }
+                    appLanguageOptions.forEach { (tag, label) ->
+                        LanguageOption(stringResource(label), tag, language) {
+                            viewModel.setLanguage(it)
+                            showLanguageDialog = false
+                            showRestartDialog = true
+                        }
+                    }
                 }
             },
             confirmButton = {

@@ -15,8 +15,9 @@
 
 - 🤖 **AI Assistant (OpenAI-compatible)**: chat-based analysis with streaming output, custom prompts, and optional command/script execution through `[[cmd]]` and `<js>` actions.
 - 💉 **R2Frida Workflow**: in-app r2frida installer, local/remote process flow, custom script management, and Frida-focused analysis tabs.
-- 📊 **Graph Viewer**: touch-friendly graphs with Sugiyama layout and support for Function Flow, Xref, Call Graph, Global Call Graph, and Data Reference Graph.
+- 📊 **Graph Viewer**: touch-friendly graphs with Sugiyama layout, zoom controls, and PNG export. Supports Function Flow, Xref, Call Graph, Global Call Graph, and Data Reference Graph.
 - 📑 **Report Export**: export analysis as Markdown / HTML / JSON, or generate Frida hook templates from discovered functions/imports/exports.
+- **Flutter AOT**: open **Features → Flutter AOT** to analyze an APK or `libapp.so`.
 
 ## 🛠️ Core Capabilities
 
@@ -50,8 +51,8 @@
 
 1. Clone the repository.
 2. Open with Android Studio (Ladybug or newer recommended).
-3. Use **JDK 17** as the Gradle JVM.
-4. Build and run a debug variant on an Android device/emulator (**minSdk 24**).
+3. The Gradle daemon uses JDK 21; the project compiles Kotlin/Java with a JDK 17 toolchain.
+4. Run on **Android 7.0+ (API 24), ARM64**. Both APKs ship ARM64 native components.
 
 Release variants refresh the ARM64 native runtime before packaging. The shared local/GitHub Actions build resolves the latest stable official `radare2`, `termux/proot`'s `master` commit, and the bundled `r2ghidra` / `r2dec` sources, then cross-compiles with Android NDK `28.2.13676358` / API 24.
 
@@ -66,7 +67,7 @@ python -m pip install meson==1.7.2
 
 Each default Release invocation refreshes one shared source lock; unchanged sources reuse checksum-verified native artifacts. The resolved lock is `app/build/generated/nativeRuntime/source-lock.json`. Pass `-PnativeRuntimeLock=/absolute/path/source-lock.json` to build from an existing immutable lock without resolving newer upstream commits. `-PnativeRuntimeJobs=N` controls native parallelism; `-PnativeRuntimePython=/path/to/python` selects the interpreter (Meson must remain on `PATH`). `GITHUB_TOKEN` is optional for local GitHub API rate limits.
 
-Pushing a `v*` tag runs the same Gradle tasks and publishes both signed APKs, the source lock, and each variant's runtime manifest. Manifests record source commits, toolchain versions, and staged asset hashes. Android's asset merger may expand staged `.tar.gz` archives into `.tar` entries in the APK; the installer supports both.
+The release workflow runs the unit suites and builds both signed APKs, a shared source lock, and per-variant runtime manifests. A manual run or `vX.Y.Z-rcN` tag uploads Actions artifacts **without** creating a GitHub Release. Only an exact `vX.Y.Z` tag matching the APKs’ `versionName` publishes a stable release. Version-specific notes in `.github/release-notes/` take precedence over the generated changelog. The manifests identify source commits, toolchain versions, and asset hashes. The installer accepts both staged `.tar.gz` and APK-merged `.tar` assets.
 
 Debug native preparation also requires Python 3.11+, but uses the checked-in binaries and does not refresh upstream sources or compile radare2/plugins.
 Full Debug currently bundles radare2 6.2.6.
@@ -79,6 +80,8 @@ The Full APK installs [r2frida](https://github.com/wsdx233/r2frida-android-arm64
 
 New PRoot environments default to [Ubuntu Base 24.04.5 LTS](https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/) from the official Ubuntu download server. Updating the app does not replace an installed container.
 
+See the [v0.4.0 upgrade notes](.github/release-notes/v0.4.0.md) for saved projects, chat migration, pending patches and reinstalling optional plugins.
+
 ## 📄 License
 
 This project is open-source under the [MIT License](LICENSE).
@@ -90,7 +93,7 @@ Thanks to the **Radare2**, **Frida**, and **Termux** communities.
 - [@wsdx233](https://github.com/wsdx233)
 - [@binx6](https://github.com/binx6)
 - [@AbhiTheModder](https://github.com/AbhiTheModder)
-- [@VictorGabriel7Dev](https://github.com/VictorGabriel7Dev)
+- [@VictorGabriel7Dev](https://github.com/VictorGabriel7Dev) (Brazilian Portuguese)
 
 See the latest list on GitHub: [Contributors](https://github.com/wsdx233/r2droid/graphs/contributors)
 

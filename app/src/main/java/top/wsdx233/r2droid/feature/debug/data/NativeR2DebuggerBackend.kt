@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.feature.debug.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.File
 import java.security.MessageDigest
@@ -35,23 +36,28 @@ open class NativeR2DebuggerBackend @Inject constructor(
     )
 
     override open suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = runCatching {
+        val session = R2PipeManager.activeSession() ?: error("No active session.")
+        check(!session.writeCacheEnabled) {
+            context?.getString(R.string.write_cache_replace_blocked)
+                ?: "Export or write pending patches, then reopen without write cache to debug."
+        }
         val preparedTarget = config.executablePath?.let { prepareExecutableTarget(it) }
         val existingBreakpoints = listBreakpoints().getOrDefault(emptyList())
 
         if (preparedTarget?.requiresSessionReopen == true) {
-            reopenDebugSession(preparedTarget.file, existingBreakpoints)
+            reopenDebugSession(session, preparedTarget.file, existingBreakpoints)
         } else if (config.attachPid != null) {
-            runner.executeFirstSuccessful("doo ${config.attachPid}", "ood ${config.attachPid}").getOrThrow()
+            runner.executeFirstSuccessful(session, "doo ${config.attachPid}", "ood ${config.attachPid}").getOrThrow()
         } else {
             val launchArgs = config.args.trim()
             val openCommand = if (launchArgs.isBlank()) "ood" else "ood $launchArgs"
-            val oodResult = runner.executeFirstSuccessful(openCommand, "doo")
+            val oodResult = runner.executeFirstSuccessful(session, openCommand, "doo")
             if (oodResult.isFailure) {
                 val targetFile = preparedTarget?.file
                     ?: config.executablePath?.let { File(it) }
                     ?: throw oodResult.exceptionOrNull()
                     ?: IllegalStateException("Native debug failed and no executable target is available")
-                reopenDebugSession(targetFile, existingBreakpoints)
+                reopenDebugSession(session, targetFile, existingBreakpoints)
             }
         }
 
@@ -116,18 +122,21 @@ open class NativeR2DebuggerBackend @Inject constructor(
         val requiresSessionReopen: Boolean
     )
 
-    private suspend fun reopenDebugSession(target: File, breakpointsToRestore: List<DebugBreakpoint>) {
-        val launchConfig = R2PipeManager.activeSessionLaunchConfig
-        val flags = withDebugFlag(launchConfig?.flags.orEmpty())
+    private suspend fun reopenDebugSession(
+        session: R2PipeManager.R2Session,
+        target: File,
+        breakpointsToRestore: List<DebugBreakpoint>
+    ) {
+        val flags = withDebugFlag(session.launchFlags)
         val appContext = context ?: throw IllegalStateException("Android context is required to reopen a native debug session")
-        R2PipeManager.replaceActiveSession(
+        val reopened = R2PipeManager.replaceActiveSession(
             context = appContext,
             filePath = target.absolutePath,
             flags = flags,
-            rawArgs = null
+            expectedSession = session
         ).getOrThrow()
         breakpointsToRestore.forEach { bp ->
-            runner.execute("db ${bp.address}").getOrNull()
+            runner.execute(reopened, "db ${bp.address}").getOrNull()
         }
     }
 

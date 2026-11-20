@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.activity
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -148,6 +149,10 @@ class TerminalActivity : ComponentActivity() {
         override fun logVerbose(tag: String?, message: String?) {}
         override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) {}
         override fun logStackTrace(tag: String?, e: Exception?) {}
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(SettingsManager.withAppLanguage(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

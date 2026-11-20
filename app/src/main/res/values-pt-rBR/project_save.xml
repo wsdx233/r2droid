@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="project_save_copy_description">Uma cópia do binário mantém as edições separadas e a sessão atual aberta no arquivo de origem. Binários gerenciados são copiados automaticamente ao salvar um projeto separado. Sem cópia, o projeto salvo usa o arquivo externo original.</string>
+    <string name="project_save_separate_hint">A sessão atual não será trocada. Abra o novo projeto em Projetos salvos quando quiser trabalhar nele.</string>
+    <string name="project_save_cache_hint">Salvar não inclui as alterações pendentes. Elas ficam nesta sessão. Para guardá-las separadamente, selecione Exportar cópia com alterações em Patches.</string>
+    <string name="project_save_separate_success">Salvo separadamente. A sessão atual não mudou. Abra o novo projeto em Projetos salvos.</string>
+    <string name="project_save_separate_cached_success">Salvo separadamente. A sessão atual não mudou e as alterações pendentes continuam nela.</string>
+    <string name="project_save_cached_success">Análise salva. As alterações pendentes não foram salvas e continuam nesta sessão.</string>
+</resources>

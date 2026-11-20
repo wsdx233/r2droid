@@ -5,5 +5,12 @@
     <string name="analysis_write_cache_conflicting_flags">Cached editing requires a local binary and cannot be combined with writable or debug startup flags.</string>
     <string name="analysis_write_cache_start_failed">Could not start a read-only session with the write cache enabled.</string>
     <string name="analysis_write_cache_edit_unavailable">Cached editing requires an active write cache and a read-only binary. Reopen the project to restore this mode.</string>
-    <string name="analysis_write_cache_close_warning">Closing the session discards pending patches, even if you save the project. To keep them, export a copy or write them back from Patches first.</string>
+    <string name="write_cache_close_title">Close write-cache session?</string>
+    <string name="write_cache_reconnect_title">Reconnect write-cache session?</string>
+    <string name="write_cache_discard_warning">%1$s may have pending patches. Continuing discards them. To keep them, cancel and export a patched copy or write the patches to the file from Patches.</string>
+    <string name="write_cache_discard_close">Discard patches and close</string>
+    <string name="write_cache_discard_reconnect">Discard patches and reconnect</string>
+    <string name="write_cache_save_excludes_patches">Saving analysis does not save pending patches. You can keep the session open after saving to export them or write them to the file.</string>
+    <string name="write_cache_reconnect_not_restored">Pending patches from the previous session were not restored.</string>
+    <string name="write_cache_replace_blocked">This action would replace a write-cache session. Export or write any pending patches from Patches, then open the binary without write cache to debug it.</string>
 </resources>

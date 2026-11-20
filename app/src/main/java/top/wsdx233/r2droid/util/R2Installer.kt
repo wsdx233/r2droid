@@ -44,18 +44,24 @@ object R2Installer {
      * written only after both archives, libraries, and configuration exist.
      */
     suspend fun checkAndInstall(context: Context) = withContext(Dispatchers.IO) {
+        install(context)
+    }
+
+    // Activity recreation can start a second check while the first is still extracting.
+    @Synchronized
+    private fun install(context: Context) {
         initialized = false
         val targetDir = File(context.filesDir, R2_DIR_NAME)
         var isUpdate = false
         var installationStarted = false
         val configBackup = File(context.filesDir, ".radare2rc-refresh")
-        configBackup.delete()
+        val config = File(targetDir, "bin/.radare2rc")
         try {
             ProotInstaller.ensureRuntimeBinary(context)
             if (!AppVariant.bundledR2Available) {
                 Log.d(TAG, "Bundled radare2 assets are disabled for this build variant; skipping host r2 installation")
                 _installState.value = InstallState(isInstalling = false)
-                return@withContext
+                return
             }
             val manifest = BundledRuntimeManifest.fromAssets(context.assets, requireRadare2 = true)
             val radare2 = manifest.radare2
@@ -65,13 +71,14 @@ object R2Installer {
             if (installedBundleId == bundleId && hasCompleteInstallation(context)) {
                 Log.d(TAG, "Radare2 bundle is up to date (${radare2.version})")
                 _installState.value = InstallState(isInstalling = false)
-                initialized = true
-                return@withContext
+                configBackup.delete() // Cleanup if the process stopped after publishing the marker.
+                return
             }
 
-            isUpdate = targetDir.exists() || installedBundleId != null
-            val existingR2rc = File(context.filesDir, "radare2/bin/.radare2rc")
-            if (existingR2rc.isFile) existingR2rc.copyTo(configBackup, overwrite = true)
+            isUpdate = targetDir.exists() || installedBundleId != null || configBackup.isFile
+            // Once published, this backup is authoritative until the marker is committed.
+            // Never replace it with a partially extracted config left by an interrupted run.
+            if (!configBackup.isFile && config.isFile) Os.rename(config.absolutePath, configBackup.absolutePath)
             if (isUpdate) Log.d(TAG, "Radare2 bundle changed or is incomplete; reinstalling")
             installationStarted = true
             getR2Marker(context).delete()
@@ -106,7 +113,6 @@ object R2Installer {
                 0.95f
             )
             copyAssetFolder(context, "libs", context.filesDir)
-            val config = File(context.filesDir, "radare2/bin/.radare2rc")
             if (configBackup.isFile) {
                 config.parentFile?.mkdirs()
                 configBackup.copyTo(config, overwrite = true)
@@ -134,13 +140,15 @@ object R2Installer {
                 getR2Marker(context).delete()
                 targetDir.deleteRecursively()
                 if (configBackup.isFile) {
-                    val restored = File(context.filesDir, "radare2/bin/.radare2rc")
-                    restored.parentFile?.mkdirs()
-                    configBackup.copyTo(restored, overwrite = true)
+                    try {
+                        config.parentFile?.mkdirs()
+                        Os.rename(configBackup.absolutePath, config.absolutePath)
+                    } catch (restoreError: Exception) {
+                        Log.e(TAG, "Keeping config backup for the next install attempt", restoreError)
+                    }
                 }
             }
         } finally {
-            configBackup.delete()
             initialized = true
         }
     }

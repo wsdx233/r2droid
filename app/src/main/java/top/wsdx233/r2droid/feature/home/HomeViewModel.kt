@@ -120,10 +120,11 @@ class HomeViewModel : ViewModel() {
                     return@launch
                 }
 
+                val prepared = checkNotNull(repository).prepareProjectForRestore(project.id).getOrThrow()
                 // Set pending file path and restore script path
-                R2PipeManager.pendingFilePath = project.binaryPath
+                R2PipeManager.pendingFilePath = prepared.binaryPath
                 R2PipeManager.pendingProjectRestore =
-                    R2PipeManager.PendingProjectRestore(project.id, project.scriptPath, project.writeCacheEnabled)
+                    R2PipeManager.PendingProjectRestore(prepared.id, prepared.scriptPath, prepared.writeCacheEnabled)
                 R2PipeManager.pendingAutoSaveProject = null
 
                 if (SettingsManager.useProotMode && !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(context)) {
@@ -146,7 +147,7 @@ class HomeViewModel : ViewModel() {
     fun onDeleteProject(context: Context, project: SavedProject) {
         viewModelScope.launch {
             try {
-                repository?.deleteProject(project.id)
+                checkNotNull(repository).deleteProject(project.id).getOrThrow()
                 loadSavedProjects() // Refresh list
                 _uiEvent.send(HomeUiEvent.ShowMessage(
                     context.getString(R.string.home_project_deleted)

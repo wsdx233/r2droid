@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Checkbox
@@ -38,12 +40,16 @@ fun SaveProjectDialog(
     var projectName by remember { mutableStateOf("") }
     var saveAsNew by remember { mutableStateOf(existingProjectId == null) }
     var copyBinary by remember { mutableStateOf(false) }
+    val session = R2PipeManager.activeSession()
     
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(top.wsdx233.r2droid.R.string.project_save_title)) },
         text = {
-            Column(modifier = Modifier.focusable(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()).focusable(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 if (existingProjectId != null) {
                     // Options for existing project
                     Row(
@@ -107,12 +113,24 @@ fun SaveProjectDialog(
                         Column {
                             Text(stringResource(R.string.analysis_copy_binary))
                             Text(
-                                text = stringResource(R.string.analysis_copy_binary_desc),
+                                text = stringResource(R.string.project_save_copy_description),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+                    if (copyBinary || session?.currentProjectId != null) {
+                        Text(
+                            text = stringResource(R.string.project_save_separate_hint),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                if (session?.writeCacheEnabled == true) {
+                    Text(
+                        text = stringResource(R.string.project_save_cache_hint),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },

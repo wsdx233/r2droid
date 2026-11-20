@@ -39,6 +39,7 @@
   - 分类导航（List/Detail/R2Frida/Project/AI）、顶部工具栏、底部标签体系。
 - **项目状态机**: `app/src/main/java/top/wsdx233/r2droid/feature/project/ProjectScreen.kt`
   - Configuring / Analyzing / Success 切换，退出保存确认流程。
+  - 写入缓存只在当前管道中保留，保存分析不会保存待写入的补丁。返回退出、抽屉关闭或重新连接时需显式确认丢弃；也可取消后在「补丁」页导出或写入文件。确认绑定到具体管道，而不是抽屉会话 ID。
 - **项目核心 ViewModel**: `app/src/main/java/top/wsdx233/r2droid/feature/project/ProjectViewModel.kt`
   - 分析会话启动、分页数据同步、图类型切换、保存/更新项目、反编译设置。
 - **项目持久化仓库**: `app/src/main/java/top/wsdx233/r2droid/feature/project/data/SavedProjectRepository.kt`

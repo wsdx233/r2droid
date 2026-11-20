@@ -51,19 +51,7 @@ class MainActivity : ComponentActivity() {
     private val pendingFileUri = mutableStateOf<Uri?>(null)
 
     override fun attachBaseContext(newBase: Context) {
-        // Apply language from settings
-        val prefs = newBase.getSharedPreferences("r2droid_settings", MODE_PRIVATE)
-        val language = prefs.getString("language", "system")
-
-        val context = if (language != null && language != "system") {
-            val locale = java.util.Locale(language)
-            val config = android.content.res.Configuration(newBase.resources.configuration)
-            config.setLocale(locale)
-            newBase.createConfigurationContext(config)
-        } else {
-            newBase
-        }
-        super.attachBaseContext(context)
+        super.attachBaseContext(SettingsManager.withAppLanguage(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

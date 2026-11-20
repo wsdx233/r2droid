@@ -98,8 +98,10 @@
     <string name="about_contact_comment">// 联系方式</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// 源代码</string>
-    <string name="about_core_value">radare2 @ 6.1.0</string>
-    <string name="about_core_comment">// 核心引擎</string>
+    <string name="about_core_value">radare2 @ %1$s</string>
+    <string name="about_core_not_bundled">未内置（仅 PRoot 版）</string>
+    <string name="about_core_unavailable">无法读取内置版本</string>
+    <string name="about_core_comment">// APK 内置内容，并非当前运行的引擎</string>
     <string name="about_contributors_comment">// GitHub 贡献者（实时）</string>
     <string name="about_contributors_loading">// 正在从 GitHub API 获取贡献者...</string>
     <string name="about_contributors_error">// 获取失败: %1$s</string>
@@ -117,6 +119,7 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_chinese">中文</string>
     <string name="settings_language_russian">俄语</string>
+    <string name="settings_language_portuguese_brazil">Português (Brasil)</string>
     <string name="settings_cancel">取消</string>
     <string name="settings_save">保存</string>
     <string name="settings_content_label">内容</string>
@@ -955,7 +958,9 @@
     <string name="r2frida_install_continue">继续</string>
     <string name="r2frida_install_switch_hint">可尝试切换下方的下载源后重试</string>
     <string name="r2frida_source_github">下载源：GitHub（国际）</string>
-    <string name="r2frida_source_gitee">下载源：Gitee（国内）</string>
+    <string name="r2frida_source_gitee">下载源：Gitee（不可用时使用 GitHub）</string>
+    <string name="r2frida_install_no_github_asset">未能在 GitHub 上找到与内置 radare2 %1$s 兼容的 r2frida 下载。请检查网络连接，或尝试 Gitee。</string>
+    <string name="r2frida_install_no_mirror_or_github_asset">未能在 Gitee 或 GitHub 上找到与内置 radare2 %1$s 兼容的 r2frida 下载。请检查到 GitHub 的连接后重试。</string>
     <!-- Keep Alive / Background -->
     <string name="settings_background">后台保活</string>
 
@@ -989,7 +994,7 @@
     <string name="terminal_launch_proot_title">Proot 终端</string>
     <string name="terminal_launch_proot_desc">进入已配置的 Ubuntu proot 环境，使用其中的 radare2 工具。</string>
     <string name="terminal_launch_system_title">系统终端</string>
-    <string name="terminal_launch_system_desc">使用 Android shell 和内置 radare2 环境，不进入 proot。</string>
+    <string name="terminal_launch_system_desc">使用 Android 系统 shell，不进入 PRoot。</string>
     <string name="terminal_launch_do_not_ask_again">不再询问</string>
     <string name="terminal_launch_confirm">打开终端</string>
 

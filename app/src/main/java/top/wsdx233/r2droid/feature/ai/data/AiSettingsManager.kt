@@ -2,12 +2,14 @@ package top.wsdx233.r2droid.feature.ai.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 
 object AiSettingsManager {
+    private const val TAG = "AiSettingsManager"
     private const val PREFS_NAME = "r2droid_ai_settings"
     private const val KEY_PROVIDER_CONFIG = "provider_config"
     private const val KEY_SYSTEM_PROMPT = "system_prompt"
@@ -26,6 +28,7 @@ object AiSettingsManager {
     private val _sessionsFlow = MutableStateFlow<List<ChatSessionMetadata>>(emptyList())
     val sessionsFlow = _sessionsFlow.asStateFlow()
 
+    @Synchronized
     fun initialize(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         chatHistoryStore = AiChatHistoryStore(context)
@@ -109,21 +112,27 @@ object AiSettingsManager {
     private fun loadSessions(): List<ChatSessionMetadata> {
         val indexedSessions = chatHistoryStore.loadIndex()
         val legacyRaw = prefs.getString(KEY_CHAT_SESSIONS, null)
-
-        if (legacyRaw != null && indexedSessions.isEmpty()) {
-            val migrated = chatHistoryStore.importLegacySessions(legacyRaw)
+        if (legacyRaw != null) {
+            val existing = indexedSessions ?: chatHistoryStore.recoverIndex() ?: return emptyList()
+            val migrated = chatHistoryStore.importLegacySessions(legacyRaw, existing)
             if (migrated != null) {
-                prefs.edit { remove(KEY_CHAT_SESSIONS) }
+                // A failed preference write can be retried; importing again preserves file data.
+                if (!prefs.edit().remove(KEY_CHAT_SESSIONS).commit()) {
+                    Log.w(TAG, "Could not remove migrated chat preference")
+                }
                 return migrated
             }
-            return emptyList()
+            // Earlier sessions in an interrupted import may already have been published.
+            return chatHistoryStore.recoverIndex() ?: existing
         }
 
-        if (legacyRaw != null) {
-            prefs.edit { remove(KEY_CHAT_SESSIONS) }
-        }
-        chatHistoryStore.deleteSessionsNotIn(indexedSessions.map { it.id }.toSet())
-        return indexedSessions
+        return indexedSessions ?: chatHistoryStore.recoverIndex()?.also { recovered ->
+            try {
+                chatHistoryStore.saveIndex(recovered)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not persist recovered chat index", e)
+            }
+        }.orEmpty()
     }
 
     private fun saveSessions(sessions: List<ChatSessionMetadata>) {
@@ -135,8 +144,9 @@ object AiSettingsManager {
         return chatHistoryStore.loadSession(sessionId)
     }
 
+    @Synchronized
     fun saveSession(session: ChatSession) {
-        chatHistoryStore.saveSession(session)
+        if (!chatHistoryStore.saveSession(session)) return
         val metadata = ChatSessionMetadata(
             id = session.id,
             title = session.title,
@@ -152,6 +162,7 @@ object AiSettingsManager {
         saveSessions(sessions)
     }
 
+    @Synchronized
     fun deleteSession(sessionId: String) {
         chatHistoryStore.deleteSession(sessionId)
         saveSessions(_sessionsFlow.value.filter { it.id != sessionId })

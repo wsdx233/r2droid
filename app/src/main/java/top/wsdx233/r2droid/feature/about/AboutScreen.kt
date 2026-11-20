@@ -98,6 +98,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.util.AppVariant
+import top.wsdx233.r2droid.util.BundledRuntimeManifest
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
@@ -111,7 +113,15 @@ fun AboutScreen(
     val scrollState = rememberScrollState()
     val uriHandler = LocalUriHandler.current
     // val clipboardManager = LocalClipboardManager.current
-    // val context = LocalContext.current
+    val context = LocalContext.current
+    val bundledCoreVersion = remember(context) {
+        if (AppVariant.bundledR2Available) {
+            runCatching { BundledRuntimeManifest.fromAssets(context.assets, requireRadare2 = true) }
+                .getOrNull()?.radare2?.version
+        } else {
+            null
+        }
+    }
     val hazeState = rememberHazeState()
 
     Scaffold(
@@ -231,8 +241,12 @@ fun AboutScreen(
 
                 StaggeredCodeCard(
                     index = 3,
-                    variableName = "core",
-                    value = stringResource(R.string.about_core_value),
+                    variableName = "bundled_core",
+                    value = when {
+                        !AppVariant.bundledR2Available -> stringResource(R.string.about_core_not_bundled)
+                        bundledCoreVersion != null -> stringResource(R.string.about_core_value, bundledCoreVersion)
+                        else -> stringResource(R.string.about_core_unavailable)
+                    },
                     comment = stringResource(R.string.about_core_comment),
                     icon = Icons.Rounded.DataObject,
                     onClick = {}

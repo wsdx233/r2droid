@@ -27,6 +27,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import top.wsdx233.r2droid.R
+import top.wsdx233.r2droid.feature.project.WriteCacheDiscardDialog
 import top.wsdx233.r2droid.ui.theme.R2droidTheme
 import java.io.File
 
@@ -248,6 +249,29 @@ class PatchesScreenTest {
         maybeSaveScreenshot("patches_pending_undo.png")
         compose.onNodeWithText("Undo this patch").performClick()
         assertEquals(pendingOnly.entries.single(), undoRequested)
+    }
+
+    @Test
+    fun reconnectWarningNamesSessionAndCancelDoesNotDiscard() {
+        var cancelled = false
+        var discarded = false
+        compose.setContent {
+            R2droidTheme(darkTheme = false, dynamicColor = false) {
+                WriteCacheDiscardDialog(
+                    sessionName = "sample.elf",
+                    reconnect = true,
+                    onDismiss = { cancelled = true },
+                    onDiscard = { discarded = true }
+                )
+            }
+        }
+
+        compose.onNodeWithText("sample.elf may have pending patches", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(true, cancelled)
+        assertEquals(false, discarded)
+        compose.onNodeWithText("Discard patches and reconnect").performClick()
+        assertEquals(true, discarded)
     }
 
     private fun maybeSaveScreenshot(name: String) {

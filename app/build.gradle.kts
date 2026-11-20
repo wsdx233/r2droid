@@ -36,8 +36,11 @@ fun nativeRuntimeSdkDirectory(): File {
 }
 
 fun nativeRuntimeNdkDirectory(): File {
+    val pinned = File(nativeRuntimeSdkDirectory(), "ndk/$nativeRuntimeNdkVersion")
+    // Hosted runners also export a default NDK, which may not be the one installed for this build.
+    if (pinned.isDirectory) return pinned.absoluteFile
     val explicit = System.getenv("ANDROID_NDK_ROOT") ?: System.getenv("ANDROID_NDK_HOME")
-    return (explicit?.let(::File) ?: File(nativeRuntimeSdkDirectory(), "ndk/$nativeRuntimeNdkVersion")).absoluteFile
+    return (explicit?.let(::File) ?: pinned).absoluteFile
 }
 
 android {
@@ -51,8 +54,8 @@ android {
         applicationId = "top.wsdx233.r2droid"
         minSdk = 24
         targetSdk = 26
-        versionCode = 2604280
-        versionName = "0.3.1"
+        versionCode = 2611190
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

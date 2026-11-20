@@ -5,5 +5,12 @@
     <string name="analysis_write_cache_conflicting_flags">Для правок в памяти нужен локальный файл. Параметры запуска для записи или отладки несовместимы с этим режимом.</string>
     <string name="analysis_write_cache_start_failed">Не удалось открыть сеанс только для чтения с включённым кешем записи.</string>
     <string name="analysis_write_cache_edit_unavailable">Для правок в памяти нужен включённый кеш записи и файл, открытый только для чтения. Откройте проект заново, чтобы восстановить этот режим.</string>
-    <string name="analysis_write_cache_close_warning">При закрытии сеанса незаписанные патчи будут потеряны, даже если сохранить проект. Чтобы оставить изменения, экспортируйте копию или запишите их в файл на вкладке «Патчи».</string>
+    <string name="write_cache_close_title">Закрыть сеанс с кешем записи?</string>
+    <string name="write_cache_reconnect_title">Переподключить сеанс с кешем записи?</string>
+    <string name="write_cache_discard_warning">В сеансе «%1$s» могут быть незаписанные патчи. При продолжении они будут потеряны. Чтобы сохранить их, отмените действие и экспортируйте изменённую копию или запишите патчи в файл на вкладке «Патчи».</string>
+    <string name="write_cache_discard_close">Отбросить патчи и закрыть</string>
+    <string name="write_cache_discard_reconnect">Отбросить патчи и переподключить</string>
+    <string name="write_cache_save_excludes_patches">Сохранение анализа не сохраняет незаписанные патчи. После сохранения можно оставить сеанс открытым, чтобы экспортировать их или записать в файл.</string>
+    <string name="write_cache_reconnect_not_restored">Незаписанные патчи из предыдущего сеанса не восстановлены.</string>
+    <string name="write_cache_replace_blocked">Это действие заменит сеанс с кешем записи. Экспортируйте или запишите незаписанные патчи на вкладке «Патчи», а затем откройте файл без кеша записи для отладки.</string>
 </resources>

@@ -2,6 +2,7 @@ package top.wsdx233.r2droid.feature.debug.data
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.R2PipeManager
 import javax.inject.Inject
 
@@ -41,7 +42,7 @@ class GdbRemoteDebuggerBackend @Inject constructor(
             context = appContext,
             filePath = uri,
             flags = "-d",
-            rawArgs = null
+            expectedSession = R2PipeManager.activeSession() ?: error("No active session.")
         ).getOrThrow()
 
         refresh().getOrThrow().copy(
@@ -52,7 +53,12 @@ class GdbRemoteDebuggerBackend @Inject constructor(
     }
 
     override suspend fun stop(): Result<Unit> = runCatching {
-        runner.executeFirstSuccessful("doc", "dk", "q").getOrThrow()
+        val session = R2PipeManager.activeSession() ?: error("No active session.")
+        check(!session.writeCacheEnabled) {
+            context?.getString(R.string.write_cache_replace_blocked)
+                ?: "Export or write pending patches before replacing the backend."
+        }
+        runner.executeFirstSuccessful(session, "doc", "dk", "q").getOrThrow()
         lastRegisters = emptyMap()
     }
 }

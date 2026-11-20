@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="project_save_copy_description">A binary copy keeps edits separate and leaves the current session open on the source. Managed binaries are copied automatically when saving a separate project; without a copy, the saved project uses the original external file.</string>
+    <string name="project_save_separate_hint">This will not switch the current session. Open the new project from Saved Projects when you want to work on it.</string>
+    <string name="project_save_cache_hint">Saving does not include pending patches. They stay in this session. To keep them separately, use Export patched copy in Patches.</string>
+    <string name="project_save_separate_success">Saved separately. The current session did not switch. Open the new project from Saved Projects.</string>
+    <string name="project_save_separate_cached_success">Saved separately. The current session did not switch, and pending patches stay here.</string>
+    <string name="project_save_cached_success">Analysis saved. Pending patches were not saved and stay in this session.</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="project_save_copy_description">复制二进制文件后，两份文件可分别编辑，当前会话仍打开源文件。另存为独立项目时，应用管理的二进制文件会自动复制；不复制则已保存的项目使用原外部文件。</string>
+    <string name="project_save_separate_hint">此操作不会切换当前会话。如需编辑新项目，请在「已保存的项目」中打开。</string>
+    <string name="project_save_cache_hint">保存不包含待处理的补丁。补丁仍留在当前会话中。如需单独保留，请在「补丁」中选择「导出已修补的副本」。</string>
+    <string name="project_save_separate_success">已另存为独立项目。当前会话未切换。请在「已保存的项目」中打开新项目。</string>
+    <string name="project_save_separate_cached_success">已另存为独立项目。当前会话未切换，待处理的补丁仍留在当前会话中。</string>
+    <string name="project_save_cached_success">已保存分析结果。待处理的补丁未保存，仍留在当前会话中。</string>
+</resources>

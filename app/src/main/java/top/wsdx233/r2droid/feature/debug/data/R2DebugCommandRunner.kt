@@ -21,6 +21,12 @@ class R2DebugCommandRunner @Inject constructor() {
         }
     }
 
+    internal suspend fun execute(session: R2PipeManager.R2Session, command: String): Result<String> =
+        R2PipeManager.execute(session, command, markDirty = false).mapCatching { output ->
+            validateCommandOutput(command, output)
+            output
+        }
+
     suspend fun executeFrida(command: String): Result<String> {
         if (!R2PipeManager.isR2FridaSession) {
             return Result.failure(IllegalStateException(FRIDA_SESSION_REQUIRED_MESSAGE))
@@ -46,7 +52,16 @@ class R2DebugCommandRunner @Inject constructor() {
 
     fun isFridaCommand(command: String): Boolean = command.trimStart().startsWith(":")
 
-    suspend fun executeFirstSuccessful(vararg commands: String): Result<String> = runCatching {
+    suspend fun executeFirstSuccessful(vararg commands: String): Result<String> =
+        executeFirstSuccessful(commands, ::execute)
+
+    internal suspend fun executeFirstSuccessful(session: R2PipeManager.R2Session, vararg commands: String): Result<String> =
+        executeFirstSuccessful(commands) { execute(session, it) }
+
+    private suspend fun executeFirstSuccessful(
+        commands: Array<out String>,
+        execute: suspend (String) -> Result<String>
+    ): Result<String> = runCatching {
         var lastError: Throwable? = null
         for (command in commands.filter { it.isNotBlank() }) {
             val result = execute(command)

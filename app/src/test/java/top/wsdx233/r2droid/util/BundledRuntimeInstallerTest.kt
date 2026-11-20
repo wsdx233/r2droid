@@ -3,6 +3,7 @@ package top.wsdx233.r2droid.util
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.AssetManager
+import android.system.Os
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
@@ -23,7 +24,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
-import org.robolectric.shadows.ShadowLinux
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -34,21 +34,24 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], shadows = [BundledRuntimeInstallerTest.HostLinux::class])
+@Config(sdk = [28], shadows = [BundledRuntimeInstallerTest.HostRename::class])
 class BundledRuntimeInstallerTest {
     @get:Rule
     val temporary = TemporaryFolder()
     private val assetManagers = mutableListOf<AssetManager>()
 
-    // Robolectric 4.12 models Linux stat/open, but not rename; use the host filesystem.
-    @Implements(className = "libcore.io.Linux", isInAndroidSdk = false)
-    class HostLinux : ShadowLinux() {
-        @Implementation
-        fun rename(oldPath: String, newPath: String) {
-            Files.move(
-                File(oldPath).toPath(), File(newPath).toPath(),
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
-            )
+    // Shadow the static API: the libcore Linux singleton can outlive a test's shadow config.
+    @Implements(Os::class)
+    class HostRename {
+        companion object {
+            @JvmStatic
+            @Implementation
+            fun rename(oldPath: String, newPath: String) {
+                Files.move(
+                    File(oldPath).toPath(), File(newPath).toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
+                )
+            }
         }
     }
 
@@ -147,6 +150,25 @@ class BundledRuntimeInstallerTest {
         R2Installer.checkAndInstall(context)
         assertEquals("r2 6.1.0 executable", binary.readText())
         assertTrue(File(files, ".r2-runtime-manifest").isFile)
+    }
+
+    @Test
+    fun interruptedExtractionRetainsBackupOverPartialConfig() = runBlocking {
+        assumeTrue(AppVariant.bundledR2Available)
+        val files = temporary.newFolder("interrupted")
+        val context = fixture(files, "retry", "proot".toByteArray())
+        val userConfig = "# custom config\ne asm.bytes = false\n"
+        val backup = File(files, ".radare2rc-refresh").apply { writeText(userConfig) }
+        val config = File(files, "radare2/bin/.radare2rc").apply {
+            parentFile!!.mkdirs()
+            writeText("partial restoration")
+        }
+
+        R2Installer.checkAndInstall(context)
+
+        assertEquals(userConfig, config.readText())
+        assertTrue(File(files, ".r2-runtime-manifest").isFile)
+        assertFalse(backup.exists())
     }
 
     @Test

@@ -156,8 +156,10 @@
     <string name="about_contact_comment">// Reach out</string>
     <string name="about_repo_value">git clone .../r2droid</string>
     <string name="about_repo_comment">// Source Code</string>
-    <string name="about_core_value">radare2 @ 6.1.0</string>
-    <string name="about_core_comment">// Powering the engine</string>
+    <string name="about_core_value">radare2 @ %1$s</string>
+    <string name="about_core_not_bundled">Not bundled (PRoot-only build)</string>
+    <string name="about_core_unavailable">Bundled version unavailable</string>
+    <string name="about_core_comment">// APK contents, not the active engine</string>
     <string name="about_contributors_comment">// GitHub contributors (live)</string>
     <string name="about_contributors_loading">// loading contributors from GitHub API...</string>
     <string name="about_contributors_error">// fetch failed: %1$s</string>
@@ -175,6 +177,7 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_chinese">中文</string>
     <string name="settings_language_russian">Русский</string>
+    <string name="settings_language_portuguese_brazil">Português (Brasil)</string>
     <string name="settings_cancel">Cancel</string>
     <string name="settings_save">Save</string>
     <string name="settings_content_label">Content</string>
@@ -953,7 +956,9 @@
     <string name="r2frida_install_continue">Continue</string>
     <string name="r2frida_install_switch_hint">Try switching the download source below and retry</string>
     <string name="r2frida_source_github">Source: GitHub (International)</string>
-    <string name="r2frida_source_gitee">Source: Gitee (China)</string>
+    <string name="r2frida_source_gitee">Source: Gitee (GitHub fallback)</string>
+    <string name="r2frida_install_no_github_asset">Could not find a compatible r2frida download for bundled radare2 %1$s on GitHub. Check your connection or try Gitee.</string>
+    <string name="r2frida_install_no_mirror_or_github_asset">Could not find a compatible r2frida download for bundled radare2 %1$s on Gitee or GitHub. Check your connection to GitHub and retry.</string>
     <!-- Keep Alive / Background -->
     <string name="settings_background">Background</string>
 
@@ -987,7 +992,7 @@
     <string name="terminal_launch_proot_title">Proot terminal</string>
     <string name="terminal_launch_proot_desc">Enter the configured Ubuntu proot environment with radare2 tools.</string>
     <string name="terminal_launch_system_title">System terminal</string>
-    <string name="terminal_launch_system_desc">Use the Android shell and bundled radare2 environment without entering proot.</string>
+    <string name="terminal_launch_system_desc">Use the Android system shell without entering PRoot.</string>
     <string name="terminal_launch_do_not_ask_again">Don’t ask again</string>
     <string name="terminal_launch_confirm">Open terminal</string>
 

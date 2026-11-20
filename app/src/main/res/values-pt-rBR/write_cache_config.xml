@@ -5,5 +5,12 @@
     <string name="analysis_write_cache_conflicting_flags">Esse modo exige um binário local e não pode ser combinado com opções de inicialização para escrita ou depuração.</string>
     <string name="analysis_write_cache_start_failed">Não foi possível iniciar uma sessão somente para leitura com o cache de escrita ativado.</string>
     <string name="analysis_write_cache_edit_unavailable">Para manter alterações na memória, o cache de escrita deve estar ativo e o binário deve estar em modo somente leitura. Reabra o projeto para restaurar esse modo.</string>
-    <string name="analysis_write_cache_close_warning">Fechar a sessão descarta os patches pendentes, mesmo ao salvar o projeto. Para mantê-los, exporte uma cópia ou grave-os no arquivo pela aba Patches.</string>
+    <string name="write_cache_close_title">Fechar a sessão com cache de escrita?</string>
+    <string name="write_cache_reconnect_title">Reconectar a sessão com cache de escrita?</string>
+    <string name="write_cache_discard_warning">%1$s pode ter patches pendentes. Continuar vai descartá-los. Para mantê-los, cancele e exporte uma cópia com os patches ou grave-os no arquivo pela aba Patches.</string>
+    <string name="write_cache_discard_close">Descartar patches e fechar</string>
+    <string name="write_cache_discard_reconnect">Descartar patches e reconectar</string>
+    <string name="write_cache_save_excludes_patches">Salvar a análise não salva os patches pendentes. Você pode manter a sessão aberta após salvar para exportá-los ou gravá-los no arquivo.</string>
+    <string name="write_cache_reconnect_not_restored">Os patches pendentes da sessão anterior não foram restaurados.</string>
+    <string name="write_cache_replace_blocked">Esta ação substituiria uma sessão com cache de escrita. Exporte ou grave os patches pendentes na aba Patches e abra o binário sem cache de escrita para depurá-lo.</string>
 </resources>

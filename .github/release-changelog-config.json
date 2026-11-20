@@ -1,6 +1,6 @@
 {
-  "template": "## 📋 更新日志",
-  "empty_template": "## 📋 更新日志",
+  "template": "## 更新日志 / Changelog\n\n#{{CHANGELOG}}",
+  "empty_template": "No changes since the previous release.",
   "categories": [
     {
       "title": "## ✨ 新功能",

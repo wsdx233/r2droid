@@ -3,7 +3,9 @@ name: Android Release Build
 on:
   push:
     tags:
-      - 'v*' # 只有当推送标签（如 v1.0.0）时才触发构建
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,7 +35,7 @@ jobs:
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
+          packages: >-
             platforms;android-36
             build-tools;36.0.0
             ndk;28.2.13676358
@@ -56,12 +58,12 @@ jobs:
         env:
           ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo $ENCODED_STRING | base64 -d > app/release-keystore.jks
+          printf '%s' "$ENCODED_STRING" | base64 --decode > app/release-keystore.jks
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Release APKs
+      - name: Test and build release APKs
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -72,6 +74,7 @@ jobs:
           NATIVE_RUNTIME_GITHUB_TOKEN="$GITHUB_TOKEN"
           unset GITHUB_TOKEN
           ./gradlew \
+            :r2pipe-kotlin:test :app:testFullDebugUnitTest :app:testProotOnlyDebugUnitTest \
             :app:assembleFullRelease \
             :app:assembleProotOnlyRelease \
             -PKEYSTORE_FILE=release-keystore.jks \
@@ -81,18 +84,44 @@ jobs:
             -PnativeRuntimePython="$PWD/.native-runtime-venv/bin/python" \
             -PnativeRuntimeGithubToken="$NATIVE_RUNTIME_GITHUB_TOKEN"
 
-      - name: List Build Output
-        run: find app/build/outputs/apk -name "*.apk" -o -name "output-metadata.json"
-
-      - name: Rename APKs and collect runtime provenance
+      - name: Check packaged versions and collect artifacts
+        id: package
         run: |
-          cp app/build/outputs/apk/full/release/app-full-release.apk R2Droid-${{ github.ref_name }}.apk
-          cp app/build/outputs/apk/prootOnly/release/app-prootOnly-release.apk R2Droid-Proot-${{ github.ref_name }}.apk
-          cp app/build/generated/nativeRuntime/source-lock.json native-runtime-source-lock-${{ github.ref_name }}.json
-          cp app/build/generated/nativeRuntime/fullRelease/runtime-manifest.json native-runtime-manifest-full-${{ github.ref_name }}.json
-          cp app/build/generated/nativeRuntime/prootOnlyRelease/runtime-manifest.json native-runtime-manifest-proot-${{ github.ref_name }}.json
+          full=app/build/outputs/apk/full/release
+          proot=app/build/outputs/apk/prootOnly/release
+          version=$(jq -er '.elements[0].versionName' "$full/output-metadata.json")
+          code=$(jq -er '.elements[0].versionCode' "$full/output-metadata.json")
+          jq -e --arg v "$version" --argjson c "$code" \
+            '.elements | length == 1 and .[0].versionName == $v and .[0].versionCode == $c' "$proot/output-metadata.json"
+          tag="v$version"
+          if [[ $GITHUB_EVENT_NAME == push && ${GITHUB_REF_NAME%%-rc*} != "$tag" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match packaged version $version"
+            exit 1
+          fi
+          echo "stable_tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ -s .github/release-notes/$tag.md ]]; then
+            echo "notes_path=.github/release-notes/$tag.md" >> "$GITHUB_OUTPUT"
+          fi
+          dist=build/release-artifacts
+          runtime=app/build/generated/nativeRuntime
+          mkdir -p "$dist"
+          cp "$full/app-full-release.apk" "$dist/R2Droid-$tag.apk"
+          cp "$proot/app-prootOnly-release.apk" "$dist/R2Droid-Proot-$tag.apk"
+          cp "$runtime/source-lock.json" "$dist/native-runtime-source-lock-$tag.json"
+          cp "$runtime/fullRelease/runtime-manifest.json" "$dist/native-runtime-manifest-full-$tag.json"
+          cp "$runtime/prootOnlyRelease/runtime-manifest.json" "$dist/native-runtime-manifest-proot-$tag.json"
+
+      - name: Upload candidate for review (no GitHub Release)
+        if: github.event_name != 'push' || github.ref_name != steps.package.outputs.stable_tag
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2droid-candidate-${{ github.run_id }}
+          path: build/release-artifacts/
+          if-no-files-found: error
+
       - name: Build Changelog
         id: build_changelog
+        if: github.event_name == 'push' && github.ref_name == steps.package.outputs.stable_tag && steps.package.outputs.notes_path == ''
         uses: mikepenz/release-changelog-builder-action@v6
         with:
           mode: "COMMIT"
@@ -102,14 +131,11 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && github.ref_name == steps.package.outputs.stable_tag
         with:
           body: ${{ steps.build_changelog.outputs.changelog }}
-          files: |
-            R2Droid-${{ github.ref_name }}.apk
-            R2Droid-Proot-${{ github.ref_name }}.apk
-            native-runtime-source-lock-${{ github.ref_name }}.json
-            native-runtime-manifest-full-${{ github.ref_name }}.json
-            native-runtime-manifest-proot-${{ github.ref_name }}.json
+          body_path: ${{ steps.package.outputs.notes_path }}
+          fail_on_unmatched_files: true
+          files: build/release-artifacts/*
           draft: false
           prerelease: false

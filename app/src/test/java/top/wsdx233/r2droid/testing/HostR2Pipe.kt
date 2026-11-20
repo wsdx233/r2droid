@@ -29,7 +29,6 @@ class HostR2Pipe(
 
     fun cmd(command: String): String {
         if (verbose) println("[R2] >> $command")
-        flushInput()
         writeCommand(command)
         val result = readResult()
         if (verbose) println("[R2] << ${result.take(200)}${if (result.length > 200) "..." else ""}")
@@ -50,12 +49,6 @@ class HostR2Pipe(
         }
     }
 
-    private fun flushInput() {
-        try {
-            while (inputStream.available() > 0) inputStream.read()
-        } catch (_: Exception) {
-        }
-    }
 
     private fun writeCommand(command: String) {
         writeBuffer.clear()
@@ -144,8 +137,8 @@ class HostR2Pipe(
             }.start()
 
             val pipe = HostR2Pipe(process, verbose)
-            // Consume any initial greeting / leftover bytes
-            pipe.flushInput()
+            // -q0 sends a startup NUL before the first reply. available() races process startup.
+            pipe.readResult()
             return pipe
         }
     }

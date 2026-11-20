@@ -5,5 +5,12 @@
     <string name="analysis_write_cache_conflicting_flags">暂存编辑需要本地二进制文件，不能与可写或调试启动参数同时使用。</string>
     <string name="analysis_write_cache_start_failed">无法启动已启用写入缓存的只读会话。</string>
     <string name="analysis_write_cache_edit_unavailable">暂存编辑需要启用写入缓存，并以只读方式打开二进制文件。请重新打开项目以恢复此模式。</string>
-    <string name="analysis_write_cache_close_warning">关闭会话会丢弃待写入的补丁，即使已保存项目也是如此。要保留修改，请先在「补丁」页导出副本或写回文件。</string>
+    <string name="write_cache_close_title">关闭写入缓存会话？</string>
+    <string name="write_cache_reconnect_title">重新连接写入缓存会话？</string>
+    <string name="write_cache_discard_warning">%1$s 可能有待写入的补丁。继续操作将丢弃这些补丁。要保留补丁，请取消，然后在「补丁」页导出已修补的副本或将补丁写入文件。</string>
+    <string name="write_cache_discard_close">丢弃补丁并关闭</string>
+    <string name="write_cache_discard_reconnect">丢弃补丁并重新连接</string>
+    <string name="write_cache_save_excludes_patches">保存分析结果不会保存待写入的补丁。保存后可以保持会话打开，以导出补丁或将其写入文件。</string>
+    <string name="write_cache_reconnect_not_restored">上一会话中待写入的补丁未恢复。</string>
+    <string name="write_cache_replace_blocked">此操作会替换写入缓存会话。请先在「补丁」页导出或写入待处理的补丁，再关闭写入缓存并重新打开二进制文件进行调试。</string>
 </resources>
