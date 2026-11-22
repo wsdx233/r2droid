@@ -210,7 +210,8 @@ internal fun MessageBubble(
     onRegenerate: () -> Unit,
     onDelete: () -> Unit,
     onDecideTool: (callId: String, approved: Boolean, alwaysAllow: Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onReferenceClick: ((String) -> Unit)? = null
 ) {
     val isUser = message.role == ChatRole.User
     val parsed = remember(message.role, message.content, message.reasoning, message.isStreaming) {
@@ -281,6 +282,8 @@ internal fun MessageBubble(
             if (parsed.visibleContent.isNotBlank()) {
                 AiMarkdown(
                     text = parsed.visibleContent,
+                    streaming = message.isStreaming,
+                    onReferenceClick = onReferenceClick.takeIf { message.role == ChatRole.Assistant },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(

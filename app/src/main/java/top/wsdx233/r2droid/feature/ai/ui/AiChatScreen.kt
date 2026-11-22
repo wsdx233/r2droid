@@ -47,7 +47,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -75,7 +74,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -85,6 +83,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -114,6 +113,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -136,9 +137,20 @@ import kotlin.math.roundToInt
 
 // The project can remove this composable when switching tabs. Retain UI state for the
 // lifetime of its ViewModel without keeping the project/ViewModel alive after it closes.
-private class ChatScreenMemory {
+internal class ChatScreenMemory {
     val drafts = mutableStateMapOf<String?, String>()
     var modeSessionId: Int? = null
+    private val viewports = mutableMapOf<String, ChatViewport>()
+
+    // Unsaved chats have no transcript to restore. Their draft is managed separately.
+    @Composable
+    fun viewportFor(chatId: String?): ChatViewport = remember(this, chatId) {
+        if (chatId == null) ChatViewport() else viewports.getOrPut(chatId, ::ChatViewport)
+    }
+
+    fun forgetViewport(chatId: String) {
+        viewports.remove(chatId)
+    }
 }
 
 private val chatScreenMemory = WeakHashMap<AiViewModel, ChatScreenMemory>()
@@ -189,6 +201,8 @@ fun AiChatTopBarSubtitle(viewModel: AiViewModel) {
 @Composable
 fun AiChatScreen(
     viewModel: AiViewModel,
+    onNavigateToDetail: (Long, Int) -> Unit,
+    onShowXrefs: (Long) -> Unit,
     topBarState: AiChatTopBarState? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -211,8 +225,8 @@ fun AiChatScreen(
         }
     }
     val chatId = uiState.currentChatId
-    val autoFollow = rememberSaveable(chatId) { mutableStateOf(true) }
     val memory = remember(viewModel) { chatScreenMemory.getOrPut(viewModel) { ChatScreenMemory() } }
+    val viewport = memory.viewportFor(chatId)
     val drafts = memory.drafts
     val inputText = drafts[chatId].orEmpty()
     var showHistorySheet by rememberSaveable { mutableStateOf(false) }
@@ -220,9 +234,10 @@ fun AiChatScreen(
     var editingMessageId by rememberSaveable(chatId) { mutableStateOf<String?>(null) }
     var editingText by rememberSaveable(chatId) { mutableStateOf("") }
     var detail by remember(chatId) { mutableStateOf<ChatTextDetail?>(null) }
+    var selectedReference by remember(chatId, currentSessionId) { mutableStateOf<String?>(null) }
     var deletingSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var overlayHeight by remember { mutableStateOf(136.dp) }
-    var feedScrolled by remember(chatId) { mutableStateOf(false) }
+    var feedScrolled by remember(viewport) { mutableStateOf(false) }
 
     LaunchedEffect(viewModel, currentSessionId) {
         if (currentSessionId != memory.modeSessionId) {
@@ -322,10 +337,10 @@ fun AiChatScreen(
             }
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                key(chatId) {
+                key(viewport) {
                     ChatFeed(
                         messages = displayMessages,
-                        autoFollow = autoFollow,
+                        viewport = viewport,
                         bottomPadding = overlayHeight + 12.dp,
                         onScrolledChanged = { feedScrolled = it },
                         modifier = Modifier.fillMaxSize()
@@ -336,6 +351,7 @@ fun AiChatScreen(
                             modifier = modifier,
                             onCopy = onCopy,
                             onDetail = { detail = it },
+                            onReferenceClick = { selectedReference = it },
                             onEdit = {
                                 editingMessageId = message.id
                                 editingText = message.content
@@ -421,7 +437,7 @@ fun AiChatScreen(
                             } else null,
                             onSend = {
                                 if (inputText.isNotBlank() && !uiState.isGenerating) {
-                                    autoFollow.value = true
+                                    viewport.followTail.value = true
                                     drafts.remove(chatId)
                                     viewModel.onEvent(AiEvent.SendMessage(inputText.trim()))
                                 }
@@ -471,6 +487,16 @@ fun AiChatScreen(
         SelectCopyDialog(detail = payload, onDismiss = { detail = null }, onCopyAll = { onCopy(payload.text) })
     }
 
+    selectedReference?.let { token ->
+        AiChatReferenceSheet(
+            token = token,
+            onCopy = onCopy,
+            onNavigateToDetail = onNavigateToDetail,
+            onShowXrefs = onShowXrefs,
+            onDismiss = { selectedReference = null }
+        )
+    }
+
     if (showHistorySheet) {
         ChatHistorySheet(
             sessions = uiState.chatSessions,
@@ -492,6 +518,7 @@ fun AiChatScreen(
             confirmButton = {
                 TextButton(onClick = {
                     drafts.remove(sessionId)
+                    memory.forgetViewport(sessionId)
                     viewModel.onEvent(AiEvent.DeleteChat(sessionId))
                     deletingSessionId = null
                 }) {
@@ -554,6 +581,30 @@ private fun ChatErrorBanner(error: String, onDismiss: () -> Unit) {
 private const val TailKey = "ai-chat-tail"
 internal val LocalPauseChatFollow = staticCompositionLocalOf<() -> Unit> { {} }
 
+internal class ChatViewport {
+    val followTail = mutableStateOf(true)
+    var readingAnchor: ChatReadingAnchor? = null
+}
+
+internal data class ChatReadingAnchor(val messageId: String, val index: Int, val offset: Int) {
+    fun indexIn(messages: List<ChatMessage>): Int {
+        if (messages.getOrNull(index)?.id == messageId) return index
+        val byId = messages.indexOfFirst { it.id == messageId }
+        // A deleted row leaves the next row in its old slot, or the last row if truncated.
+        return if (byId >= 0) byId else index.coerceAtMost(messages.lastIndex)
+    }
+
+    fun offsetIn(messages: List<ChatMessage>, index: Int): Int =
+        if (messages[index].id == messageId) offset else 0
+}
+
+private fun LazyListState.readingAnchor(): ChatReadingAnchor? {
+    val index = firstVisibleItemIndex
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index && it.key != TailKey }
+    val messageId = item?.key as? String ?: return null
+    return ChatReadingAnchor(messageId, index, firstVisibleItemScrollOffset)
+}
+
 internal fun findPreviousUserMessageIndex(
     messages: List<ChatMessage>,
     firstVisibleIndex: Int,
@@ -577,13 +628,55 @@ internal fun findPreviousUserMessageIndex(
 @Composable
 internal fun ChatFeed(
     messages: List<ChatMessage>,
-    autoFollow: MutableState<Boolean>,
+    viewport: ChatViewport,
     bottomPadding: Dp,
     onScrolledChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     messageContent: @Composable (ChatMessage, Modifier) -> Unit
 ) {
-    val list = rememberLazyListState()
+    val autoFollow = viewport.followTail
+    val savedAnchor = remember(viewport) { viewport.readingAnchor.takeUnless { autoFollow.value } }
+    val startedWithMessages = remember(viewport) { messages.isNotEmpty() }
+    val list = remember(viewport) {
+        if (savedAnchor != null && startedWithMessages) {
+            val index = savedAnchor.indexIn(messages)
+            LazyListState(index, savedAnchor.offsetIn(messages, index))
+        } else {
+            LazyListState(if (autoFollow.value) messages.size else 0)
+        }
+    }
+    var restoringAnchor by remember(list) { mutableStateOf(savedAnchor != null) }
+    if (restoringAnchor && savedAnchor != null) {
+        val latestMessages by rememberUpdatedState(messages)
+        LaunchedEffect(list) {
+            if (!startedWithMessages) {
+                val current = snapshotFlow { latestMessages.takeIf { it.isNotEmpty() } }
+                    .filterNotNull().first()
+                if (!autoFollow.value) {
+                    val index = savedAnchor.indexIn(current)
+                    list.scrollToItem(index, savedAnchor.offsetIn(current, index))
+                }
+            }
+            snapshotFlow { list.layoutInfo.totalItemsCount > 1 }.first { it }
+            val current = latestMessages
+            if (!autoFollow.value && current.isNotEmpty()) {
+                val index = savedAnchor.indexIn(current)
+                // An edited row may now be shorter than the saved offset. In that case
+                // show the row from its start rather than scrolling into a later message.
+                if (savedAnchor.offsetIn(current, index) > 0 && list.firstVisibleItemIndex > index) {
+                    list.scrollToItem(index)
+                }
+            }
+            restoringAnchor = false
+        }
+    }
+    DisposableEffect(list) {
+        onDispose {
+            // A disposed feed retains only a measured position, never its LazyListState.
+            if (autoFollow.value) viewport.readingAnchor = null
+            else if (!restoringAnchor) list.readingAnchor()?.let { viewport.readingAnchor = it }
+        }
+    }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     var followTail by autoFollow
@@ -640,7 +733,15 @@ internal fun ChatFeed(
         }
     }
     LaunchedEffect(list) {
-        snapshotFlow { !list.canScrollForward && !list.isScrollInProgress && !scrollbarDragging }.collect { atRestAtEnd ->
+        snapshotFlow {
+            // A pre-layout, footer-only, or clamped restore is not a return to the tail.
+            when {
+                restoringAnchor -> null
+                list.canScrollForward || list.isScrollInProgress || scrollbarDragging -> false
+                list.layoutInfo.totalItemsCount > 1 -> true
+                else -> null
+            }
+        }.filterNotNull().dropWhile { it }.collect { atRestAtEnd ->
             if (atRestAtEnd) followTail = true
         }
     }

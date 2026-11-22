@@ -139,8 +139,8 @@ object R2PipeManager {
 
         fun isCurrent(): Boolean = isCurrentConnectedSession(session, generation)
 
-        suspend fun execute(command: String): Result<String> = withSessionCommand(
-            session, command, markDirty = true, lease = null, render = { it },
+        suspend fun execute(command: String, markDirty: Boolean = true): Result<String> = withSessionCommand(
+            session, command, markDirty = markDirty, lease = null, render = { it },
             requiredActiveGeneration = generation
         ) {
             check(isCurrent()) { "The active radare2 session changed or disconnected." }

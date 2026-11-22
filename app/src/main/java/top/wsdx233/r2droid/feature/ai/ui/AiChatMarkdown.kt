@@ -8,7 +8,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,16 +51,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -82,7 +81,7 @@ import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
 
 private sealed interface AiMdPart {
     data class Text(val text: String) : AiMdPart
-    data class Code(val text: String, val language: String?) : AiMdPart
+    data class Code(val text: String, val language: String?, val closingLineComplete: Boolean) : AiMdPart
 }
 
 private val openingFence = Regex("^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -121,7 +120,7 @@ private fun parseMarkdownParts(text: String): List<AiMdPart> {
             while (end < lines.size && !isClosingFence(lines[end], marker)) end++
             flush()
             val code = lines.subList(index + 1, end).joinToString("\n")
-            parts += AiMdPart.Code(code, language)
+            parts += AiMdPart.Code(code, language, closingLineComplete = end < lines.lastIndex)
             index = (end + 1).coerceAtMost(lines.size)
             continue
         }
@@ -166,25 +165,35 @@ internal fun AiMarkdown(
     baseFontSize: TextUnit = 16.sp,
     baseLineHeight: TextUnit = 26.sp,
     onCopy: (String) -> Unit = {},
-    onOpenCodeDetail: (title: String, code: String, language: String?) -> Unit = { _, _, _ -> }
+    onOpenCodeDetail: (title: String, code: String, language: String?) -> Unit = { _, _, _ -> },
+    onReferenceClick: ((String) -> Unit)? = null,
+    streaming: Boolean = false
 ) {
     val parts = remember(text) { parseMarkdownParts(text) }
+    val references = rememberMarkdownReferenceLinks(onReferenceClick)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        parts.forEach { part ->
+        parts.forEachIndexed { index, part ->
             when (part) {
                 is AiMdPart.Text -> if (part.text.isNotBlank()) {
                     PlainMarkdownBlock(
                         text = part.text,
                         baseColor = baseColor,
                         baseFontSize = baseFontSize,
-                        baseLineHeight = baseLineHeight
+                        baseLineHeight = baseLineHeight,
+                        references = references,
+                        // An unfinished token can still grow; scan this line only when stable.
+                        deferLastLine = references != null && streaming && index == parts.lastIndex &&
+                            !part.text.endsWith('\n')
                     )
                 }
                 is AiMdPart.Code -> MarkdownCodeBlock(
                     code = part.text,
                     language = part.language,
                     onCopy = onCopy,
-                    onOpenDetail = onOpenCodeDetail
+                    onOpenDetail = onOpenCodeDetail,
+                    references = references,
+                    // Even a closing marker at EOF is provisional until its line is complete.
+                    deferAnnotations = references != null && streaming && !part.closingLineComplete
                 )
             }
         }
@@ -196,7 +205,9 @@ private fun MarkdownCodeBlock(
     code: String,
     language: String?,
     onCopy: (String) -> Unit,
-    onOpenDetail: (title: String, code: String, language: String?) -> Unit
+    onOpenDetail: (title: String, code: String, language: String?) -> Unit,
+    references: MarkdownReferenceLinks?,
+    deferAnnotations: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
     val fallbackLabel = stringResource(R.string.ai_code_label)
@@ -260,7 +271,9 @@ private fun MarkdownCodeBlock(
             HighlightedCodeView(
                 text = code,
                 language = language,
-                modifier = Modifier.fillMaxWidth().padding(end = 6.dp)
+                modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
+                references = if (deferAnnotations) null else references,
+                deferHighlighting = deferAnnotations
             )
         }
     }
@@ -274,13 +287,21 @@ internal fun HighlightedCodeView(
     fontSize: TextUnit = 13.5.sp,
     lineHeight: TextUnit = 21.sp,
     showLineNumbers: Boolean = true,
-    softWrap: Boolean = false
+    softWrap: Boolean = false,
+    references: MarkdownReferenceLinks? = null,
+    deferHighlighting: Boolean = false
 ) {
     val colors = MaterialTheme.colorScheme
     val dark = LocalDarkTheme.current
     val mono = LocalAppFont.current
-    val highlighted = remember(text, language, dark, colors.primary, colors.onSurface) {
-        highlightCodeSnippet(text, language, dark, colors.onSurface)
+    val highlighted = remember(text, language, dark, colors.onSurface, deferHighlighting) {
+        if (deferHighlighting) AnnotatedString(text) else highlightCodeSnippet(text, language, dark, colors.onSurface)
+    }
+    val linked = if (references == null) null else remember(highlighted, references) {
+        references.forCode(highlighted)
+    }
+    val tapLayout = if (linked?.denseRanges.isNullOrEmpty()) null else remember(linked) {
+        mutableStateOf<TextLayoutResult?>(null)
     }
     val numbers = remember(text, showLineNumbers) {
         if (showLineNumbers) (1..(text.count { it == '\n' } + 1)).joinToString("\n") else ""
@@ -303,12 +324,16 @@ internal fun HighlightedCodeView(
         }
         SelectionContainer {
             Text(
-                text = highlighted,
+                text = linked?.text ?: highlighted,
+                modifier = if (tapLayout != null) {
+                    requireNotNull(references).denseCodeTap(requireNotNull(linked)) { tapLayout.value }
+                } else Modifier,
                 color = colors.onSurface,
                 fontFamily = mono,
                 fontSize = fontSize,
                 lineHeight = lineHeight,
-                softWrap = softWrap
+                softWrap = softWrap,
+                onTextLayout = { tapLayout?.value = it }
             )
         }
     }
@@ -319,7 +344,9 @@ private fun PlainMarkdownBlock(
     text: String,
     baseColor: Color,
     baseFontSize: TextUnit,
-    baseLineHeight: TextUnit
+    baseLineHeight: TextUnit,
+    references: MarkdownReferenceLinks?,
+    deferLastLine: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
     val lines = remember(text) { text.lines() }
@@ -338,7 +365,11 @@ private fun PlainMarkdownBlock(
                         index++
                     }
                     table != null -> {
-                        MarkdownTableView(table)
+                        MarkdownTableView(
+                            table,
+                            references,
+                            deferLastRow = deferLastLine && table.rows.size > 1 && table.nextLine == lines.size
+                        )
                         index = table.nextLine
                     }
                     else -> {
@@ -346,7 +377,8 @@ private fun PlainMarkdownBlock(
                             line = line,
                             baseColor = baseColor,
                             baseFontSize = baseFontSize,
-                            baseLineHeight = baseLineHeight
+                            baseLineHeight = baseLineHeight,
+                            references = if (deferLastLine && index == lines.lastIndex) null else references
                         )
                         index++
                     }
@@ -361,7 +393,8 @@ private fun PlainMarkdownLine(
     line: String,
     baseColor: Color,
     baseFontSize: TextUnit,
-    baseLineHeight: TextUnit
+    baseLineHeight: TextUnit,
+    references: MarkdownReferenceLinks?
 ) {
     val colors = MaterialTheme.colorScheme
     if (line.isBlank()) {
@@ -422,6 +455,7 @@ private fun PlainMarkdownLine(
         InlineMarkdownText(
             text = checkbox?.groupValues?.get(2) ?: body,
             modifier = Modifier.weight(1f),
+            references = references,
             style = MaterialTheme.typography.bodyLarge.copy(
                 color = if (quote) colors.onSurfaceVariant else baseColor,
                 fontSize = fontSize,
@@ -433,9 +467,24 @@ private fun PlainMarkdownLine(
     }
 }
 
-private fun buildInlineAnnotated(text: String, linkStyle: SpanStyle, codeStyle: SpanStyle): AnnotatedString = buildAnnotatedString {
+private fun buildInlineAnnotated(
+    text: String,
+    linkStyle: SpanStyle,
+    codeStyle: SpanStyle,
+    preserveReferences: Boolean
+): AnnotatedString = buildAnnotatedString {
+    // A namespace separator followed by '_' can look like the start of Markdown
+    // emphasis (e.g. sym._start_). Keep the literal token in that case.
+    val literalOpeners = if (preserveReferences && "._" in text) buildSet<Int> {
+        forEachChatReference(text) { start, end ->
+            for (offset in start + 1 until end) {
+                if (text[offset - 1] == '.' && text[offset] == '_') add(offset)
+            }
+        }
+    } else null
     var last = 0
     inlineTokens.findAll(text).forEach { match ->
+        if (literalOpeners?.contains(match.range.first) == true) return@forEach
         append(text, last, match.range.first)
         when {
             text[match.range.first] == '\\' -> append(text[match.range.first + 1])
@@ -447,9 +496,9 @@ private fun buildInlineAnnotated(text: String, linkStyle: SpanStyle, codeStyle: 
             match.groupValues[3].isNotEmpty() -> {
                 val target = match.groupValues[4]
                 if (target.startsWith("https://", true) || target.startsWith("http://", true) || target.startsWith("mailto:", true)) {
-                    pushStringAnnotation("URL", target)
-                    withStyle(linkStyle) { append(match.groupValues[3]) }
-                    pop()
+                    val start = length
+                    append(match.groupValues[3])
+                    addLink(LinkAnnotation.Url(target, TextLinkStyles(style = linkStyle)), start, length)
                 } else {
                     append(match.groupValues[3])
                 }
@@ -466,17 +515,40 @@ private fun buildInlineAnnotated(text: String, linkStyle: SpanStyle, codeStyle: 
     append(text, last, text.length)
 }
 
-private fun inlineCodeContent(text: AnnotatedString, fragments: List<IntRange>): AnnotatedString {
-    if (fragments.isEmpty()) return text
-    val builder = AnnotatedString.Builder(text)
-    fragments.forEachIndexed { index, range ->
-        builder.addStringAnnotation(inlineContentTag, "code-$index", range.first, range.last + 1)
+private fun inlineCodeContent(
+    text: AnnotatedString,
+    fragments: List<IntRange>,
+    wrapped: List<IntRange>,
+    background: Color,
+    hasChipLinks: Boolean
+): AnnotatedString {
+    if (fragments.isEmpty() && wrapped.isEmpty()) return text
+    // Chip links belong to the chip's own BasicText, not the parent placeholder.
+    val parent = if (!hasChipLinks) text else text.flatMapAnnotations { annotation ->
+        val inChip = annotation.item is LinkAnnotation.Clickable && fragments.binarySearch { fragment ->
+            when {
+                annotation.start < fragment.first -> 1
+                annotation.start > fragment.last -> -1
+                else -> 0
+            }
+        } >= 0
+        if (inChip) emptyList() else listOf(annotation)
     }
-    return builder.toAnnotatedString()
+    return AnnotatedString.Builder(parent).apply {
+        fragments.forEachIndexed { index, range ->
+            addStringAnnotation(inlineContentTag, "code-$index", range.first, range.last + 1)
+        }
+        wrapped.forEach { addStyle(SpanStyle(background = background), it.first, it.last + 1) }
+    }.toAnnotatedString()
 }
 
 @Composable
-private fun InlineMarkdownText(text: String, modifier: Modifier = Modifier, style: TextStyle) {
+private fun InlineMarkdownText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle,
+    references: MarkdownReferenceLinks?
+) {
     val colors = MaterialTheme.colorScheme
     val mono = LocalAppFont.current
     val dark = LocalDarkTheme.current
@@ -489,16 +561,22 @@ private fun InlineMarkdownText(text: String, modifier: Modifier = Modifier, styl
         lineHeight = codeSize * 1.15f,
         textDecoration = TextDecoration.None
     )
-    val annotated = remember(text, colors.primary, colors.onSurface, mono, codeSize) {
+    val preserveReferences = references != null
+    val markdown = remember(text, colors.primary, colors.onSurface, mono, codeSize, preserveReferences) {
         buildInlineAnnotated(
             text = text,
             linkStyle = SpanStyle(color = colors.primary, textDecoration = TextDecoration.Underline),
-            codeStyle = SpanStyle(color = colors.onSurface.copy(alpha = 0.92f), fontFamily = mono, fontSize = codeSize)
+            codeStyle = SpanStyle(color = colors.onSurface.copy(alpha = 0.92f), fontFamily = mono, fontSize = codeSize),
+            preserveReferences = preserveReferences
         )
+    }
+    // Cache per rendered line/cell, independently of the growing message and callback changes.
+    val annotated = if (references == null) markdown else remember(markdown, references) {
+        references.forProse(markdown)
     }
     val codes = remember(annotated) { annotated.getStringAnnotations("CODE", 0, annotated.length) }
     if (codes.isEmpty()) {
-        MarkdownBasicText(annotated, modifier, style)
+        BasicText(annotated, modifier.fillMaxWidth(), style = style)
         return
     }
     val measurer = rememberTextMeasurer(cacheSize = 2)
@@ -508,25 +586,45 @@ private fun InlineMarkdownText(text: String, modifier: Modifier = Modifier, styl
         val horizontal = with(density) { 5.dp.roundToPx() }
         val vertical = with(density) { 2.dp.roundToPx() }
         val available = if (constraints.hasBoundedWidth) (constraints.maxWidth - horizontal * 2).coerceAtLeast(1) else Constraints.Infinity
-        val fragments = remember(annotated, codeStyle, available, measurer) {
-            buildList {
-                codes.forEach { code ->
-                    val source = annotated.text.substring(code.start, code.end)
-                    val measured = measurer.measure(source, codeStyle, constraints = Constraints(maxWidth = available))
+        val (fragments, wrapped, hasChipLinks) = remember(annotated, codes, references, codeStyle, available, measurer) {
+            val pills = mutableListOf<IntRange>()
+            val wrappedLinks = mutableListOf<IntRange>()
+            var hasLinks = false
+            codes.forEach { code ->
+                val source = annotated.text.substring(code.start, code.end)
+                val measured = measurer.measure(source, codeStyle, constraints = Constraints(maxWidth = available))
+                val links = if (references == null) emptyList() else annotated.getLinkAnnotations(code.start, code.end)
+                // If a chip boundary cuts a link in two, leave that run in the parent flow
+                // so the whole token remains one clickable range, even when it wraps.
+                val cutsLink = links.isNotEmpty() && (
+                    links.any { it.start < code.start || it.end > code.end } ||
+                        (0 until measured.lineCount - 1).any { line ->
+                            val end = code.start + measured.getLineEnd(line)
+                            links.any { it.start < end && end < it.end }
+                        }
+                    )
+                if (cutsLink) {
+                    wrappedLinks += code.start until code.end
+                } else {
+                    hasLinks = hasLinks || links.isNotEmpty()
                     var start = 0
                     for (line in 0 until measured.lineCount) {
                         val end = measured.getLineEnd(line)
-                        if (end > start) add((code.start + start) until (code.start + end))
+                        if (end > start) pills += (code.start + start) until (code.start + end)
                         start = end
                     }
                 }
             }
+            Triple(pills, wrappedLinks, hasLinks)
         }
-        val displayed = remember(annotated, fragments) { inlineCodeContent(annotated, fragments) }
-        val content = remember(annotated, fragments, codeStyle, density, chipBg, measurer) {
+        val displayed = remember(annotated, fragments, wrapped, chipBg, hasChipLinks) {
+            inlineCodeContent(annotated, fragments, wrapped, chipBg, hasChipLinks)
+        }
+        val content = remember(annotated, fragments, hasChipLinks, codeStyle, density, chipBg, measurer) {
             fragments.mapIndexed { index, range ->
                 val source = annotated.text.substring(range)
                 val measured = measurer.measure(source, codeStyle, softWrap = false)
+                val chipText = if (hasChipLinks) annotated.subSequence(range.first, range.last + 1) else null
                 "code-$index" to InlineTextContent(
                     Placeholder(
                         width = with(density) { (measured.size.width + horizontal * 2).toSp() },
@@ -535,52 +633,21 @@ private fun InlineMarkdownText(text: String, modifier: Modifier = Modifier, styl
                     )
                 ) { original ->
                     DisableSelection {
-                        BasicText(
-                            text = original,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(chipBg, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp),
-                            style = codeStyle,
-                            softWrap = false
-                        )
+                        val chipModifier = Modifier
+                            .fillMaxSize()
+                            .background(chipBg, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                        if (chipText == null) {
+                            BasicText(original, chipModifier, style = codeStyle, softWrap = false)
+                        } else {
+                            BasicText(chipText, chipModifier, style = codeStyle, softWrap = false)
+                        }
                     }
                 }
             }.toMap()
         }
-        MarkdownBasicText(displayed, Modifier, style, content)
+        BasicText(displayed, Modifier.fillMaxWidth(), style = style, inlineContent = content)
     }
-}
-
-@Composable
-private fun MarkdownBasicText(
-    text: AnnotatedString,
-    modifier: Modifier,
-    style: TextStyle,
-    inlineContent: Map<String, InlineTextContent> = emptyMap()
-) {
-    val hasLinks = remember(text) { text.getStringAnnotations("URL", 0, text.length).isNotEmpty() }
-    if (!hasLinks) {
-        BasicText(text, modifier.fillMaxWidth(), style = style, inlineContent = inlineContent)
-        return
-    }
-    val uriHandler = LocalUriHandler.current
-    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    BasicText(
-        text = text,
-        modifier = modifier.fillMaxWidth().pointerInput(text, uriHandler) {
-            detectTapGestures { pos ->
-                val result = layout ?: return@detectTapGestures
-                val offset = result.getOffsetForPosition(pos)
-                text.getStringAnnotations("URL", offset, offset)
-                    .firstOrNull { offset >= it.start && offset < it.end }
-                    ?.let { runCatching { uriHandler.openUri(it.item) } }
-            }
-        },
-        style = style,
-        inlineContent = inlineContent,
-        onTextLayout = { layout = it }
-    )
 }
 
 // region Markdown Tables (ported from Wawlink MarkdownTable.kt)
@@ -654,7 +721,11 @@ private fun parseMarkdownTable(lines: List<String>, start: Int): MdTableData? {
 }
 
 @Composable
-private fun MarkdownTableView(table: MdTableData) {
+private fun MarkdownTableView(
+    table: MdTableData,
+    references: MarkdownReferenceLinks?,
+    deferLastRow: Boolean
+) {
     val colors = MaterialTheme.colorScheme
     val dark = LocalDarkTheme.current
     val tint = if (dark) Color.White else colors.onSurface
@@ -693,6 +764,7 @@ private fun MarkdownTableView(table: MdTableData) {
                                 cells.forEachIndexed { col, cell ->
                                     InlineMarkdownText(
                                         text = cell,
+                                        references = if (deferLastRow && rowIndex == table.rows.lastIndex) null else references,
                                         style = style.copy(
                                             textAlign = when (table.alignments[col]) {
                                                 MdColAlign.Left -> TextAlign.Left
@@ -759,8 +831,11 @@ internal fun highlightCodeSnippet(
     if (lang == "r2" || lang == "radare2" || lang == "bash" || lang == "sh") {
         val lines = text.lines()
         if (lines.size == 1) {
-            r2CommandRegex.matchEntire(text.trim())?.let { m ->
+            val command = text.trim()
+            r2CommandRegex.matchEntire(command)?.let { m ->
+                val start = text.indexOf(command)
                 return buildAnnotatedString {
+                    append(text, 0, start)
                     withStyle(SpanStyle(color = cmdColor, fontWeight = FontWeight.SemiBold)) {
                         append(m.groupValues[1])
                     }
@@ -773,6 +848,7 @@ internal fun highlightCodeSnippet(
                     if (m.groupValues[4].isNotEmpty()) {
                         withStyle(SpanStyle(color = numberColor)) { append(m.groupValues[4]) }
                     }
+                    append(text, start + command.length, text.length)
                 }
             }
         }

@@ -568,13 +568,14 @@ fun ProjectScaffold(
 
     val isVisited: (Long) -> Boolean = { addr -> visitedAddresses.contains(addr) }
 
-    val jumpToDisasmFromPlugin: (Long) -> Unit = { addr ->
+    val navigateToDetail: (Long, Int) -> Unit = { addr, tab ->
         markVisited(addr)
         selectBuiltinCategory(MainCategory.Detail)
-        selectedDetailTabIndex = 1
-        viewModel.currentDetailTab = 1
+        selectedDetailTabIndex = tab
+        viewModel.currentDetailTab = tab
         viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
     }
+    val jumpToDisasmFromPlugin: (Long) -> Unit = { navigateToDetail(it, 1) }
 
     val aiChatTopBarState = remember(sessionId) { AiChatTopBarState() }
     val isAiChat = selectedPluginNavigation == null && selectedCategory == MainCategory.AI && selectedAiTabIndex == 0
@@ -1277,13 +1278,7 @@ fun ProjectScaffold(
                                     relocationsListState = listRelocationsState,
                                     stringsListState = listStringsState,
                                     functionsListState = listFunctionsState,
-                                    onNavigateToDetail = { addr, tabIdx ->
-                                        markVisited(addr)
-                                        selectBuiltinCategory(MainCategory.Detail)
-                                        selectedDetailTabIndex = tabIdx
-                                        viewModel.currentDetailTab = tabIdx
-                                        viewModel.onEvent(ProjectEvent.JumpToAddress(addr))
-                                    },
+                                    onNavigateToDetail = navigateToDetail,
                                     onQuickNavigateToDetail = quickJumpToDetail,
                                     onMarkVisited = markVisited,
                                     isVisited = isVisited
@@ -1392,7 +1387,12 @@ fun ProjectScaffold(
                         MainCategory.AI -> {
                             if (selectedAiTabIndex < baseAiTabs.size) {
                                 when (selectedAiTabIndex) {
-                                    0 -> AiChatScreen(aiViewModel, topBarState = aiChatTopBarState)
+                                    0 -> AiChatScreen(
+                                        viewModel = aiViewModel,
+                                        topBarState = aiChatTopBarState,
+                                        onNavigateToDetail = navigateToDetail,
+                                        onShowXrefs = { disasmViewModel.onEvent(DisasmEvent.FetchXrefs(it)) }
+                                    )
                                     1 -> AiProviderSettingsScreen(aiViewModel)
                                     2 -> AiPromptsScreen()
                                 }
