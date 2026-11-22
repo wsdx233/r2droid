@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.project
 
 import android.content.Context
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -93,6 +94,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -139,6 +141,11 @@ import top.wsdx233.r2droid.feature.ai.ui.AiChatTopBarState
 import top.wsdx233.r2droid.feature.ai.ui.AiChatTopBarSubtitle
 import top.wsdx233.r2droid.feature.ai.ui.AiPromptsScreen
 import top.wsdx233.r2droid.feature.ai.ui.AiProviderSettingsScreen
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
+import top.wsdx233.r2droid.feature.annotations.AnnotationEditor
+import top.wsdx233.r2droid.feature.annotations.AnnotationRequest
+import top.wsdx233.r2droid.feature.annotations.AnnotationSession
+import top.wsdx233.r2droid.feature.annotations.AnnotationIndex
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.hex.HexEvent
@@ -187,21 +194,44 @@ fun ProjectScaffold(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val projectPipe = (uiState as? ProjectUiState.Success)?.sessionToken
+    var annotation by remember(projectPipe) { mutableStateOf<AnnotationRequest?>(null) }
+    val onAnnotate: (AnnotationAction, Long) -> Unit = remember(projectPipe) {
+        { action, address ->
+            val session = projectPipe?.let { AnnotationSession.capture(it) }
+            if (session != null) annotation = AnnotationRequest(session, action, address)
+            else Toast.makeText(context, R.string.proj_session_disconnected, Toast.LENGTH_SHORT).show()
+        }
+    }
+    annotation?.let { request ->
+        key(request) {
+            AnnotationEditor(request, onDismiss = { annotation = null }, onApplied = {
+                annotation = null
+                if (projectPipe === R2PipeManager.activeSessionPipe) {
+                    viewModel.invalidateBinaryViews()
+                    if (request.action == AnnotationAction.DELETE_FUNCTION || request.action == AnnotationAction.RESIZE_FUNCTION) {
+                        viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
+                    }
+                }
+            })
+        }
+    }
     
     // Global invalidation listener
     val globalInvalidation by viewModel.globalDataInvalidated.collectAsState()
     androidx.compose.runtime.LaunchedEffect(globalInvalidation) {
         if (globalInvalidation > 0) {
             hexViewModel.onEvent(HexEvent.RefreshData)
-            disasmViewModel.onEvent(DisasmEvent.RefreshData)
+            disasmViewModel.refreshData((uiState as? ProjectUiState.Success)?.cursorAddress)
         }
     }
 
-    // Refresh function list when disasm data is modified (e.g. function rename)
+    // Refresh function list and decompilation when disasm/function metadata is modified
     val dataModified by disasmViewModel.dataModifiedEvent.collectAsState()
     androidx.compose.runtime.LaunchedEffect(dataModified) {
         if (dataModified > 0) {
             viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
+            viewModel.invalidateDecompilationAndGraph()
         }
     }
 
@@ -294,7 +324,7 @@ fun ProjectScaffold(
         when (step.target.area) {
             OnboardingTutorial.Area.List -> {
                 selectBuiltinCategory(MainCategory.List)
-                selectedListTabIndex = step.target.tabIndex.coerceIn(0, 8)
+                selectedListTabIndex = step.target.tabIndex.coerceIn(0, AnnotationIndex.LAST_TAB + 1)
             }
             OnboardingTutorial.Area.Detail -> {
                 selectBuiltinCategory(MainCategory.Detail)
@@ -345,10 +375,11 @@ fun ProjectScaffold(
         viewModel.currentDetailTab = selectedDetailTabIndex
     }
 
+    val typesTabIndex = AnnotationIndex.LAST_TAB + 1
     val baseListTabs = listOf(
         R.string.proj_tab_overview, R.string.proj_tab_search, R.string.proj_tab_sections, R.string.proj_tab_symbols,
         R.string.proj_tab_exports, R.string.proj_tab_imports, R.string.proj_tab_relocs, R.string.proj_tab_strings, R.string.proj_tab_functions
-    )
+    ) + AnnotationIndex.entries.map { it.title } + listOf(R.string.proj_tab_types)
     val pluginListTabs by rememberPluginTabsForTarget("list")
     val listTabTitles = buildList {
         addAll(baseListTabs.map { stringResource(it) })
@@ -495,7 +526,7 @@ fun ProjectScaffold(
                 baseKeys = listOf(
                     "list.overview", "list.search", "list.sections", "list.symbols",
                     "list.exports", "list.imports", "list.relocations", "list.strings", "list.functions"
-                ),
+                ) + AnnotationIndex.entries.map { it.alias } + listOf("list.types"),
                 baseSize = baseListTabs.size,
                 pluginKeys = pluginListTabs.map { it.tab.key }
             )
@@ -778,6 +809,37 @@ fun ProjectScaffold(
                                             showDecompilerMenu = false
                                             val code = (uiState as? ProjectUiState.Success)?.decompilation?.code
                                             if (!code.isNullOrBlank()) exportDecompCode = code
+                                        }
+                                    )
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                    Text(
+                                        stringResource(R.string.decompiler_section_function),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_func_info)) },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            val addr = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L
+                                            disasmViewModel.onEvent(DisasmEvent.FetchFunctionInfo(addr))
+                                        }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_func_vars)) },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            val addr = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L
+                                            disasmViewModel.onEvent(DisasmEvent.FetchFunctionVariables(addr))
+                                        }
+                                    )
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.decompiler_local_types)) },
+                                        onClick = {
+                                            showDecompilerMenu = false
+                                            selectBuiltinCategory(MainCategory.List)
+                                            selectedListTabIndex = typesTabIndex
                                         }
                                     )
                                 }
@@ -1073,6 +1135,24 @@ fun ProjectScaffold(
                             DisasmEvent.RenameFunctionFromInfo(functionInfoState.targetAddress, newName)
                         )
                     },
+                    onUpdateSignature = { signature ->
+                        disasmViewModel.onEvent(
+                            DisasmEvent.UpdateFunctionSignature(functionInfoState.targetAddress, signature)
+                        )
+                    },
+                    onUpdateCallingConvention = { cc ->
+                        disasmViewModel.onEvent(
+                            DisasmEvent.UpdateFunctionCallingConvention(functionInfoState.targetAddress, cc)
+                        )
+                    },
+                    availableCallingConventions = functionInfoState.availableCallingConventions,
+                    typeSuggestions = functionInfoState.typeSuggestions,
+                    isMutating = functionInfoState.isMutating,
+                    errorMessage = functionInfoState.errorMessage,
+                    onDismissError = { disasmViewModel.onEvent(DisasmEvent.ClearFunctionInfoError) },
+                    onOpenVariables = {
+                        disasmViewModel.onEvent(DisasmEvent.FetchFunctionVariables(functionInfoState.targetAddress))
+                    },
                     onJump = { addr ->
                         selectBuiltinCategory(MainCategory.Detail)
                         selectedDetailTabIndex = 1
@@ -1115,6 +1195,21 @@ fun ProjectScaffold(
                                 functionVariablesState.targetAddress, oldName, newName
                             )
                         )
+                    },
+                    onRetype = { varName, newType ->
+                        disasmViewModel.onEvent(
+                            DisasmEvent.RetypeFunctionVariable(
+                                functionVariablesState.targetAddress, varName, newType
+                            )
+                        )
+                    },
+                    typeSuggestions = functionVariablesState.typeSuggestions,
+                    isMutating = functionVariablesState.isMutating,
+                    errorMessage = functionVariablesState.errorMessage,
+                    onDismissError = { disasmViewModel.onEvent(DisasmEvent.ClearFunctionVariablesError) },
+                    onOpenTypesManager = {
+                        selectBuiltinCategory(MainCategory.List)
+                        selectedListTabIndex = typesTabIndex
                     }
                 )
             }
@@ -1269,6 +1364,7 @@ fun ProjectScaffold(
                                     viewModel = viewModel,
                                     disasmViewModel = disasmViewModel,
                                     tabIndex = selectedListTabIndex,
+                                    onAnnotate = onAnnotate,
                                     overviewScrollState = listOverviewScrollState,
                                     searchResultListState = listSearchResultState,
                                     sectionsListState = listSectionsState,
@@ -1300,6 +1396,7 @@ fun ProjectScaffold(
                                     hexViewModel = hexViewModel,
                                     disasmViewModel = disasmViewModel,
                                     tabIndex = selectedDetailTabIndex,
+                                    onAnnotate = onAnnotate,
                                     onNavigateToR2Frida = {
                                         selectBuiltinCategory(MainCategory.R2Frida)
                                         selectedR2FridaTabIndex = 0

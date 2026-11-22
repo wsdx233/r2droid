@@ -29,6 +29,7 @@ import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
 import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
+import top.wsdx233.r2droid.feature.disasm.data.DisasmAnnotations
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.debug.data.DebugBackend
 import top.wsdx233.r2droid.feature.debug.data.DebugCapabilities
@@ -60,6 +61,10 @@ data class FunctionInfoState(
     val visible: Boolean = false,
     val data: FunctionDetailInfo? = null,
     val isLoading: Boolean = false,
+    val isMutating: Boolean = false,
+    val errorMessage: String? = null,
+    val availableCallingConventions: List<top.wsdx233.r2droid.feature.types.data.CallingConventionInfo> = emptyList(),
+    val typeSuggestions: List<String> = emptyList(),
     val targetAddress: Long = 0L
 )
 
@@ -74,6 +79,9 @@ data class FunctionVariablesState(
     val visible: Boolean = false,
     val data: FunctionVariablesData = FunctionVariablesData(),
     val isLoading: Boolean = false,
+    val isMutating: Boolean = false,
+    val errorMessage: String? = null,
+    val typeSuggestions: List<String> = emptyList(),
     val targetAddress: Long = 0L
 )
 
@@ -170,11 +178,16 @@ sealed interface DisasmEvent {
     data class FetchFunctionInfo(val address: Long) : DisasmEvent
     object DismissFunctionInfo : DisasmEvent
     data class RenameFunctionFromInfo(val address: Long, val newName: String) : DisasmEvent
+    data class UpdateFunctionSignature(val address: Long, val signature: String) : DisasmEvent
+    data class UpdateFunctionCallingConvention(val address: Long, val callingConvention: String) : DisasmEvent
+    object ClearFunctionInfoError : DisasmEvent
     data class FetchFunctionXrefs(val address: Long) : DisasmEvent
     object DismissFunctionXrefs : DisasmEvent
     data class FetchFunctionVariables(val address: Long) : DisasmEvent
     object DismissFunctionVariables : DisasmEvent
     data class RenameFunctionVariable(val address: Long, val oldName: String, val newName: String) : DisasmEvent
+    data class RetypeFunctionVariable(val address: Long, val varName: String, val newType: String) : DisasmEvent
+    object ClearFunctionVariablesError : DisasmEvent
     data class FetchInstructionDetail(val address: Long) : DisasmEvent
     data class ExplainInstructionWithAi(val address: Long) : DisasmEvent
     object DismissInstructionDetail : DisasmEvent
@@ -197,6 +210,7 @@ class DisasmViewModel @Inject constructor(
     // DisasmDataManager for virtualized disassembly viewing
     @Volatile private var sessionManager: DisasmDataManager? = null
     @Volatile private var managerSession: R2PipeSession? = null
+    @Volatile private var annotations = DisasmAnnotations.Empty
     val disasmDataManager: DisasmDataManager?
         get() = sessionManager?.takeIf { managerSession === R2PipeManager.activeSessionPipe }
 
@@ -457,11 +471,16 @@ class DisasmViewModel @Inject constructor(
             is DisasmEvent.FetchFunctionInfo -> fetchFunctionInfo(event.address)
             is DisasmEvent.DismissFunctionInfo -> dismissFunctionInfo()
             is DisasmEvent.RenameFunctionFromInfo -> renameFunctionFromInfo(event.address, event.newName)
+            is DisasmEvent.UpdateFunctionSignature -> updateFunctionSignature(event.address, event.signature)
+            is DisasmEvent.UpdateFunctionCallingConvention -> updateFunctionCallingConvention(event.address, event.callingConvention)
+            is DisasmEvent.ClearFunctionInfoError -> _functionInfoState.update { it.copy(errorMessage = null) }
             is DisasmEvent.FetchFunctionXrefs -> fetchFunctionXrefs(event.address)
             is DisasmEvent.DismissFunctionXrefs -> dismissFunctionXrefs()
             is DisasmEvent.FetchFunctionVariables -> fetchFunctionVariables(event.address)
             is DisasmEvent.DismissFunctionVariables -> dismissFunctionVariables()
             is DisasmEvent.RenameFunctionVariable -> renameFunctionVariable(event.address, event.oldName, event.newName)
+            is DisasmEvent.RetypeFunctionVariable -> retypeFunctionVariable(event.address, event.varName, event.newType)
+            is DisasmEvent.ClearFunctionVariablesError -> _functionVariablesState.update { it.copy(errorMessage = null) }
             is DisasmEvent.FetchInstructionDetail -> fetchInstructionDetail(event.address)
             is DisasmEvent.ExplainInstructionWithAi -> explainInstructionWithAi(event.address)
             is DisasmEvent.DismissInstructionDetail -> dismissInstructionDetail()
@@ -495,6 +514,7 @@ class DisasmViewModel @Inject constructor(
         sessionManager = null
         _disasmDataManagerState.value = null
         _disasmCacheVersion.value = 0
+        annotations = DisasmAnnotations.Empty
         _scrollTarget.value = null
         _multiSelectState.value = MultiSelectState()
         managerSession = null
@@ -896,7 +916,7 @@ class DisasmViewModel @Inject constructor(
 
         val manager = DisasmDataManager(
             layout.startAddress, layout.endAddress,
-            { offset, count -> disasmRepository.getDisassembly(active, offset, count) },
+            { offset, count -> disasmRepository.getDisassembly(active, offset, count, annotations) },
             addressOverview = layout.overview
         )
         manager.onChunkLoaded = {
@@ -905,7 +925,9 @@ class DisasmViewModel @Inject constructor(
         sessionManager = manager
         _disasmDataManagerState.value = manager
         initialLoadJob = viewModelScope.launch {
+            val snapshot = disasmRepository.loadAnnotations(active)
             if (disasmDataManager !== manager) return@launch
+            annotations = snapshot
             manager.resetAndLoadAround(currentOffset)
             if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
         }
@@ -977,13 +999,17 @@ class DisasmViewModel @Inject constructor(
     /**
      * Called when other modules modify data
      */
-    fun refreshData() {
+    fun refreshData(cursor: Long? = null) {
         val manager = disasmDataManager ?: return
-        val currentAddr = manager.getSnapshot().let { snapshot ->
+        val active = R2PipeManager.activeSession()?.takeIf { it.pipe === managerSession } ?: return
+        val currentAddr = cursor ?: manager.getSnapshot().let { snapshot ->
             if (snapshot.isNotEmpty()) snapshot[snapshot.size / 2].addr
             else manager.viewStartAddress
         }
         viewModelScope.launch {
+            val snapshot = disasmRepository.loadAnnotations(active)
+            if (disasmDataManager !== manager) return@launch
+            annotations = snapshot
             resetAndScrollTo(currentAddr)
         }
     }
@@ -1109,22 +1135,73 @@ class DisasmViewModel @Inject constructor(
     private fun fetchFunctionInfo(addr: Long) {
         _functionInfoState.value = FunctionInfoState(visible = true, isLoading = true, targetAddress = addr)
         viewModelScope.launch {
-            val result = disasmRepository.getFunctionDetail(addr)
-            _functionInfoState.value = _functionInfoState.value.copy(
-                isLoading = false, data = result.getOrNull()
-            )
+            val detail = disasmRepository.getFunctionDetail(addr).getOrNull()
+            val ccs = disasmRepository.getAvailableCallingConventions().getOrDefault(emptyList())
+            val typeSuggestions = disasmRepository.getAvailableTypeSuggestions()
+                .getOrDefault(top.wsdx233.r2droid.feature.types.data.LocalTypesSnapshot.COMMON_C_TYPES)
+            _functionInfoState.update {
+                if (it.targetAddress != addr) it
+                else it.copy(
+                    isLoading = false,
+                    isMutating = false,
+                    data = detail,
+                    availableCallingConventions = ccs,
+                    typeSuggestions = typeSuggestions
+                )
+            }
         }
     }
 
     private fun dismissFunctionInfo() {
-        _functionInfoState.value = _functionInfoState.value.copy(visible = false)
+        _functionInfoState.value = _functionInfoState.value.copy(visible = false, errorMessage = null)
     }
 
     private fun renameFunctionFromInfo(addr: Long, newName: String) {
+        _functionInfoState.update { it.copy(isMutating = true, errorMessage = null) }
         viewModelScope.launch {
-            disasmRepository.renameFunction(addr, newName)
-            // Refresh the function info dialog with updated data
-            fetchFunctionInfo(addr)
+            val res = disasmRepository.renameFunction(addr, newName)
+            if (res.isFailure) {
+                _functionInfoState.update {
+                    it.copy(isMutating = false, errorMessage = res.exceptionOrNull()?.message ?: "Rename failed")
+                }
+                return@launch
+            }
+            val updated = disasmRepository.getFunctionDetail(addr).getOrNull()
+            _functionInfoState.update { it.copy(isMutating = false, data = updated ?: it.data, errorMessage = null) }
+            resetAndScrollTo(addr)
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
+    }
+
+    private fun updateFunctionSignature(addr: Long, signature: String) {
+        _functionInfoState.update { it.copy(isMutating = true, errorMessage = null) }
+        viewModelScope.launch {
+            val res = disasmRepository.setFunctionSignature(addr, signature)
+            if (res.isFailure) {
+                _functionInfoState.update {
+                    it.copy(isMutating = false, errorMessage = res.exceptionOrNull()?.message ?: "Signature update failed")
+                }
+                return@launch
+            }
+            val updated = disasmRepository.getFunctionDetail(addr).getOrNull()
+            _functionInfoState.update { it.copy(isMutating = false, data = updated ?: it.data, errorMessage = null) }
+            resetAndScrollTo(addr)
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
+    }
+
+    private fun updateFunctionCallingConvention(addr: Long, callingConvention: String) {
+        _functionInfoState.update { it.copy(isMutating = true, errorMessage = null) }
+        viewModelScope.launch {
+            val res = disasmRepository.setFunctionCallingConvention(addr, callingConvention)
+            if (res.isFailure) {
+                _functionInfoState.update {
+                    it.copy(isMutating = false, errorMessage = res.exceptionOrNull()?.message ?: "Calling convention update failed")
+                }
+                return@launch
+            }
+            val updated = disasmRepository.getFunctionDetail(addr).getOrNull()
+            _functionInfoState.update { it.copy(isMutating = false, data = updated ?: it.data, errorMessage = null) }
             resetAndScrollTo(addr)
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
@@ -1148,21 +1225,53 @@ class DisasmViewModel @Inject constructor(
         _functionVariablesState.value = FunctionVariablesState(visible = true, isLoading = true, targetAddress = addr)
         viewModelScope.launch {
             val result = disasmRepository.getFunctionVariables(addr)
-            _functionVariablesState.value = _functionVariablesState.value.copy(
-                isLoading = false, data = result.getOrDefault(FunctionVariablesData())
-            )
+            val suggestions = disasmRepository.getAvailableTypeSuggestions()
+                .getOrDefault(top.wsdx233.r2droid.feature.types.data.LocalTypesSnapshot.COMMON_C_TYPES)
+            _functionVariablesState.update {
+                if (it.targetAddress != addr) it
+                else it.copy(
+                    isLoading = false,
+                    isMutating = false,
+                    data = result.getOrDefault(FunctionVariablesData()),
+                    typeSuggestions = suggestions
+                )
+            }
         }
     }
 
     private fun dismissFunctionVariables() {
-        _functionVariablesState.value = _functionVariablesState.value.copy(visible = false)
+        _functionVariablesState.value = _functionVariablesState.value.copy(visible = false, errorMessage = null)
     }
 
     private fun renameFunctionVariable(addr: Long, oldName: String, newName: String) {
+        _functionVariablesState.update { it.copy(isMutating = true, errorMessage = null) }
         viewModelScope.launch {
-            disasmRepository.renameFunctionVariable(addr, newName, oldName)
-            // Refresh the variables dialog
-            fetchFunctionVariables(addr)
+            val res = disasmRepository.renameFunctionVariable(addr, newName, oldName)
+            if (res.isFailure) {
+                _functionVariablesState.update {
+                    it.copy(isMutating = false, errorMessage = res.exceptionOrNull()?.message ?: "Rename failed")
+                }
+                return@launch
+            }
+            val updated = disasmRepository.getFunctionVariables(addr).getOrDefault(FunctionVariablesData())
+            _functionVariablesState.update { it.copy(isMutating = false, data = updated, errorMessage = null) }
+            resetAndScrollTo(addr)
+            _dataModifiedEvent.value = System.currentTimeMillis()
+        }
+    }
+
+    private fun retypeFunctionVariable(addr: Long, varName: String, newType: String) {
+        _functionVariablesState.update { it.copy(isMutating = true, errorMessage = null) }
+        viewModelScope.launch {
+            val res = disasmRepository.retypeFunctionVariable(addr, varName, newType)
+            if (res.isFailure) {
+                _functionVariablesState.update {
+                    it.copy(isMutating = false, errorMessage = res.exceptionOrNull()?.message ?: "Retype failed")
+                }
+                return@launch
+            }
+            val updated = disasmRepository.getFunctionVariables(addr).getOrDefault(FunctionVariablesData())
+            _functionVariablesState.update { it.copy(isMutating = false, data = updated, errorMessage = null) }
             resetAndScrollTo(addr)
             _dataModifiedEvent.value = System.currentTimeMillis()
         }

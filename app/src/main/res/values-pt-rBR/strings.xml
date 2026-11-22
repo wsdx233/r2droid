@@ -260,6 +260,7 @@
     <string name="menu_disassembly">Desmontagem</string>
     <string name="menu_custom_command">Comando Personalizado...</string>
     <string name="menu_modify_submenu">Modificar...</string>
+    <string name="menu_more_submenu">Mais...</string>
     <string name="menu_opcodes">Opcode</string>
     <string name="menu_bytes">Bytes</string>
     <string name="menu_full_row">Linha Inteira</string>

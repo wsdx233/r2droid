@@ -15,7 +15,7 @@ import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.File
 
 class R2ActionExecutor(private val cacheDir: File? = null) {
-    fun capture(mode: AiExecutionMode): Target? = R2PipeManager.captureActiveAiTarget()?.let { pinned ->
+    fun capture(mode: AiExecutionMode): Target? = R2PipeManager.captureActiveTarget()?.let { pinned ->
         Target(
             pinned = pinned,
             allowFrida = mode == AiExecutionMode.Frida && pinned.isFridaSession,
@@ -24,7 +24,7 @@ class R2ActionExecutor(private val cacheDir: File? = null) {
     }
 
     class Target internal constructor(
-        private val pinned: R2PipeManager.ActiveAiTarget,
+        private val pinned: R2PipeManager.ActiveTarget,
         private val allowFrida: Boolean,
         private val cacheDir: File? = null
     ) {

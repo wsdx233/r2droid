@@ -42,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.annotation.StringRes
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
 
 data class ListItemActions(
     val onCopy: (String) -> Unit,
@@ -49,16 +50,14 @@ data class ListItemActions(
     val onJumpToDisasm: (Long) -> Unit,
     val onQuickJump: ((Long) -> Unit)? = null,
     val onShowXrefs: (Long) -> Unit,
-    val onAnalyzeFunction: ((Long) -> Unit)? = null,
-    val onFunctionInfo: ((Long) -> Unit)? = null,
-    val onFunctionXrefs: ((Long) -> Unit)? = null,
-    val onFunctionVariables: ((Long) -> Unit)? = null,
+    val functionActions: FunctionMenuActions? = null,
     val onMarkVisited: ((Long) -> Unit)? = null,
     val isVisited: ((Long) -> Boolean)? = null,
     /** Navigate to Frida monitor tab and pre-fill the address */
     val onFridaMonitor: ((String) -> Unit)? = null,
     /** Copy generated Frida code snippet to clipboard */
-    val onFridaCopyCode: ((String) -> Unit)? = null
+    val onFridaCopyCode: ((String) -> Unit)? = null,
+    val onAnnotate: ((AnnotationAction, Long) -> Unit)? = null
 )
 
 enum class FridaCodeTemplates(@StringRes val labelRes: Int, private val template: String) {
@@ -136,8 +135,12 @@ fun UnifiedListItemWrapper(
     visitedIndicatorCount: Int = 1,
     content: @Composable () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var menuScreen by remember { mutableStateOf("Main") }
+    var expanded by remember(address) { mutableStateOf(false) }
+    var menuScreen by remember(address) { mutableStateOf("Main") }
+    val dismissMenu = {
+        expanded = false
+        menuScreen = "Main"
+    }
     var tapOffset by remember { mutableStateOf(Offset.Zero) }
     var boxHeight by remember { mutableStateOf(0) }
     val density = LocalDensity.current
@@ -208,10 +211,7 @@ fun UnifiedListItemWrapper(
 
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = {
-                expanded = false
-                menuScreen = "Main"
-            },
+            onDismissRequest = dismissMenu,
             offset = if (SettingsManager.menuAtTouch) {
                 with(density) { DpOffset(tapOffset.x.toDp(), (tapOffset.y - boxHeight).toDp()) }
             } else DpOffset.Zero
@@ -242,21 +242,15 @@ fun UnifiedListItemWrapper(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.menu_xrefs)) },
                             onClick = {
-                                expanded = false
+                                dismissMenu()
                                 actions.onShowXrefs(address)
                             }
                         )
-                        if (actions.onAnalyzeFunction != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_function_submenu)) },
-                                onClick = { menuScreen = "Function" },
-                                trailingIcon = {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                        contentDescription = null
-                                    )
-                                }
-                            )
+                        if (actions.onAnnotate != null) {
+                            AddressAnnotationMenuItems(address, actions.onAnnotate, dismissMenu)
+                            if (actions.functionActions != null) {
+                                SubmenuItem(R.string.menu_function_submenu) { menuScreen = "Function" }
+                            }
                         }
                         if (actions.onFridaMonitor != null || actions.onFridaCopyCode != null) {
                             DropdownMenuItem(
@@ -337,44 +331,10 @@ fun UnifiedListItemWrapper(
                     )
                 }
                 "Function" -> {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_back)) },
-                        onClick = { menuScreen = "Main" },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_analyze)) },
-                        onClick = {
-                            if (address != null) actions.onAnalyzeFunction?.invoke(address)
-                            expanded = false
-                            menuScreen = "Main"
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_info)) },
-                        onClick = {
-                            if (address != null) actions.onFunctionInfo?.invoke(address)
-                            expanded = false
-                            menuScreen = "Main"
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_xrefs)) },
-                        onClick = {
-                            if (address != null) actions.onFunctionXrefs?.invoke(address)
-                            expanded = false
-                            menuScreen = "Main"
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_variables)) },
-                        onClick = {
-                            if (address != null) actions.onFunctionVariables?.invoke(address)
-                            expanded = false
-                            menuScreen = "Main"
-                        }
-                    )
+                    SubmenuBackItem { menuScreen = "Main" }
+                    if (address != null && actions.functionActions != null && actions.onAnnotate != null) {
+                        FunctionMenuItems(address, actions.functionActions, actions.onAnnotate, dismissMenu)
+                    }
                 }
                 "Frida" -> {
                     val addrHex = if (address != null) "0x%X".format(address) else "0x0"

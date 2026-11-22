@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Project tab -->
+    <string name="proj_tab_types">Types</string>
+
+    <!-- Local Types Manager -->
+    <string name="types_title">Local Types</string>
+    <string name="types_subtitle_summary">%1$d types · %2$d links</string>
+    <string name="types_search_hint">Search types, fields, addresses…</string>
+    <string name="types_action_define_c">C Declaration</string>
+    <string name="types_action_import_header">Import .h</string>
+    <string name="types_action_link_type">Link to Address</string>
+    <string name="types_action_link_short">Link</string>
+    <string name="types_action_edit">Edit C</string>
+    <string name="types_action_copy_c">Copy C</string>
+    <string name="types_action_delete">Delete</string>
+    <string name="types_action_unlink">Unlink</string>
+    <string name="types_action_preview_memory">Inspect Memory</string>
+    <string name="types_action_hide_memory">Hide Memory</string>
+    <string name="types_action_open_manager">Local Types</string>
+
+    <!-- Categories -->
+    <string name="types_cat_all">All</string>
+    <string name="types_cat_structs">Structs</string>
+    <string name="types_cat_enums">Enums</string>
+    <string name="types_cat_unions">Unions</string>
+    <string name="types_cat_typedefs">Typedefs</string>
+    <string name="types_cat_links">Links</string>
+
+    <!-- Kind Badges -->
+    <string name="types_badge_struct">STRUCT</string>
+    <string name="types_badge_enum">ENUM</string>
+    <string name="types_badge_union">UNION</string>
+    <string name="types_badge_typedef">TYPEDEF</string>
+    <string name="types_badge_linked">LINKED</string>
+
+    <!-- Counts & Metadata -->
+    <string name="types_fields_count">%1$d fields</string>
+    <string name="types_variants_count">%1$d variants</string>
+    <string name="types_values_count">%1$d values</string>
+    <string name="types_size_bytes">%1$d B</string>
+    <string name="types_size_hex">0x%1$X B</string>
+    <string name="types_tab_layout">Layout</string>
+    <string name="types_tab_c_source">C Source</string>
+    <string name="types_col_offset">OFFSET</string>
+    <string name="types_col_type">TYPE</string>
+    <string name="types_col_field">FIELD</string>
+    <string name="types_col_size">SIZE</string>
+    <string name="types_col_name">NAME</string>
+    <string name="types_col_dec">DEC</string>
+    <string name="types_col_hex">HEX</string>
+    <string name="types_pf_format">pf Format</string>
+    <string name="types_linked_at">Linked addresses</string>
+    <string name="types_alias_target">Underlying type</string>
+    <string name="types_no_fields">No members available</string>
+    <string name="types_copied">Copied to clipboard</string>
+
+    <!-- Empty & Error States -->
+    <string name="types_empty_all_title">No local types yet</string>
+    <string name="types_empty_all_body">Define structs, enums, unions, or typedefs in C syntax, or import a .h header to enrich disassembly and r2ghidra decompilation.</string>
+    <string name="types_empty_category">No %1$s loaded yet.</string>
+    <string name="types_empty_links_title">No linked addresses</string>
+    <string name="types_empty_links_body">Bind any struct, union, or type to a memory address with tl to annotate data references and inspect structured memory.</string>
+    <string name="types_load_error">Could not load local types</string>
+
+    <!-- C Declaration Editor (td) -->
+    <string name="types_editor_new_title">Define C Types</string>
+    <string name="types_editor_edit_title">Edit %1$s</string>
+    <string name="types_editor_subtitle">Parsed by radare2 cparse (td / to)</string>
+    <string name="types_editor_templates">Templates</string>
+    <string name="types_editor_quick_tokens">Quick insert</string>
+    <string name="types_editor_placeholder">struct Packet {\n    uint32_t magic;\n    uint16_t length;\n    uint8_t payload[64];\n};</string>
+    <string name="types_editor_apply">Apply</string>
+    <string name="types_editor_save">Save Changes</string>
+    <string name="types_editor_unbalanced_braces">Braces { } appear unbalanced</string>
+    <string name="types_defined_success">C type declaration applied</string>
+    <string name="types_updated_success">Updated %1$s</string>
+
+    <!-- Import Header (to) -->
+    <string name="types_import_title">Import C Header (.h)</string>
+    <string name="types_import_description">Pick a .h header file from storage or specify a path accessible to radare2 (to &lt;path&gt;).</string>
+    <string name="types_import_browse">Choose .h File…</string>
+    <string name="types_import_path_label">Or enter header file path</string>
+    <string name="types_import_path_hint">/sdcard/Download/types.h</string>
+    <string name="types_import_load_path">Load Path</string>
+    <string name="types_import_success">Imported header: %1$s</string>
+    <string name="types_import_failed">Header import failed: %1$s</string>
+
+    <!-- Link Type to Address (tl) -->
+    <string name="types_link_dialog_title">Bind Type to Address</string>
+    <string name="types_link_dialog_subtitle">Links a type to memory via radare2 tl</string>
+    <string name="types_link_type_label">Type name</string>
+    <string name="types_link_type_hint">Search or pick a type…</string>
+    <string name="types_link_addr_label">Target address</string>
+    <string name="types_link_addr_hint">0x401000</string>
+    <string name="types_link_use_cursor">Cursor: %1$s</string>
+    <string name="types_link_confirm">Bind Type</string>
+    <string name="types_link_success">Linked %1$s at %2$s</string>
+    <string name="types_unlink_success">Removed type link at %1$s</string>
+    <string name="types_link_invalid_addr">Enter a valid hex (0x…) or decimal address.</string>
+    <string name="types_link_open_hex">Hex</string>
+    <string name="types_link_open_disasm">Disasm</string>
+    <string name="types_preview_empty">No readable data at this address.</string>
+
+    <!-- Delete Confirmation -->
+    <string name="types_delete_title">Delete type?</string>
+    <string name="types_delete_message">Remove %1$s from radare2\'s type database (t- %1$s)?</string>
+    <string name="types_delete_success">Deleted %1$s</string>
+
+    <!-- Enhanced Function Info & Variables Dialogs -->
+    <string name="func_info_edit_signature">Edit Signature</string>
+    <string name="func_info_signature_hint">int my_func(struct Ctx *ctx, size_t len)</string>
+    <string name="func_info_signature_empty">No signature set — tap Edit to define (afs)</string>
+    <string name="func_info_signature_helper">Runs afs; changing the name also renames the function.</string>
+    <string name="func_info_change_cc">Change</string>
+    <string name="func_info_cc_picker_title">Calling Convention (afc)</string>
+    <string name="func_info_cc_search_hint">Filter or enter custom CC…</string>
+    <string name="func_info_cc_apply_custom">Apply \"%1$s\"</string>
+    <string name="func_info_metrics_section">Metrics &amp; Details</string>
+    <string name="func_info_open_vars">Variables</string>
+    <string name="func_info_no_cc">Default</string>
+
+    <string name="func_vars_retype">Retype</string>
+    <string name="func_vars_retype_hint">Variable type (afvt)</string>
+    <string name="func_vars_filter_hint">Filter variables…</string>
+    <string name="func_vars_summary">%1$d args · %2$d locals</string>
+    <string name="func_vars_quick_types">Type suggestions</string>
+    <string name="func_vars_open_types">Manage Types</string>
+
+    <!-- Decompiler Menu Shortcuts -->
+    <string name="decompiler_section_function">Function &amp; Types</string>
+    <string name="decompiler_func_info">Function Signature &amp; CC</string>
+    <string name="decompiler_func_vars">Function Variables &amp; Types</string>
+    <string name="decompiler_local_types">Local Types Manager</string>
+</resources>

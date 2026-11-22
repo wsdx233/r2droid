@@ -14,6 +14,7 @@ class EsilViewerReadTest {
             "afij @ 4194304",
             "axfj @ 4194304",
             "iSj",
+            "ahj",
             "e io.va",
             "ij"
         ).forEach { command -> assertTrue(command, R2PipeManager.isEsilViewerRead(command)) }

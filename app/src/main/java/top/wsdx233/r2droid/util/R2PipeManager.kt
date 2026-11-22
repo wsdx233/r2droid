@@ -132,26 +132,34 @@ object R2PipeManager {
     internal val activeSessionPipe: R2PipeSession? get() = activeSession()?.pipe
     internal val esilOwnsActivePipe: Boolean get() = activeSession()?.managedPipe?.lease != null
 
-    /** Pinned active radare2 session handle for AI tool execution. Invalidated on session switch or disconnect. */
-    internal class ActiveAiTarget internal constructor(private val session: R2Session, private val generation: Int) {
+    /** A command target pinned to one active selection, including its reconnect generation. */
+    internal class ActiveTarget internal constructor(private val session: R2Session, private val generation: Int) {
         val isFridaSession: Boolean get() = session.isFridaSession
         val targetLabel: String? get() = session.projectPath ?: session.customCommand
 
         fun isCurrent(): Boolean = isCurrentConnectedSession(session, generation)
 
-        suspend fun execute(command: String, markDirty: Boolean = true): Result<String> = withSessionCommand(
+        suspend fun execute(
+            command: String,
+            markDirty: Boolean = true,
+            includeStderr: Boolean = false
+        ): Result<String> = withSessionCommand(
             session, command, markDirty = markDirty, lease = null, render = { it },
             requiredActiveGeneration = generation
         ) {
             check(isCurrent()) { "The active radare2 session changed or disconnected." }
-            logStdout(pipeCmd(session, command))
+            if (includeStderr) captureOutput(session, command, required = false).displayText()
+            else logStdout(pipeCmd(session, command))
         }
+
+        suspend fun <T> checkedTransaction(operation: String, markDirty: Boolean, block: ((String) -> String) -> T): T =
+            withSessionTransaction(session, generation, operation, markDirty, checkDiagnostics = true, block).getOrThrow()
     }
 
-    internal fun captureActiveAiTarget(): ActiveAiTarget? = synchronized(sessionsLock) {
-        val session = activeSession()?.takeIf { it.isConnected.get() && pipeIsRunning(it) }
+    internal fun captureActiveTarget(expected: R2PipeSession? = null): ActiveTarget? = synchronized(sessionsLock) {
+        val session = activeSession()?.takeIf { (expected == null || it.pipe === expected) && it.isConnected.get() && pipeIsRunning(it) }
             ?: return@synchronized null
-        ActiveAiTarget(session, sessionId)
+        ActiveTarget(session, sessionId)
     }
 
     private fun isCurrentConnectedSession(session: R2Session, generation: Int): Boolean = synchronized(sessionsLock) {
@@ -223,7 +231,7 @@ object R2PipeManager {
 
     internal suspend fun <T> exportProjectReplay(
         session: R2Session,
-        block: (InputStream, Int?) -> T
+        block: (InputStream, Int?, String) -> T
     ): Result<T> = withSessionCommand(session, "PS /dev/stdout", markDirty = false, lease = null,
         render = { "Project replay exported" }) {
         // Check against the live descriptor, not just the launch path: the console can open
@@ -239,7 +247,8 @@ object R2PipeManager {
             }
             checkNotNull(raised).getInt("fd")
         }
-        pipeCmdStream(session, "PS /dev/stdout").use { block(it, fd) }
+        val formats = pipeCmd(session, "pf.")
+        pipeCmdStream(session, "PS /dev/stdout").use { block(it, fd, formats) }
     }
 
     internal fun openProjectBinaryPaths(): List<String> = synchronized(sessionsLock) {
@@ -582,16 +591,22 @@ object R2PipeManager {
         operation: String,
         markDirty: Boolean = false,
         block: ((String) -> String) -> T
-    ): Result<T> {
-        val generation = sessionId
-        return withSessionCommand(session, operation, markDirty, lease = null, render = { "Completed" },
-            canReadDuringEsil = false) {
-            check(!session.isHttpMode && !session.isFridaSession) {
-                "This operation requires a local radare2 stdio session."
-            }
-            check(activeSessionPipe === session.pipe && sessionId == generation) {
-                "The active radare2 session changed. Refresh and try again."
-            }
+    ): Result<T> = withSessionTransaction(session, sessionId, operation, markDirty, checkDiagnostics = false) { command ->
+        check(!session.isHttpMode && !session.isFridaSession) {
+            "This operation requires a local radare2 stdio session."
+        }
+        block(command)
+    }
+
+    private suspend fun <T> withSessionTransaction(
+        session: R2Session,
+        generation: Int,
+        operation: String,
+        markDirty: Boolean,
+        checkDiagnostics: Boolean,
+        block: ((String) -> String) -> T
+    ): Result<T> = withSessionCommand(session, operation, markDirty, lease = null, render = { "Completed" },
+        canReadDuringEsil = false, requiredActiveGeneration = generation) {
             val transactionThread = Thread.currentThread()
             var open = true
             try {
@@ -604,13 +619,13 @@ object R2PipeManager {
                     check(isRegistered(session) && session.isConnected.get()) { "R2Pipe session is not connected." }
                     check(!isR2FridaOnlyCommand(command)) { "Not a local radare2 command: $command" }
                     LogManager.log(LogType.COMMAND, command)
-                    pipeCmd(session, command)
+                    if (checkDiagnostics) captureOutput(session, command, required = false).checkedStdout()
+                    else pipeCmd(session, command)
                 }
             } finally {
                 open = false
             }
         }
-    }
 
     private fun captureOutput(session: R2Session, cmd: String, required: Boolean): R2CommandConsole.Output =
         session.console.execute(session.managedPipe.transport, cmd, requireStderr = required)
@@ -679,11 +694,11 @@ object R2PipeManager {
     // independent of r2's seek. Do not trim or permit general r2 numeric expressions.
     private const val VIEWER_ADDRESS = "(?:-?[0-9]{1,20}|0[xX][0-9a-fA-F]{1,16})"
     // Do not include formatted pd/pdf: with asm.emu enabled they can run ESIL while printing.
-    private val viewerCountedRead = Regex("(?:pxj|pdj) ([0-9]{1,4}) @ $VIEWER_ADDRESS")
+    private val viewerCountedRead = Regex("(?:pxj|pdj|p8) ([0-9]{1,4}) @ $VIEWER_ADDRESS")
     private val viewerAddressedRead = Regex("(?:ps|afij|aoj|axfj|axtj|afxj|afvj) @ $VIEWER_ADDRESS")
 
     internal fun isEsilViewerRead(command: String): Boolean = when (command) {
-        "ij", "iSj", "e io.va" -> true
+        "ij", "iSj", "ahj", "C,type/eq/Cs,:json", "C,type/eq/Cf,:json", "e io.va" -> true
         else -> viewerAddressedRead.matches(command) ||
             viewerCountedRead.matchEntire(command)?.groupValues?.get(1)?.toInt()?.let { it in 1..4096 } == true
     }

@@ -205,6 +205,7 @@
     <string name="menu_disassembly">反汇编视图</string>
     <string name="menu_custom_command">自定义命令...</string>
     <string name="menu_modify_submenu">修改...</string>
+    <string name="menu_more_submenu">更多...</string>
     <string name="menu_opcodes">机器码</string>
     <string name="menu_bytes">字节码</string>
     <string name="menu_full_row">完整行</string>

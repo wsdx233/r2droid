@@ -72,6 +72,14 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
     }
 
     data class Output(val stdout: String, val stderr: String) {
+        // A failed r2 command often returns normally and reports its error on fd 2
+        // (or in stdout under -1). Do not mark such a transaction successful/dirty.
+        fun checkedStdout(): String {
+            val diagnostic = COMMAND_ERROR.find(stderr) ?: COMMAND_ERROR.find(stdout)
+            if (diagnostic != null) error(diagnostic.value.trim().take(500))
+            return stdout
+        }
+
         fun displayText(): String = if (stderr.isEmpty()) stdout else buildString {
             append(stdout)
             if (stdout.isNotEmpty() && !stdout.endsWith('\n')) append('\n')
@@ -126,6 +134,7 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
     private companion object {
         const val FENCE_TIMEOUT_SECONDS = 2L
         const val MAX_STDERR_CHARS = 256 * 1024
+        val COMMAND_ERROR = Regex("^(?:[ \\t]|\\u001b\\[[0-9;]*m)*(?:(?:error|fatal):|(?:invalid|unknown) command\\b).*$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
         val ANSI_CSI = Regex("\u001b\\[[0-?]*[ -/]*[@-~]")
     }
 }

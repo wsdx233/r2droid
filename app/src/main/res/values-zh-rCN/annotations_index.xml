@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotations_index_bookmarks">书签</string>
+    <string name="annotations_index_comments">注释</string>
+    <string name="annotations_index_names">名称</string>
+    <string name="annotations_index_empty_bookmarks">暂无书签</string>
+    <string name="annotations_index_empty_comments">暂无注释</string>
+    <string name="annotations_index_empty_names">暂无名称</string>
+    <string name="annotations_index_error">无法加载注释数据</string>
+</resources>

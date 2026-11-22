@@ -1,12 +1,8 @@
 package top.wsdx233.r2droid.feature.disasm.ui
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +13,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpOffset
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.ui.components.AddressAnnotationMenuItems
+import top.wsdx233.r2droid.core.ui.components.DefineMenuItems
+import top.wsdx233.r2droid.core.ui.components.FunctionMenuActions
+import top.wsdx233.r2droid.core.ui.components.FunctionMenuItems
+import top.wsdx233.r2droid.core.ui.components.OperandMenuItems
+import top.wsdx233.r2droid.core.ui.components.SubmenuBackItem
+import top.wsdx233.r2droid.core.ui.components.SubmenuItem
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
+import top.wsdx233.r2droid.feature.disasm.DisasmEvent
+import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
+
+internal fun DisasmViewModel.functionMenuActions() = FunctionMenuActions(
+    onAnalyze = { onEvent(DisasmEvent.AnalyzeFunction(it)) },
+    onInfo = { onEvent(DisasmEvent.FetchFunctionInfo(it)) },
+    onXrefs = { onEvent(DisasmEvent.FetchFunctionXrefs(it)) },
+    onVariables = { onEvent(DisasmEvent.FetchFunctionVariables(it)) }
+)
 
 @Composable
 fun DisasmContextMenu(
@@ -28,22 +41,19 @@ fun DisasmContextMenu(
     onModify: (String) -> Unit, // type: hex, string, asm
     onXrefs: () -> Unit,
     onCustomCommand: () -> Unit,
-    onAnalyzeFunction: () -> Unit = {},
-    onFunctionInfo: () -> Unit = {},
-    onFunctionXrefs: () -> Unit = {},
-    onFunctionVariables: () -> Unit = {},
-    onInstructionDetail: () -> Unit = {},
-    onJumpToTarget: ((Long) -> Unit)? = null,
-    showDebugActions: Boolean = false,
-    isBreakpoint: Boolean = false,
-    onToggleBreakpoint: () -> Unit = {},
-    onRunToCursor: () -> Unit = {},
-    onSetPcHere: () -> Unit = {},
+    functionActions: FunctionMenuActions,
+    onAnnotate: (AnnotationAction, Long) -> Unit,
+    onInstructionDetail: () -> Unit,
+    onJumpToTarget: (Long) -> Unit,
+    showDebugActions: Boolean,
+    isBreakpoint: Boolean,
+    onToggleBreakpoint: () -> Unit,
+    onRunToCursor: () -> Unit,
+    onSetPcHere: () -> Unit,
     offset: DpOffset = DpOffset.Zero
 ) {
     if (expanded) {
-        // State to track which menu is currently visible: "main", "copy", "modify"
-        var currentMenu by remember { mutableStateOf("main") }
+        var currentMenu by remember(address) { mutableStateOf("main") }
 
         DropdownMenu(
             expanded = expanded,
@@ -52,65 +62,30 @@ fun DisasmContextMenu(
         ) {
             when (currentMenu) {
                 "main" -> {
-                    // === Main Menu ===
-                    
-                    // Copy Submenu Trigger
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_copy_submenu)) },
-                        onClick = { currentMenu = "copy" },
-                        trailingIcon = { 
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = "Submenu"
-                            ) 
-                        }
-                    )
-                    
-                    // Modify Submenu Trigger
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_modify_submenu)) },
-                        onClick = { currentMenu = "modify" },
-                        trailingIcon = { 
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = "Submenu"
-                            ) 
-                        }
-                    )
-                    
-                    // Function Submenu Trigger
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_submenu)) },
-                        onClick = { currentMenu = "function" },
-                        trailingIcon = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = "Submenu"
-                            )
-                        }
-                    )
+                    SubmenuItem(R.string.menu_copy_submenu) { currentMenu = "copy" }
+                    SubmenuItem(R.string.menu_modify_submenu) { currentMenu = "modify" }
 
                     if (showDebugActions) {
+                        SubmenuItem(R.string.debug_menu_submenu) { currentMenu = "debug" }
+                    }
+
+                    val jump = instr?.jump
+                    if (jump != null) {
+                        val jumpAddr = "0x${jump.toULong().toString(16).uppercase()}"
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.debug_menu_submenu)) },
-                            onClick = { currentMenu = "debug" },
-                            trailingIcon = {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = "Submenu"
-                                )
+                            text = { Text(stringResource(R.string.menu_jump_to, jumpAddr)) },
+                            onClick = { onJumpToTarget(jump) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.annotation_menu_name_jump_target, jumpAddr)) },
+                            onClick = {
+                                onDismiss()
+                                onAnnotate(AnnotationAction.NAME, jump)
                             }
                         )
                     }
 
-                    // Jump to target (only for jump instructions)
-                    if (instr?.jump != null && onJumpToTarget != null) {
-                        val jumpAddr = "0x${instr.jump.toString(16).uppercase()}"
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.menu_jump_to, jumpAddr)) },
-                            onClick = { onJumpToTarget(instr.jump) }
-                        )
-                    }
+                    SubmenuItem(R.string.menu_more_submenu) { currentMenu = "more" }
 
                     HorizontalDivider()
 
@@ -132,20 +107,17 @@ fun DisasmContextMenu(
                         onClick = { onCustomCommand() }
                     )
                 }
+
+                "more" -> {
+                    SubmenuBackItem { currentMenu = "main" }
+                    SubmenuItem(R.string.menu_function_submenu) { currentMenu = "function" }
+                    AddressAnnotationMenuItems(address, onAnnotate, onDismiss)
+                    SubmenuItem(R.string.annotation_menu_operand_submenu) { currentMenu = "operand" }
+                    SubmenuItem(R.string.annotation_menu_define_submenu) { currentMenu = "define" }
+                }
                 
                 "copy" -> {
-                    // === Copy Submenu ===
-                    DropdownMenuItem(
-                        text = { Text("Back") },
-                        onClick = { currentMenu = "main" },
-                        leadingIcon = { 
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            ) 
-                        }
-                    )
-                    HorizontalDivider()
+                    SubmenuBackItem { currentMenu = "main" }
                     
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.copy_address)) },
@@ -172,18 +144,7 @@ fun DisasmContextMenu(
                 }
                 
                 "modify" -> {
-                    // === Modify Submenu ===
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_back)) },
-                        onClick = { currentMenu = "main" },
-                        leadingIcon = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    )
-                    HorizontalDivider()
+                    SubmenuBackItem { currentMenu = "main" }
 
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.hex_modify_hex)) },
@@ -203,50 +164,23 @@ fun DisasmContextMenu(
                     )
                 }
 
-                "function" -> {
-                    // === Function Submenu ===
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_back)) },
-                        onClick = { currentMenu = "main" },
-                        leadingIcon = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    )
-                    HorizontalDivider()
+                "define" -> {
+                    SubmenuBackItem { currentMenu = "more" }
+                    DefineMenuItems(address, onAnnotate, onDismiss)
+                }
 
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_analyze)) },
-                        onClick = { onAnalyzeFunction() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_info)) },
-                        onClick = { onFunctionInfo() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_xrefs)) },
-                        onClick = { onFunctionXrefs() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_function_variables)) },
-                        onClick = { onFunctionVariables() }
-                    )
+                "operand" -> {
+                    SubmenuBackItem { currentMenu = "more" }
+                    OperandMenuItems(address, onAnnotate, onDismiss)
+                }
+
+                "function" -> {
+                    SubmenuBackItem { currentMenu = "more" }
+                    FunctionMenuItems(address, functionActions, onAnnotate, onDismiss)
                 }
 
                 "debug" -> {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_back)) },
-                        onClick = { currentMenu = "main" },
-                        leadingIcon = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    )
-                    HorizontalDivider()
+                    SubmenuBackItem { currentMenu = "main" }
 
                     DropdownMenuItem(
                         text = {

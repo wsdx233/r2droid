@@ -6,13 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
 import top.wsdx233.r2droid.feature.decompiler.ui.DecompilationViewer
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.disasm.ui.DisassemblyViewer
+import top.wsdx233.r2droid.feature.disasm.ui.functionMenuActions
 import top.wsdx233.r2droid.feature.graph.ui.GraphScreen
 import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
@@ -25,6 +28,7 @@ fun ProjectDetailView(
     hexViewModel: HexViewModel = hiltViewModel(),
     disasmViewModel: DisasmViewModel = hiltViewModel(),
     tabIndex: Int,
+    onAnnotate: (AnnotationAction, Long) -> Unit,
     onNavigateToR2Frida: (() -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -67,7 +71,9 @@ fun ProjectDetailView(
                     cursorAddress = state.cursorAddress,
                     scrollToSelectionTrigger = viewModel.scrollToSelectionTrigger,
                     onByteClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },
-                    onShowXrefs = { addr -> disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr)) }
+                    onShowXrefs = { addr -> disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr)) },
+                    functionActions = remember(disasmViewModel) { disasmViewModel.functionMenuActions() },
+                    onAnnotate = onAnnotate
                 )
             }
         }
@@ -90,6 +96,7 @@ fun ProjectDetailView(
                     cursorAddress = state.cursorAddress,
                     scrollToSelectionTrigger = viewModel.scrollToSelectionTrigger,
                     onInstructionClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },
+                    onAnnotate = onAnnotate,
                     onNavigateToR2Frida = onNavigateToR2Frida
                 )
             }

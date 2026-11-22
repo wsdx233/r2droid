@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Project tab -->
+    <string name="proj_tab_types">类型</string>
+
+    <!-- Local Types Manager -->
+    <string name="types_title">本地类型</string>
+    <string name="types_subtitle_summary">%1$d 个类型 · %2$d 个绑定</string>
+    <string name="types_search_hint">搜索结构体、枚举、字段、地址…</string>
+    <string name="types_action_define_c">粘贴 C 声明</string>
+    <string name="types_action_import_header">导入 .h</string>
+    <string name="types_action_link_type">绑定到地址</string>
+    <string name="types_action_link_short">绑定</string>
+    <string name="types_action_edit">编辑 C</string>
+    <string name="types_action_copy_c">复制 C</string>
+    <string name="types_action_delete">删除</string>
+    <string name="types_action_unlink">解除绑定</string>
+    <string name="types_action_preview_memory">查看内存解析</string>
+    <string name="types_action_hide_memory">收起内存解析</string>
+    <string name="types_action_open_manager">本地类型管理</string>
+
+    <!-- Categories -->
+    <string name="types_cat_all">全部</string>
+    <string name="types_cat_structs">结构体</string>
+    <string name="types_cat_enums">枚举</string>
+    <string name="types_cat_unions">联合体</string>
+    <string name="types_cat_typedefs">类型别名</string>
+    <string name="types_cat_links">地址绑定</string>
+
+    <!-- Kind Badges -->
+    <string name="types_badge_struct">结构体</string>
+    <string name="types_badge_enum">枚举</string>
+    <string name="types_badge_union">联合体</string>
+    <string name="types_badge_typedef">TYPEDEF</string>
+    <string name="types_badge_linked">已绑定</string>
+
+    <!-- Counts & Metadata -->
+    <string name="types_fields_count">%1$d 字段</string>
+    <string name="types_variants_count">%1$d 成员</string>
+    <string name="types_values_count">%1$d 枚举项</string>
+    <string name="types_size_bytes">%1$d B</string>
+    <string name="types_size_hex">0x%1$X B</string>
+    <string name="types_tab_layout">成员布局</string>
+    <string name="types_tab_c_source">C 源码</string>
+    <string name="types_col_offset">偏移</string>
+    <string name="types_col_type">类型</string>
+    <string name="types_col_field">字段</string>
+    <string name="types_col_size">大小</string>
+    <string name="types_col_name">名称</string>
+    <string name="types_col_dec">十进制</string>
+    <string name="types_col_hex">十六进制</string>
+    <string name="types_pf_format">pf 格式</string>
+    <string name="types_linked_at">已绑定地址</string>
+    <string name="types_alias_target">原始类型</string>
+    <string name="types_no_fields">暂无成员信息</string>
+    <string name="types_copied">已复制到剪贴板</string>
+
+    <!-- Empty & Error States -->
+    <string name="types_empty_all_title">暂无本地类型</string>
+    <string name="types_empty_all_body">粘贴 C 语言结构体/枚举/联合体声明，或导入 .h 头文件，即可大幅提升反汇编与 r2ghidra 反编译可读性。</string>
+    <string name="types_empty_category">暂无%1$s定义。</string>
+    <string name="types_empty_links_title">暂无地址类型绑定</string>
+    <string name="types_empty_links_body">使用 tl 将结构体、联合体或其他类型绑定到指定地址，便于解析全局数据结构与偏移引用。</string>
+    <string name="types_load_error">无法加载本地类型</string>
+
+    <!-- C Declaration Editor (td) -->
+    <string name="types_editor_new_title">定义 C 类型</string>
+    <string name="types_editor_edit_title">编辑 %1$s</string>
+    <string name="types_editor_subtitle">通过 radare2 cparse 解析 (td / to)</string>
+    <string name="types_editor_templates">快速模板</string>
+    <string name="types_editor_quick_tokens">快捷插入</string>
+    <string name="types_editor_placeholder">struct Packet {\n    uint32_t magic;\n    uint16_t length;\n    uint8_t payload[64];\n};</string>
+    <string name="types_editor_apply">解析并添加</string>
+    <string name="types_editor_save">保存修改</string>
+    <string name="types_editor_unbalanced_braces">花括号 { } 似乎未成对闭合</string>
+    <string name="types_defined_success">C 类型声明已生效</string>
+    <string name="types_updated_success">已更新 %1$s</string>
+
+    <!-- Import Header (to) -->
+    <string name="types_import_title">导入 C 头文件 (.h)</string>
+    <string name="types_import_description">从文件选择器选取 .h 头文件，或直接输入 radare2 可访问的路径 (to &lt;path&gt;)。</string>
+    <string name="types_import_browse">选择 .h 文件…</string>
+    <string name="types_import_path_label">或输入头文件路径</string>
+    <string name="types_import_path_hint">/sdcard/Download/types.h</string>
+    <string name="types_import_load_path">加载路径</string>
+    <string name="types_import_success">已导入头文件：%1$s</string>
+    <string name="types_import_failed">头文件导入失败：%1$s</string>
+
+    <!-- Link Type to Address (tl) -->
+    <string name="types_link_dialog_title">绑定类型到地址</string>
+    <string name="types_link_dialog_subtitle">通过 radare2 tl 将结构体或类型关联到内存地址</string>
+    <string name="types_link_type_label">类型名称</string>
+    <string name="types_link_type_hint">搜索或选择类型…</string>
+    <string name="types_link_addr_label">目标地址</string>
+    <string name="types_link_addr_hint">0x401000</string>
+    <string name="types_link_use_cursor">当前光标：%1$s</string>
+    <string name="types_link_confirm">确认绑定</string>
+    <string name="types_link_success">已将 %1$s 绑定至 %2$s</string>
+    <string name="types_unlink_success">已解除 %1$s 的类型绑定</string>
+    <string name="types_link_invalid_addr">请输入有效的十六进制 (0x…) 或十进制地址。</string>
+    <string name="types_link_open_hex">十六进制</string>
+    <string name="types_link_open_disasm">反汇编</string>
+    <string name="types_preview_empty">该地址无可读结构化数据。</string>
+
+    <!-- Delete Confirmation -->
+    <string name="types_delete_title">删除类型？</string>
+    <string name="types_delete_message">确定从 radare2 类型库中删除 %1$s (t- %1$s) 吗？</string>
+    <string name="types_delete_success">已删除 %1$s</string>
+
+    <!-- Enhanced Function Info & Variables Dialogs -->
+    <string name="func_info_edit_signature">编辑签名</string>
+    <string name="func_info_signature_hint">int my_func(struct Ctx *ctx, size_t len)</string>
+    <string name="func_info_signature_empty">暂无函数签名 — 点击编辑进行设置 (afs)</string>
+    <string name="func_info_signature_helper">执行 afs；修改签名中的函数名会同时重命名函数。</string>
+    <string name="func_info_change_cc">更改</string>
+    <string name="func_info_cc_picker_title">调用约定 (afc)</string>
+    <string name="func_info_cc_search_hint">筛选或输入自定义调用约定…</string>
+    <string name="func_info_cc_apply_custom">应用 \"%1$s\"</string>
+    <string name="func_info_metrics_section">统计与详情</string>
+    <string name="func_info_open_vars">函数变量</string>
+    <string name="func_info_no_cc">默认</string>
+
+    <string name="func_vars_retype">改类型</string>
+    <string name="func_vars_retype_hint">变量类型 (afvt)</string>
+    <string name="func_vars_filter_hint">搜索变量名或类型…</string>
+    <string name="func_vars_summary">%1$d 参数 · %2$d 局部变量</string>
+    <string name="func_vars_quick_types">常用与本地类型</string>
+    <string name="func_vars_open_types">管理类型</string>
+
+    <!-- Decompiler Menu Shortcuts -->
+    <string name="decompiler_section_function">函数与类型</string>
+    <string name="decompiler_func_info">函数签名与调用约定</string>
+    <string name="decompiler_func_vars">函数变量与类型</string>
+    <string name="decompiler_local_types">本地类型管理</string>
+</resources>

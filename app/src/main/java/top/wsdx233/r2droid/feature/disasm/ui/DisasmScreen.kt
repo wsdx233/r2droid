@@ -51,9 +51,6 @@ import androidx.compose.ui.unit.sp
 import dev.jeziellago.compose.markdowntext.MarkdownText
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
-import top.wsdx233.r2droid.core.ui.dialogs.FunctionInfoDialog
-import top.wsdx233.r2droid.core.ui.dialogs.FunctionVariablesDialog
-import top.wsdx233.r2droid.core.ui.dialogs.FunctionXrefsDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.canOpenPatchEditor
 import top.wsdx233.r2droid.core.ui.dialogs.requestByteEditor
@@ -92,6 +89,7 @@ import top.wsdx233.r2droid.util.R2PipeManager
  */
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
 import top.wsdx233.r2droid.core.data.model.formatCompactAddress
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
@@ -103,6 +101,7 @@ fun DisassemblyViewer(
     cursorAddress: Long,
     scrollToSelectionTrigger: kotlinx.coroutines.flow.StateFlow<Int>,
     onInstructionClick: (Long) -> Unit,
+    onAnnotate: (AnnotationAction, Long) -> Unit,
     onNavigateToR2Frida: (() -> Unit)? = null
 ) {
     val managerState by viewModel.disasmDataManagerState.collectAsState()
@@ -147,6 +146,8 @@ fun DisassemblyViewer(
     var menuTargetAddress by remember { mutableStateOf<Long?>(null) }
     var menuTapOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var menuRowHeight by remember { mutableIntStateOf(0) }
+
+    val functionActions = remember(viewModel) { viewModel.functionMenuActions() }
 
     var showModifyDialog by remember { mutableStateOf(false) }
     var modifySession by remember { mutableStateOf<R2PipeManager.R2Session?>(null) }
@@ -379,22 +380,8 @@ fun DisassemblyViewer(
                                     showCustomCommandDialog = true
                                     showMenu = false
                                 },
-                                onAnalyzeFunction = {
-                                    viewModel.onEvent(DisasmEvent.AnalyzeFunction(instr.addr))
-                                    showMenu = false
-                                },
-                                onFunctionInfo = {
-                                    viewModel.onEvent(DisasmEvent.FetchFunctionInfo(instr.addr))
-                                    showMenu = false
-                                },
-                                onFunctionXrefs = {
-                                    viewModel.onEvent(DisasmEvent.FetchFunctionXrefs(instr.addr))
-                                    showMenu = false
-                                },
-                                onFunctionVariables = {
-                                    viewModel.onEvent(DisasmEvent.FetchFunctionVariables(instr.addr))
-                                    showMenu = false
-                                },
+                                functionActions = functionActions,
+                                onAnnotate = onAnnotate,
                                 onInstructionDetail = {
                                     viewModel.onEvent(DisasmEvent.FetchInstructionDetail(instr.addr))
                                     showMenu = false
@@ -618,53 +605,6 @@ fun DisassemblyViewer(
             CustomCommandDialog(
                 onDismiss = { showCustomCommandDialog = false },
                 onConfirm = { /* handled internally */ }
-            )
-        }
-
-        // Function Info Dialog
-        val functionInfoState by viewModel.functionInfoState.collectAsState()
-        if (functionInfoState.visible) {
-            FunctionInfoDialog(
-                functionInfo = functionInfoState.data,
-                isLoading = functionInfoState.isLoading,
-                targetAddress = functionInfoState.targetAddress,
-                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionInfo) },
-                onRename = { newName ->
-                    viewModel.onEvent(
-                        DisasmEvent.RenameFunctionFromInfo(functionInfoState.targetAddress, newName)
-                    )
-                },
-                onJump = { addr -> onInstructionClick(addr) }
-            )
-        }
-
-        // Function Xrefs Dialog
-        val functionXrefsState by viewModel.functionXrefsState.collectAsState()
-        if (functionXrefsState.visible) {
-            FunctionXrefsDialog(
-                xrefs = functionXrefsState.data,
-                isLoading = functionXrefsState.isLoading,
-                targetAddress = functionXrefsState.targetAddress,
-                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionXrefs) },
-                onJump = { addr -> onInstructionClick(addr) }
-            )
-        }
-
-        // Function Variables Dialog
-        val functionVariablesState by viewModel.functionVariablesState.collectAsState()
-        if (functionVariablesState.visible) {
-            FunctionVariablesDialog(
-                variables = functionVariablesState.data,
-                isLoading = functionVariablesState.isLoading,
-                targetAddress = functionVariablesState.targetAddress,
-                onDismiss = { viewModel.onEvent(DisasmEvent.DismissFunctionVariables) },
-                onRename = { oldName, newName ->
-                    viewModel.onEvent(
-                        DisasmEvent.RenameFunctionVariable(
-                            functionVariablesState.targetAddress, oldName, newName
-                        )
-                    )
-                }
             )
         }
 

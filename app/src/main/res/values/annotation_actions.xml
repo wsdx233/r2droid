@@ -1,0 +1,36 @@
+<resources>
+    <string name="annot_code">Code</string>
+    <string name="annot_byte">Byte (1 byte)</string>
+    <string name="annot_word">Word (2 bytes)</string>
+    <string name="annot_dword">Dword (4 bytes)</string>
+    <string name="annot_qword">Qword (8 bytes)</string>
+    <string name="annot_string">String</string>
+    <string name="annot_struct">Structure…</string>
+    <string name="annot_undefine">Undefine…</string>
+    <string name="annot_hex">Hexadecimal</string>
+    <string name="annot_dec">Decimal</string>
+    <string name="annot_bin">Binary</string>
+    <string name="annot_char">Character</string>
+    <string name="annot_offset">Offset…</string>
+    <string name="annot_enum">Enum…</string>
+    <string name="annot_delete_function">Delete function…</string>
+    <string name="annot_resize_function">Adjust function end…</string>
+    <string name="annot_name">Name address…</string>
+    <string name="annot_bookmark">Toggle bookmark</string>
+    <string name="annot_address">Address: %1$s</string>
+    <string name="annot_range">Function: %1$s to %2$s (end exclusive)</string>
+    <string name="annot_delete_warning">Delete the analysis function? radare2 can also remove metadata within its range. File bytes are unchanged.</string>
+    <string name="annot_undefine_warning">Clear the definition, comments, and operand formatting at this address? Flags, bookmarks and file bytes are kept.</string>
+    <string name="annot_end">New end address (exclusive)</string>
+    <string name="annot_offset_target">Pointer target address</string>
+    <string name="annot_name_new">Create a new flag</string>
+    <string name="annot_name_existing">Rename: %1$s</string>
+    <string name="annot_name_input">Flag name</string>
+    <string name="annot_name_invalid">Use a flag identifier, e.g. input_buffer. Spaces and command syntax are not allowed.</string>
+    <string name="annot_type_input">Find or select a type</string>
+    <string name="annot_no_structs">No structure types or print formats are defined in this session.</string>
+    <string name="annot_no_enums">No enum types are defined in this session.</string>
+    <string name="annot_applied">Annotation updated at %1$s</string>
+    <string name="annot_bookmarked">Bookmarked %1$s</string>
+    <string name="annot_unbookmarked">Removed bookmark at %1$s</string>
+</resources>

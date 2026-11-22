@@ -458,6 +458,15 @@ class ProjectViewModel @Inject constructor(
         _globalDataInvalidated.value = System.currentTimeMillis()
         val current = _uiState.value as? ProjectUiState.Success ?: return
         _uiState.value = current.copy(decompilation = null, graphData = null)
+        if (currentDetailTab == 2) loadDecompilation()
+    }
+
+    // Reload decompilation/graph after signature, variable type, or local type edits.
+    internal fun invalidateDecompilationAndGraph() {
+        val current = _uiState.value as? ProjectUiState.Success ?: return
+        _uiState.value = current.copy(decompilation = null, graphData = null)
+        if (currentDetailTab == 2) loadDecompilation()
+        else if (currentDetailTab == 3) loadGraph(current.graphType)
     }
 
     private fun clearFunctionsCache() {
@@ -1190,6 +1199,7 @@ class ProjectViewModel @Inject constructor(
      */
     fun updateCursor(addr: Long) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val target = R2PipeManager.captureActiveTarget(current.sessionToken) ?: return
         
         // Save current address to history before updating (only if significantly different)
         // We add to history when the address change is significant (not just scrolling)
@@ -1203,7 +1213,7 @@ class ProjectViewModel @Inject constructor(
         _uiState.value = current.copy(cursorAddress = addr)
         
         viewModelScope.launch {
-            R2PipeManager.execute("s $addr")
+            target.execute("s 0x${addr.toULong().toString(16)}", markDirty = false)
         }
     }
 
@@ -1226,13 +1236,17 @@ class ProjectViewModel @Inject constructor(
      */
     private fun jumpToAddressInternal(addr: Long) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val target = R2PipeManager.captureActiveTarget(current.sessionToken) ?: return
         currentOffset = addr
 
         viewModelScope.launch {
-            // Update r2 seek
-            R2PipeManager.execute("s $addr")
-            _uiState.value = current.copy(
-                decompilation = if (currentDetailTab == 2) null else current.decompilation,
+            // A signed negative decimal would be a relative seek, not a high virtual address.
+            target.execute("s 0x${addr.toULong().toString(16)}", markDirty = false)
+            if (!target.isCurrent()) return@launch
+            val latest = _uiState.value as? ProjectUiState.Success ?: return@launch
+            if (latest.sessionToken !== current.sessionToken) return@launch
+            _uiState.value = latest.copy(
+                decompilation = if (currentDetailTab == 2) null else latest.decompilation,
                 cursorAddress = addr
             )
 
@@ -1241,7 +1255,7 @@ class ProjectViewModel @Inject constructor(
                 val funcStart = repository.getFunctionStart(addr).getOrDefault(addr)
                 val result = repository.getDecompilation(funcStart, _currentDecompiler.value)
                 val currentState = _uiState.value
-                if (currentState is ProjectUiState.Success) {
+                if (currentState is ProjectUiState.Success && currentState.sessionToken === current.sessionToken && target.isCurrent()) {
                     _uiState.value = currentState.copy(decompilation = result.getOrNull())
                 }
             }

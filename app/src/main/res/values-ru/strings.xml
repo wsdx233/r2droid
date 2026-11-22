@@ -236,6 +236,7 @@
     <string name="menu_disassembly">Дизассемблер</string>
     <string name="menu_custom_command">Произвольная команда...</string>
     <string name="menu_modify_submenu">Изменить...</string>
+    <string name="menu_more_submenu">Ещё...</string>
     <string name="menu_opcodes">Опкоды</string>
     <string name="menu_bytes">Байты</string>
     <string name="menu_full_row">Всю строку</string>

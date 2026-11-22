@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.core.data.model.SavedProject
+import top.wsdx233.r2droid.feature.annotations.replayableFormatDeclarations
 import top.wsdx233.r2droid.util.ProjectFileUtils
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.BufferedReader
@@ -73,8 +74,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
     }
 
     internal suspend fun saveAnalysisScript(session: R2PipeManager.R2Session, scriptFile: File): Result<Unit> =
-        R2PipeManager.exportProjectReplay(session) { replay, fd ->
-            writeAtomically(scriptFile) { writeProjectReplay(replay.bufferedReader(), it, fd) }
+        R2PipeManager.exportProjectReplay(session) { replay, fd, formats ->
+            writeAtomically(scriptFile) { writeProjectReplay(replay.bufferedReader(), it, fd, formats) }
         }
 
     /**
@@ -130,8 +131,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
                 val script = File(projectDir, SCRIPT_FILENAME)
                 val (arch, binType) = getFileInfo(session)
 
-                R2PipeManager.exportProjectReplay(session) { replay, fd ->
-                    writeAtomically(script) { writeProjectReplay(replay.bufferedReader(), it, fd) }
+                R2PipeManager.exportProjectReplay(session) { replay, fd, formats ->
+                    writeAtomically(script) { writeProjectReplay(replay.bufferedReader(), it, fd, formats) }
                     // Hold the pipe mutex through the snapshot so no queued r2 write can slip
                     // between the analysis dump and the copy of the bytes on disk.
                     val binaryPath = if (plan.copyBinary) {
@@ -185,8 +186,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
                     check(session.currentProjectId == projectId && project.binaryPath == binaryPath) {
                         "Current file doesn't match project binary"
                     }
-                    R2PipeManager.exportProjectReplay(session) { replay, fd ->
-                        writeAtomically(File(project.scriptPath)) { writeProjectReplay(replay.bufferedReader(), it, fd) }
+                    R2PipeManager.exportProjectReplay(session) { replay, fd, formats ->
+                        writeAtomically(File(project.scriptPath)) { writeProjectReplay(replay.bufferedReader(), it, fd, formats) }
                         val updated = project.copy(
                             lastModified = System.currentTimeMillis(),
                             writeCacheEnabled = session.writeCacheEnabled
@@ -395,11 +396,12 @@ private val REPLAY_HOOK = Regex(
     "^['\"]?e\\s+(?:cmd\\.(?!(?:depth|repeat|hitinfo|undo)\\s*=)[^\\s=]+|cfg\\.debug)\\s*=.*$"
 )
 
-internal fun writeProjectReplay(reader: BufferedReader, writer: Writer, sourceFd: Int? = null) {
+internal fun writeProjectReplay(reader: BufferedReader, writer: Writer, sourceFd: Int? = null, formats: String = "") {
     val header = reader.readLine()
     check(header?.startsWith(PS_HEADER) == true) { "Failed to save analysis script" }
     writer.appendLine(header)
     writer.appendLine(DESCRIPTOR_NEUTRAL)
+    replayableFormatDeclarations(formats).forEach { writer.appendLine(it) }
 
     val maps = mutableListOf<MatchResult>()
     fun writeMaps(fd: Int?) {

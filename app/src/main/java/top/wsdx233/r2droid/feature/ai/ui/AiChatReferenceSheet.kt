@@ -27,7 +27,7 @@ internal fun AiChatReferenceSheet(
     onShowXrefs: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val target = remember(token) { R2PipeManager.captureActiveAiTarget() }
+    val target = remember(token) { R2PipeManager.captureActiveTarget() }
     var pending by remember(token) { mutableStateOf<ReferenceAction?>(null) }
     var failed by remember(token) { mutableStateOf(false) }
     val dismiss = { pending = null; onDismiss() }

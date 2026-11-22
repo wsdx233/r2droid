@@ -150,8 +150,10 @@ class SavedProjectScriptTest {
         }
         try {
             source.cmd("f saveas.analysis 1 @ 0x2")
+            source.cmd("pf.Pair bb left right")
+            source.cmd("Cf 2 Pair @ 0")
             val raw = source.cmd("PS /dev/stdout")
-            script.writeText(replay(raw))
+            script.writeText(replay(raw, formats = source.cmd("pf.")))
             assertTrue(source.cmd("oj").contains(a.name))
             source.cmd("wx 59 @ 0x1")
             assertArrayEquals(byteArrayOf(1, 89, 3, 4), a.readBytes())
@@ -169,6 +171,8 @@ class SavedProjectScriptTest {
                 assertTrue(uris.contains(b.absolutePath))
                 assertFalse(uris.contains(a.absolutePath))
                 assertTrue(copy.cmd("fj").contains("saveas.analysis"))
+                assertEquals("2", copy.cmd("pfs.Pair").trim())
+                assertTrue(copy.cmd("pd 1 @ 0").contains("left"))
                 copy.cmd("wx 5a @ 0x0")
             } finally {
                 copy.quit()
@@ -185,8 +189,8 @@ class SavedProjectScriptTest {
         assertArrayEquals(byteArrayOf(90, 2, 3, 4), b.readBytes())
     }
 
-    private fun replay(input: String, sourceFd: Int? = null): String = StringWriter().also {
-        writeProjectReplay(input.reader().buffered(), it, sourceFd)
+    private fun replay(input: String, sourceFd: Int? = null, formats: String = ""): String = StringWriter().also {
+        writeProjectReplay(input.reader().buffered(), it, sourceFd, formats)
     }.toString()
 
     @Test

@@ -833,15 +833,31 @@ data class FunctionVariable(
     val name: String,
     val kind: String,
     val type: String,
-    val storage: String
+    val storage: String,
+    val refDisplay: String = ""
 ) {
     companion object {
         fun fromJson(json: JSONObject, storage: String): FunctionVariable {
+            val refDisplay = when (val ref = json.opt("ref")) {
+                is String -> ref.trim()
+                is JSONObject -> {
+                    val base = ref.optString("base", "").trim()
+                    val offset = ref.optLong("offset", 0L)
+                    if (base.isEmpty()) ""
+                    else when {
+                        offset > 0L -> "$base+0x${offset.toString(16)}"
+                        offset < 0L -> "$base-0x${(-offset).toString(16)}"
+                        else -> base
+                    }
+                }
+                else -> ""
+            }
             return FunctionVariable(
                 name = json.optString("name", ""),
                 kind = json.optString("kind", ""),
                 type = json.optString("type", ""),
-                storage = storage
+                storage = storage,
+                refDisplay = refDisplay
             )
         }
     }

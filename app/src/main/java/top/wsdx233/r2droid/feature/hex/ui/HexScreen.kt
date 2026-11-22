@@ -49,9 +49,11 @@ import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.formatCompactAddress
 import top.wsdx233.r2droid.core.ui.components.AutoHideScrollbar
+import top.wsdx233.r2droid.core.ui.components.FunctionMenuActions
 import top.wsdx233.r2droid.core.ui.dialogs.CustomCommandDialog
 import top.wsdx233.r2droid.core.ui.dialogs.ModifyDialog
 import top.wsdx233.r2droid.core.ui.dialogs.requestByteEditor
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
 import top.wsdx233.r2droid.feature.hex.HexEvent
 import top.wsdx233.r2droid.feature.hex.HexViewModel
 import top.wsdx233.r2droid.feature.hex.data.HexDataManager
@@ -68,7 +70,9 @@ fun HexViewer(
     cursorAddress: Long,
     scrollToSelectionTrigger: StateFlow<Int>,
     onByteClick: (Long) -> Unit,
-    onShowXrefs: (Long) -> Unit
+    onShowXrefs: (Long) -> Unit,
+    functionActions: FunctionMenuActions,
+    onAnnotate: (AnnotationAction, Long) -> Unit
 ) {
     val context = LocalContext.current
     // Menu & Dialog States
@@ -186,7 +190,9 @@ fun HexViewer(
             onCustomCommand = {
                 showCustomCommandDialog = true
                 showMenu = false
-            }
+            },
+            functionActions = functionActions,
+            onAnnotate = onAnnotate
         )
     }
     

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_menu_define_submenu">定义…</string>
+    <string name="annotation_menu_operand_submenu">操作数…</string>
+    <string name="annotation_menu_name_jump_target">命名跳转目标（%1$s）</string>
+</resources>

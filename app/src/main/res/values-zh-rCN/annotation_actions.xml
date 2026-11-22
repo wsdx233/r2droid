@@ -1,0 +1,36 @@
+<resources>
+    <string name="annot_code">代码</string>
+    <string name="annot_byte">Byte（1 字节）</string>
+    <string name="annot_word">Word（2 字节）</string>
+    <string name="annot_dword">Dword（4 字节）</string>
+    <string name="annot_qword">Qword（8 字节）</string>
+    <string name="annot_string">字符串</string>
+    <string name="annot_struct">结构体…</string>
+    <string name="annot_undefine">取消定义…</string>
+    <string name="annot_hex">十六进制</string>
+    <string name="annot_dec">十进制</string>
+    <string name="annot_bin">二进制</string>
+    <string name="annot_char">字符</string>
+    <string name="annot_offset">偏移地址…</string>
+    <string name="annot_enum">枚举…</string>
+    <string name="annot_delete_function">删除函数…</string>
+    <string name="annot_resize_function">调整函数结束地址…</string>
+    <string name="annot_name">命名地址…</string>
+    <string name="annot_bookmark">添加 / 移除书签</string>
+    <string name="annot_address">地址：%1$s</string>
+    <string name="annot_range">函数范围：%1$s 至 %2$s（不含结束地址）</string>
+    <string name="annot_delete_warning">删除这个分析函数？radare2 也可能删除函数范围内的标注，不改动文件字节。</string>
+    <string name="annot_undefine_warning">清除此处的定义、注释和操作数表示？标签、书签和文件字节会保留。</string>
+    <string name="annot_end">新的结束地址（不含）</string>
+    <string name="annot_offset_target">指针目标地址</string>
+    <string name="annot_name_new">创建新标签</string>
+    <string name="annot_name_existing">重命名：%1$s</string>
+    <string name="annot_name_input">标签名称</string>
+    <string name="annot_name_invalid">请输入标签标识符，例如 input_buffer。不能包含空格或命令符号。</string>
+    <string name="annot_type_input">查找或选择类型</string>
+    <string name="annot_no_structs">当前会话尚未定义结构体或打印格式。</string>
+    <string name="annot_no_enums">当前会话尚未定义枚举类型。</string>
+    <string name="annot_applied">已更新 %1$s 处的标注</string>
+    <string name="annot_bookmarked">已为 %1$s 添加书签</string>
+    <string name="annot_unbookmarked">已移除 %1$s 处的书签</string>
+</resources>

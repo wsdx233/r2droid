@@ -23,6 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.core.ui.components.ListItemActions
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.feature.annotations.AnnotationAction
+import top.wsdx233.r2droid.feature.annotations.AnnotationIndex
+import top.wsdx233.r2droid.feature.annotations.AnnotationIndexScreen
 import top.wsdx233.r2droid.feature.bininfo.ui.ExportList
 import top.wsdx233.r2droid.feature.bininfo.ui.OverviewCard
 import top.wsdx233.r2droid.feature.bininfo.ui.PagingSectionList
@@ -33,7 +36,9 @@ import top.wsdx233.r2droid.feature.bininfo.ui.PagingStringList
 import top.wsdx233.r2droid.feature.bininfo.ui.PagingFunctionList
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
+import top.wsdx233.r2droid.feature.disasm.ui.functionMenuActions
 import top.wsdx233.r2droid.feature.search.ui.SearchScreen
+import top.wsdx233.r2droid.feature.types.ui.LocalTypesScreen
 
 @Composable
 fun ProjectListView(
@@ -50,6 +55,7 @@ fun ProjectListView(
     stringsListState: LazyListState? = null,
     functionsListState: LazyListState? = null,
     onNavigateToDetail: (Long, Int) -> Unit,
+    onAnnotate: (AnnotationAction, Long) -> Unit,
     onQuickNavigateToDetail: ((Long) -> Unit)? = null,
     onMarkVisited: ((Long) -> Unit)? = null,
     isVisited: ((Long) -> Boolean)? = null
@@ -59,27 +65,7 @@ fun ProjectListView(
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     
-    val listItemActions = remember(viewModel, disasmViewModel, clipboardManager) {
-        ListItemActions(
-            onCopy = { text ->
-                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
-            },
-            onJumpToHex = { addr ->
-                onNavigateToDetail(addr, 0)
-            },
-            onJumpToDisasm = { addr ->
-                onNavigateToDetail(addr, 1)
-            },
-            onQuickJump = onQuickNavigateToDetail,
-            onMarkVisited = onMarkVisited,
-            isVisited = isVisited,
-            onShowXrefs = { addr ->
-                disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr))
-            }
-        )
-    }
-
-    val functionListActions = remember(viewModel, disasmViewModel, clipboardManager) {
+    val listItemActions = remember(viewModel, disasmViewModel, clipboardManager, onAnnotate) {
         ListItemActions(
             onCopy = { text ->
                 clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
@@ -96,22 +82,15 @@ fun ProjectListView(
             onShowXrefs = { addr ->
                 disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr))
             },
-            onAnalyzeFunction = { addr ->
-                disasmViewModel.onEvent(DisasmEvent.AnalyzeFunction(addr))
-            },
-            onFunctionInfo = { addr ->
-                disasmViewModel.onEvent(DisasmEvent.FetchFunctionInfo(addr))
-            },
-            onFunctionXrefs = { addr ->
-                disasmViewModel.onEvent(DisasmEvent.FetchFunctionXrefs(addr))
-            },
-            onFunctionVariables = { addr ->
-                disasmViewModel.onEvent(DisasmEvent.FetchFunctionVariables(addr))
-            }
+            onAnnotate = onAnnotate
         )
     }
 
-    androidx.compose.runtime.LaunchedEffect(tabIndex) {
+    val functionListActions = remember(listItemActions, disasmViewModel) {
+        listItemActions.copy(functionActions = disasmViewModel.functionMenuActions())
+    }
+
+    androidx.compose.runtime.LaunchedEffect(tabIndex, tabIndex == 8 && state.functions == null) {
         when (tabIndex) {
             2 -> viewModel.onEvent(ProjectEvent.LoadSections())
             3 -> viewModel.onEvent(ProjectEvent.LoadSymbols())
@@ -220,5 +199,21 @@ fun ProjectListView(
                 onSearchQueryChange = { viewModel.updateFunctionsSearchQuery(it) },
                 listState = functionsListState)
         }
+        in AnnotationIndex.FIRST_TAB..AnnotationIndex.LAST_TAB -> AnnotationIndexScreen(
+            index = AnnotationIndex.entries[tabIndex - AnnotationIndex.FIRST_TAB],
+            sessionToken = state.sessionToken,
+            projectInvalidation = viewModel.globalDataInvalidated,
+            disasmInvalidation = disasmViewModel.dataModifiedEvent,
+            actions = listItemActions
+        )
+        AnnotationIndex.LAST_TAB + 1 -> LocalTypesScreen(
+            sessionToken = state.sessionToken,
+            cursorAddress = state.cursorAddress,
+            projectInvalidation = viewModel.globalDataInvalidated,
+            disasmInvalidation = disasmViewModel.dataModifiedEvent,
+            onTypesChanged = { viewModel.invalidateBinaryViews() },
+            onJumpToHex = { addr -> onNavigateToDetail(addr, 0) },
+            onJumpToDisasm = { addr -> onNavigateToDetail(addr, 1) }
+        )
     }
 }

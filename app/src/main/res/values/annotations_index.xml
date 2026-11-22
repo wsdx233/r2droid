@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotations_index_bookmarks">Bookmarks</string>
+    <string name="annotations_index_comments">Comments</string>
+    <string name="annotations_index_names">Names</string>
+    <string name="annotations_index_empty_bookmarks">No bookmarks yet</string>
+    <string name="annotations_index_empty_comments">No comments yet</string>
+    <string name="annotations_index_empty_names">No names yet</string>
+    <string name="annotations_index_error">Could not load annotations</string>
+</resources>
