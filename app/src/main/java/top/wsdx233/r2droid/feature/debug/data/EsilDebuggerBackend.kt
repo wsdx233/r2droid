@@ -21,7 +21,12 @@ class EsilDebuggerBackend @Inject constructor(
     private var lastSnapshot: DebugStateSnapshot? = null
 
     override suspend fun probe(): Result<DebugCapabilities> = Result.success(
-        DebugCapabilities(canEditRegisters = true, canTrace = true)
+        DebugCapabilities(
+            canEditRegisters = true,
+            canWriteMemory = true,
+            canUseConditionalBreakpoints = true,
+            canTrace = true
+        )
     )
 
     private suspend fun <T> onCurrentPipe(block: suspend (R2PipeSession) -> T): Result<T> {
@@ -136,6 +141,23 @@ class EsilDebuggerBackend @Inject constructor(
 
     override suspend fun readRegisters() = onCurrentPipe { owner(); super.readRegisters().getOrThrow() }
     override suspend fun readMemory(address: Long, size: Int) = onCurrentPipe { owner(); super.readMemory(address, size).getOrThrow() }
+    override suspend fun writeMemory(address: Long, bytes: ByteArray): Result<Unit> = onCurrentPipe {
+        owner()
+        super.writeMemory(address, bytes).getOrThrow()
+    }
+    override suspend fun resolveExpression(expression: String): Result<Long> {
+        val trimmed = expression.trim()
+        if (trimmed.isEmpty()) return Result.failure(IllegalArgumentException("Expression cannot be empty"))
+        parseExplicitLiteral(trimmed)?.let { return Result.success(it) }
+        if ('\n' in trimmed || '\r' in trimmed || ';' in trimmed) {
+            return Result.failure(IllegalArgumentException("Invalid characters in expression"))
+        }
+        return onCurrentPipe { pipe ->
+            val output = breakpointCommand(pipe, "?v $trimmed")
+            runner.parseAddress(output)
+                ?: throw IllegalArgumentException("Unable to evaluate expression: $trimmed")
+        }
+    }
     override suspend fun readStack(count: Int) = onCurrentPipe {
         val vm = owner()
         val sp = lastRegisters[vm.spName] ?: error("ESIL stack pointer unavailable")
@@ -153,16 +175,45 @@ class EsilDebuggerBackend @Inject constructor(
 
     override suspend fun listBreakpoints() = onCurrentPipe { runner.parseBreakpoints(breakpointCommand(it, "dbj")) }
     override suspend fun setBreakpoint(breakpoint: DebugBreakpoint) = onCurrentPipe {
-        breakpointCommand(it, "db ${breakpoint.address}")
+        require(breakpoint.kind == BreakpointKind.SOFTWARE) {
+            "ESIL only supports software breakpoints; use Native R2 or GDB Remote for hardware breakpoints and watchpoints."
+        }
+        val addrHex = formatHexAddress(breakpoint.address)
+        breakpointCommand(it, "db $addrHex")
+        breakpoint.condition?.trim()?.takeIf { cond -> cond.isNotEmpty() }?.let { cond ->
+            require('\n' !in cond && '\r' !in cond) { "Invalid breakpoint condition" }
+            breakpointCommand(it, "dbC $addrHex $cond")
+        }
+        if (!breakpoint.enabled) {
+            breakpointCommand(it, "dbd $addrHex")
+        }
         breakpoint
     }
 
-    override suspend fun removeBreakpoint(address: Long): Result<Unit> = onCurrentPipe { breakpointCommand(it, "db- $address"); Unit }
+    override suspend fun removeBreakpoint(address: Long): Result<Unit> = onCurrentPipe {
+        breakpointCommand(it, "db- ${formatHexAddress(address)}")
+        Unit
+    }
+
+    override suspend fun setBreakpointEnabled(address: Long, enabled: Boolean): Result<Unit> = onCurrentPipe {
+        val cmd = if (enabled) "dbe ${formatHexAddress(address)}" else "dbd ${formatHexAddress(address)}"
+        breakpointCommand(it, cmd)
+        Unit
+    }
+
+    override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = onCurrentPipe {
+        val addrHex = formatHexAddress(address)
+        val clean = condition?.trim().orEmpty()
+        require('\n' !in clean && '\r' !in clean) { "Invalid breakpoint condition" }
+        val cmd = if (clean.isEmpty()) "dbC $addrHex" else "dbC $addrHex $clean"
+        breakpointCommand(it, cmd)
+        Unit
+    }
+
     override suspend fun writeRegister(name: String, value: Long): Result<Unit> = onCurrentPipe {
         val vm = owner()
         require(name in lastRegisters && name.matches(registerName)) { "Unknown ESIL register: $name" }
-        vm.checked("aer $name=$value")
-        lastRegisters = lastRegisters + (name to value)
+        vm.checked("aer $name=${formatHexAddress(value)}")
     }
 
     private companion object { val registerName = Regex("[A-Za-z_][A-Za-z0-9_.]*") }

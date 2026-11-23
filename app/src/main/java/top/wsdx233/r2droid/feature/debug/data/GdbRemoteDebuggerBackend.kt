@@ -25,6 +25,8 @@ class GdbRemoteDebuggerBackend @Inject constructor(
             canWriteMemory = true,
             canUseBreakpoints = true,
             canUseHardwareBreakpoints = false,
+            canUseWatchpoints = true,
+            canUseConditionalBreakpoints = true,
             canListThreads = true,
             canListFrames = true
         )

@@ -63,6 +63,8 @@ class DebuggerRepository @Inject constructor(
 
     suspend fun stepOver(backend: DebugBackend) = withBackend(backend) { it.stepOver() }
 
+    suspend fun stepOut(backend: DebugBackend) = withBackend(backend) { it.stepOut() }
+
     suspend fun continueRun(backend: DebugBackend) = withBackend(backend) { it.continueRun() }
 
     suspend fun pause(backend: DebugBackend) = withBackend(backend) { it.pause() }
@@ -96,7 +98,55 @@ class DebuggerRepository @Inject constructor(
             else it.removeBreakpoint(address)
         }
 
+    suspend fun addBreakpoint(backend: DebugBackend, breakpoint: DebugBreakpoint): Result<List<DebugBreakpoint>> =
+        withBackend(backend) { target ->
+            runCatching {
+                target.setBreakpoint(breakpoint).getOrThrow()
+                target.listBreakpoints().getOrDefault(listOf(breakpoint))
+            }
+        }
+
+    suspend fun removeBreakpoint(backend: DebugBackend, address: Long): Result<List<DebugBreakpoint>> =
+        withBackend(backend) { target ->
+            runCatching {
+                target.removeBreakpoint(address).getOrThrow()
+                target.listBreakpoints().getOrDefault(emptyList())
+            }
+        }
+
+    suspend fun setBreakpointEnabled(
+        backend: DebugBackend,
+        address: Long,
+        enabled: Boolean
+    ): Result<List<DebugBreakpoint>> = withBackend(backend) { target ->
+        runCatching {
+            target.setBreakpointEnabled(address, enabled).getOrThrow()
+            target.listBreakpoints().getOrThrow()
+        }
+    }
+
+    suspend fun setBreakpointCondition(
+        backend: DebugBackend,
+        address: Long,
+        condition: String?
+    ): Result<List<DebugBreakpoint>> = withBackend(backend) { target ->
+        runCatching {
+            target.setBreakpointCondition(address, condition).getOrThrow()
+            target.listBreakpoints().getOrThrow()
+        }
+    }
+
     suspend fun listBreakpoints(backend: DebugBackend) = withBackend(backend) { it.listBreakpoints() }
+
+    suspend fun writeRegister(backend: DebugBackend, name: String, value: Long): Result<DebugStateSnapshot> =
+        withBackend(backend) { target ->
+            runCatching {
+                val pipe = R2PipeManager.activeSessionPipe
+                target.writeRegister(name, value).getOrThrow()
+                check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
+                target.refresh().getOrThrow()
+            }
+        }
 
     suspend fun runToCursor(backend: DebugBackend, address: Long): Result<DebugStateSnapshot> =
         withBackend(backend) { target ->
@@ -135,4 +185,17 @@ class DebuggerRepository @Inject constructor(
 
     suspend fun readMemory(backend: DebugBackend, address: Long, size: Int) =
         withBackend(backend) { it.readMemory(address, size) }
+
+    suspend fun writeMemory(backend: DebugBackend, address: Long, bytes: ByteArray) =
+        withBackend(backend) { it.writeMemory(address, bytes) }
+
+    suspend fun resolveExpression(backend: DebugBackend, expression: String) =
+        withBackend(backend) { it.resolveExpression(expression) }
+
+    suspend fun listFrames(backend: DebugBackend) = withBackend(backend) { it.listFrames() }
+
+    suspend fun listThreads(backend: DebugBackend) = withBackend(backend) { it.listThreads() }
+
+    suspend fun selectThread(backend: DebugBackend, threadId: String) =
+        withBackend(backend) { it.selectThread(threadId) }
 }

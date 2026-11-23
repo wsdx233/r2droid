@@ -660,7 +660,7 @@ object R2PipeManager {
                     if (lease != null) {
                         check(owner === lease) { "ESIL no longer owns this R2Pipe session." }
                     } else if (owner != null || leasedOnEntry) {
-                        check(canReadDuringEsil && isEsilViewerRead(cmd)) {
+                        check(canReadDuringEsil && !isEsilBlockedCommand(cmd)) {
                             "ESIL owns this R2Pipe session. Stop ESIL before running this command."
                         }
                     }
@@ -689,18 +689,246 @@ object R2PipeManager {
         }
     }
 
-    // Exact reads used by the Hex and Disasm repositories, layout, and detail menus. A temporary
-    // numeric `@` restores the offset; a persistent `s <addr>` is not a read. The UI cursor is
-    // independent of r2's seek. Do not trim or permit general r2 numeric expressions.
-    private const val VIEWER_ADDRESS = "(?:-?[0-9]{1,20}|0[xX][0-9a-fA-F]{1,16})"
-    // Do not include formatted pd/pdf: with asm.emu enabled they can run ESIL while printing.
-    private val viewerCountedRead = Regex("(?:pxj|pdj|p8) ([0-9]{1,4}) @ $VIEWER_ADDRESS")
-    private val viewerAddressedRead = Regex("(?:ps|afij|aoj|axfj|axtj|afxj|afvj) @ $VIEWER_ADDRESS")
+    /**
+     * Blacklist guard active while ESIL holds a session lease.
+     *
+     * Allows read-only inspection, decompilation, disassembly, symbol/xref queries, and AI analysis
+     * commands, while blocking commands that mutate binary/write-cache state, r2 config, seek,
+     * ESIL/register state, file mappings, or execute shell/script side effects.
+     */
+    internal fun isEsilBlockedCommand(command: String): Boolean {
+        if (command.isBlank()) return true
+        if (command.any { it == '\u0000' || it == '\n' || it == '\r' }) return true
+        if (hasUnsafeUnquotedSyntax(command)) return true
 
-    internal fun isEsilViewerRead(command: String): Boolean = when (command) {
-        "ij", "iSj", "ahj", "C,type/eq/Cs,:json", "C,type/eq/Cf,:json", "e io.va" -> true
-        else -> viewerAddressedRead.matches(command) ||
-            viewerCountedRead.matchEntire(command)?.groupValues?.get(1)?.toInt()?.let { it in 1..4096 } == true
+        val segments = splitUnquotedSemicolons(command)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (segments.isEmpty()) return true
+        return segments.any { isBlockedEsilSegment(it) }
+    }
+
+    internal fun isEsilViewerRead(command: String): Boolean = !isEsilBlockedCommand(command)
+
+    private fun hasUnsafeUnquotedSyntax(command: String): Boolean {
+        var quote: Char? = null
+        var escaped = false
+        for (i in command.indices) {
+            val ch = command[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (ch == '\\' && quote != '\'') {
+                escaped = true
+                continue
+            }
+            if (quote != null) {
+                if (ch == quote) quote = null
+                continue
+            }
+            when (ch) {
+                '\'', '"' -> quote = ch
+                '`', '|' -> return true
+                '$' -> if (i + 1 < command.length && command[i + 1] == '(') return true
+                '>' -> {
+                    // Block file redirection (`> file`, `>> file`), while keeping `?v rax>0` usable.
+                    val prev = command.getOrNull(i - 1)
+                    if (prev == null || prev.isWhitespace() || prev == '>') return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun splitUnquotedSemicolons(command: String): List<String> {
+        val parts = mutableListOf<String>()
+        val current = StringBuilder()
+        var quote: Char? = null
+        var escaped = false
+        for (ch in command) {
+            if (escaped) {
+                current.append(ch)
+                escaped = false
+                continue
+            }
+            if (ch == '\\' && quote != '\'') {
+                current.append(ch)
+                escaped = true
+                continue
+            }
+            if (quote != null) {
+                if (ch == quote) quote = null
+                current.append(ch)
+                continue
+            }
+            when (ch) {
+                '\'', '"' -> {
+                    quote = ch
+                    current.append(ch)
+                }
+                ';' -> {
+                    parts.add(current.toString())
+                    current.setLength(0)
+                }
+                else -> current.append(ch)
+            }
+        }
+        parts.add(current.toString())
+        return parts
+    }
+
+    private fun stripUnquotedModifiers(segment: String): String {
+        var quote: Char? = null
+        var escaped = false
+        for (i in segment.indices) {
+            val ch = segment[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (ch == '\\' && quote != '\'') {
+                escaped = true
+                continue
+            }
+            if (quote != null) {
+                if (ch == quote) quote = null
+                continue
+            }
+            when (ch) {
+                '\'', '"' -> quote = ch
+                '@', '~' -> if (i > 0 && segment[i - 1].isWhitespace()) {
+                    return segment.substring(0, i).trim()
+                }
+            }
+        }
+        return segment.trim()
+    }
+
+    private fun isBlockedEsilSegment(segment: String): Boolean {
+        val base = stripUnquotedModifiers(segment)
+        if (base.isEmpty()) return true
+        // Strip optional numeric repeat prefix (e.g. `2wx 90`, `10aes`).
+        val withoutRepeat = base.dropWhile { it.isDigit() }.trimStart()
+        if (withoutRepeat.isEmpty()) return true
+
+        val splitIdx = withoutRepeat.indexOfFirst { it.isWhitespace() }
+        val head = if (splitIdx == -1) withoutRepeat else withoutRepeat.substring(0, splitIdx)
+        val args = if (splitIdx == -1) "" else withoutRepeat.substring(splitIdx + 1).trim()
+
+        // Comments are no-ops; block script/macro/shell/server/quit prefixes.
+        if (head.startsWith("#!")) return true
+        if (head.startsWith("#")) return false
+        if (head.startsWith("!") || head.startsWith("=") || head.startsWith(".") || head.startsWith("(")) return true
+        if (head.startsWith("q") || head.startsWith("Q")) return true
+
+        // Block all binary write & write-cache commands (`w*`), yank-paste (`yy`), and file resize/rm (`r*`).
+        if (head.startsWith("w") || head.startsWith("yy")) return true
+        if (head.startsWith("r")) {
+            return !(head in setOf("r", "r?") && args.isEmpty())
+        }
+
+        // Block file/IO/map mutations (`o*`), allowing pure read-only listings.
+        if (head.startsWith("o")) {
+            val readOnlyOpen = head in setOf("o", "oj", "o.", "oqq", "om", "omj", "oml", "obj", "o?", "om?") && args.isEmpty()
+            return !readOnlyOpen
+        }
+
+        // Block ESIL VM & register mutations (`ae*`, `ar*`), allowing read-only register/profile queries.
+        if (head.startsWith("ae")) {
+            val readOnlyEsil = head in setOf("aerj", "ae?", "aer?") ||
+                (head == "aer" && '=' !in args && !args.startsWith("-") && args != "0")
+            return !readOnlyEsil
+        }
+        if (head.startsWith("ar")) {
+            val readOnlyReg = head in setOf("arj", "arpj", "arr", "arrj", "ar?", "arp?") ||
+                (head == "ar" && '=' !in args)
+            return !readOnlyReg
+        }
+
+        // Block auto-analysis (`aa*`) and mutating `af*` / `ax*` / `ah*` commands.
+        if (head.startsWith("aa")) return true
+        if (head.startsWith("af")) return !isReadOnlyAfCommand(head, args)
+        if (head.startsWith("ax")) {
+            val readOnlyXref = head in setOf("axt", "axtj", "axf", "axfj", "axl", "axj", "axq", "axg", "ax?") ||
+                (head == "ax" && args.isEmpty())
+            return !readOnlyXref
+        }
+        if (head.startsWith("ah")) {
+            val readOnlyHint = head in setOf("ahj", "ah*", "ah?") || (head == "ah" && args.isEmpty())
+            return !readOnlyHint
+        }
+
+        // Block r2 config mutations (`e key=val`, `e-`, `e+`, `e!`, `er`, `eco`), allowing `e` / `e key` / `ej`.
+        if (head.startsWith("e")) {
+            val readOnlyEval = head in setOf("ej", "e?", "e*") ||
+                (head == "e" && '=' !in args)
+            return !readOnlyEval
+        }
+
+        // Block persistent seek (`s <addr>`, `s+`, `s-`, `sr`, etc.), allowing current seek query (`s`, `s.`, `sj`).
+        if (head.startsWith("s")) {
+            val readOnlySeek = (head in setOf("s", "s.", "sj", "s?", "sl") && args.isEmpty())
+            return !readOnlySeek
+        }
+
+        // Block external debugger control (`d*`), allowing read-only inspection (`dbj`, `dmj`, `drj`, `dptj`, `dbtj`).
+        if (head.startsWith("d")) {
+            val readOnlyDebug = head in setOf(
+                "dbj", "db?", "dmj", "dmm", "dmmj", "drj", "drr", "drrj",
+                "dptj", "dbt", "dbtj", "dpj", "di", "dij"
+            ) || (head in setOf("db", "dm", "dp", "dpt") && args.isEmpty()) ||
+                (head == "dr" && '=' !in args)
+            return !readOnlyDebug
+        }
+
+        // Block project save/open/delete (`P*`), allowing listing.
+        if (head.startsWith("P")) {
+            return head !in setOf("Pl", "Pj", "P?")
+        }
+
+        // Block SDB writes (`k key=val`), allowing reads.
+        if (head == "k") return '=' in args
+
+        // Block flag mutations (`f*`), allowing read-only flag & describe queries (`fj`, `fl`, `fd*`, `fsj`).
+        if (head.startsWith("f")) {
+            val readOnlyFlag = head in setOf("fj", "fl", "f?", "fd", "fd.", "fdj", "fdd", "fdw", "fsj") ||
+                (head in setOf("f", "fs") && args.isEmpty())
+            return !readOnlyFlag
+        }
+
+        // Block comment/meta mutations (`C*`), allowing read-only queries (`C,...`, `Cj`, `CC.`, `CCj`, `Csj`, `Cfj`).
+        if (head.startsWith("C")) {
+            val readOnlyMeta = head.startsWith("C,") ||
+                head in setOf("Cj", "CC.", "CCj", "CC*", "Csj", "Cfj", "Clj", "Cdj", "C?", "CC?") ||
+                (head in setOf("C", "CC") && args.isEmpty())
+            return !readOnlyMeta
+        }
+
+        // Block type mutations (`t*`), allowing read-only type inspection (`tj`, `tsj`, `tej`, `tuj`, `ttj`, `tlj`, `tc`, `tp*`).
+        if (head.startsWith("t")) {
+            val readOnlyType = head in setOf("tj", "t?", "tsj", "tej", "tuj", "ttj", "tlj", "tc", "tp", "tpx", "tpf") ||
+                (head in setOf("t", "ts", "te", "tu", "tt", "tl") && args.isEmpty()) ||
+                (head == "tk" && '=' !in args)
+            return !readOnlyType
+        }
+
+        // Block zignature mutations (`z*`), allowing read-only listings.
+        if (head.startsWith("z")) {
+            return head !in setOf("z", "zj", "zl", "z?") || args.isNotEmpty()
+        }
+
+        return false
+    }
+
+    private fun isReadOnlyAfCommand(head: String, args: String): Boolean = when {
+        head.startsWith("afl") -> true
+        head.startsWith("afi") -> true
+        head.startsWith("afx") -> true
+        head.startsWith("afg") -> true
+        head in setOf("afb", "afbj", "afvj", "afvl", "afv?", "afcj", "afcl", "afclj", "afsj", "af?", "afn?") -> true
+        head in setOf("afv", "afc", "afs") && args.isEmpty() -> true
+        else -> false
     }
 
     suspend fun execute(cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {

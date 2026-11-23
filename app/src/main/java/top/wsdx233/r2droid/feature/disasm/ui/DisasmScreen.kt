@@ -42,6 +42,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,6 +111,7 @@ fun DisassemblyViewer(
     val cacheVersion by viewModel.disasmCacheVersion.collectAsState()
     val multiSelectState by viewModel.multiSelectState.collectAsState()
     val breakpoints by viewModel.breakpoints.collectAsState()
+    val debugBreakpoints by viewModel.debugBreakpoints.collectAsState()
     val pcAddress by viewModel.pcAddress.collectAsState()
     val debugStatus by viewModel.debugStatus.collectAsState()
     val debugStopReason by viewModel.debugStopReason.collectAsState()
@@ -116,6 +119,8 @@ fun DisassemblyViewer(
     val registers by viewModel.registers.collectAsState()
     val debugStackState by viewModel.debugStackState.collectAsState()
     val debugMemoryState by viewModel.debugMemoryState.collectAsState()
+    val debugFramesState by viewModel.debugFramesState.collectAsState()
+    val debugThreadsState by viewModel.debugThreadsState.collectAsState()
     val debugTraceEntries by viewModel.debugTraceEntries.collectAsState()
     val debugLaunchConfig by viewModel.debugLaunchConfig.collectAsState()
     val debugCapabilities by viewModel.debugCapabilities.collectAsState()
@@ -126,6 +131,10 @@ fun DisassemblyViewer(
     var autoShowRegisters by remember { mutableStateOf(false) }
     var showDebugControls by remember { mutableStateOf(false) }
     var showDebugSettings by remember { mutableStateOf(false) }
+    var footerHeightPx by remember { mutableIntStateOf(0) }
+    var debugPanelHeightPx by remember { mutableIntStateOf(0) }
+    val occludedBottomPx = footerHeightPx + if (showDebugControls) debugPanelHeightPx else 0
+    val currentOccludedBottomPx by rememberUpdatedState(occludedBottomPx)
 
     LaunchedEffect(debugStatus, autoShowRegisters) {
         if (debugStatus != top.wsdx233.r2droid.feature.disasm.DebugStatus.IDLE) {
@@ -248,13 +257,47 @@ fun DisassemblyViewer(
                 val layout = listState.layoutInfo
                 val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
                 if (item != null) {
-                    val center = (layout.viewportEndOffset + layout.viewportStartOffset - item.size) / 2
-                    val delta = item.offset - center
+                    val listBottomPadPx = with(density) { 8.dp.roundToPx() }
+                    val occludedInListPx = (currentOccludedBottomPx - listBottomPadPx).coerceAtLeast(0)
+                    val delta = computeCenteredScrollDelta(
+                        viewportStart = layout.viewportStartOffset,
+                        viewportEnd = layout.viewportEndOffset,
+                        occludedBottomPx = occludedInListPx,
+                        itemOffset = item.offset,
+                        itemSize = item.size
+                    )
                     if (kotlin.math.abs(delta) > 1) listState.animateScrollBy(delta.toFloat())
                 }
             }
         }
         viewModel.clearScrollTarget(target)
+    }
+
+    // When the debug panel opens or expands over the active instruction, center it in the visible upper viewport.
+    var centeredAfterPanelOpen by remember(showDebugControls) { mutableStateOf(false) }
+    LaunchedEffect(showDebugControls, debugPanelHeightPx) {
+        if (!showDebugControls || debugPanelHeightPx <= 0 || scrollTarget != null) return@LaunchedEffect
+        val activeAddr = pcAddress ?: cursorAddress
+        val index = DisasmDataManager.findClosestIndex(instructionSnapshot, activeAddr)
+        if (index < 0) return@LaunchedEffect
+        val layout = listState.layoutInfo
+        val item = layout.visibleItemsInfo.firstOrNull { it.index == index } ?: return@LaunchedEffect
+        val listBottomPadPx = with(density) { 8.dp.roundToPx() }
+        val occludedInListPx = (occludedBottomPx - listBottomPadPx).coerceAtLeast(0)
+        val visibleBottom = (layout.viewportEndOffset - occludedInListPx)
+            .coerceAtLeast(layout.viewportStartOffset + item.size)
+        val needsCentering = !centeredAfterPanelOpen || (item.offset + item.size > visibleBottom)
+        centeredAfterPanelOpen = true
+        if (needsCentering) {
+            val delta = computeCenteredScrollDelta(
+                viewportStart = layout.viewportStartOffset,
+                viewportEnd = layout.viewportEndOffset,
+                occludedBottomPx = occludedInListPx,
+                itemOffset = item.offset,
+                itemSize = item.size
+            )
+            if (kotlin.math.abs(delta) > 1) listState.animateScrollBy(delta.toFloat())
+        }
     }
 
     // Emit only when an edge/window changes, not for every row or scroll pixel. Start early
@@ -287,13 +330,14 @@ fun DisassemblyViewer(
         val normalStyle = rememberDisasmRowStyle(selected = false)
         val selectedStyle = rememberDisasmRowStyle(selected = true)
         
+        val bottomContentPadding = with(density) { occludedBottomPx.toDp() } + 80.dp
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-            contentPadding = PaddingValues(bottom = 80.dp)
+            contentPadding = PaddingValues(bottom = bottomContentPadding)
         ) {
             items(
                 count = loadedCount,
@@ -429,7 +473,7 @@ fun DisassemblyViewer(
             onDismiss = viewModel::dismissScrollbarPreview
         )
 
-        // Measure the existing footer first; the scrollbar gets exactly the remaining height.
+        // Measure the docked debug panel and footer; the scrollbar gets the remaining upper height.
         Column(Modifier.matchParentSize()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = AbsoluteAlignment.CenterRight) {
                 DisasmAddressScrollbar(
@@ -447,9 +491,78 @@ fun DisassemblyViewer(
                 )
             }
 
+            AnimatedVisibility(
+                visible = showDebugControls,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clipToBounds()
+            ) {
+                DebugPanel(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { debugPanelHeightPx = it.height },
+                    debugStatus = debugStatus,
+                    debugBackend = debugBackend,
+                    pcAddress = pcAddress,
+                    stopReason = debugStopReason,
+                    registers = registers,
+                    breakpoints = debugBreakpoints,
+                    stackEntries = debugStackState.entries,
+                    stackPointer = debugStackState.stackPointer,
+                    stackLoading = debugStackState.isLoading,
+                    memoryAddress = debugMemoryState.address,
+                    memoryBytes = debugMemoryState.bytes,
+                    memoryLoading = debugMemoryState.isLoading,
+                    memoryWriting = debugMemoryState.isWriting,
+                    memoryError = debugMemoryState.error,
+                    frames = debugFramesState.frames,
+                    framesLoading = debugFramesState.isLoading,
+                    framesError = debugFramesState.error,
+                    threads = debugThreadsState.threads,
+                    threadsLoading = debugThreadsState.isLoading,
+                    threadsError = debugThreadsState.error,
+                    traceEntries = debugTraceEntries,
+                    capabilities = debugCapabilities,
+                    autoShowRegisters = autoShowRegisters,
+                    onAutoShowRegistersChange = { autoShowRegisters = it },
+                    onStartDebugging = { viewModel.startDebugging() },
+                    onStepInto = { viewModel.performDebugAction("step") },
+                    onStepOver = { viewModel.performDebugAction("over") },
+                    onStepOut = { viewModel.performDebugAction("out") },
+                    onContinue = { viewModel.performDebugAction("continue") },
+                    onPause = { viewModel.pauseExecution() },
+                    onResetDebugging = { viewModel.resetDebugging() },
+                    onStopDebugging = { viewModel.stopDebugging() },
+                    onSettings = { showDebugSettings = true },
+                    onDismiss = { showDebugControls = false },
+                    onJumpToAddress = { addr -> onInstructionClick(addr) },
+                    onWriteRegister = { name, value -> viewModel.writeDebugRegister(name, value) },
+                    onAddBreakpoint = { expr, kind, cond, access ->
+                        viewModel.addDebugBreakpoint(expr, kind, cond, access)
+                    },
+                    onRemoveBreakpoint = { addr -> viewModel.removeDebugBreakpoint(addr) },
+                    onToggleBreakpointEnabled = { addr, enabled -> viewModel.setBreakpointEnabled(addr, enabled) },
+                    onUpdateBreakpointCondition = { addr, cond -> viewModel.setBreakpointCondition(addr, cond) },
+                    onRefreshStack = { viewModel.refreshStack() },
+                    onRefreshMemoryAtPc = { viewModel.readMemoryAtPc() },
+                    onRefreshMemoryAtSp = { viewModel.readMemoryAtSp() },
+                    onRefreshMemoryAtBp = { viewModel.readMemoryAtBp() },
+                    onQueryMemoryExpression = { expr -> viewModel.readMemoryByExpression(expr) },
+                    onInspectMemoryAddress = { addr -> viewModel.readMemoryAt(addr) },
+                    onWriteMemory = { addr, payload -> viewModel.writeDebugMemory(addr, payload) },
+                    onRefreshFrames = { viewModel.refreshFrames() },
+                    onRefreshThreads = { viewModel.refreshThreads() },
+                    onSelectThread = { tid -> viewModel.selectDebugThread(tid) },
+                    onClearTrace = { viewModel.clearDebugTrace() }
+                )
+            }
+
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .onSizeChanged { footerHeightPx = it.height }
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -681,45 +794,6 @@ fun DisassemblyViewer(
             )
         }
 
-        AnimatedVisibility(
-            visible = showDebugControls,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
-        ) {
-            DebugPanel(
-                debugStatus = debugStatus,
-                debugBackend = debugBackend,
-                pcAddress = pcAddress,
-                stopReason = debugStopReason,
-                registers = registers,
-                breakpoints = breakpoints,
-                stackEntries = debugStackState.entries,
-                stackPointer = debugStackState.stackPointer,
-                memoryAddress = debugMemoryState.address,
-                memoryBytes = debugMemoryState.bytes,
-                memoryLoading = debugMemoryState.isLoading,
-                memoryError = debugMemoryState.error,
-                traceEntries = debugTraceEntries,
-                capabilities = debugCapabilities,
-                autoShowRegisters = autoShowRegisters,
-                onAutoShowRegistersChange = { autoShowRegisters = it },
-                onStartDebugging = { viewModel.startDebugging() },
-                onStepInto = { viewModel.performDebugAction("step") },
-                onStepOver = { viewModel.performDebugAction("over") },
-                onContinue = { viewModel.performDebugAction("continue") },
-                onPause = { viewModel.pauseExecution() },
-                onResetDebugging = { viewModel.resetDebugging() },
-                onStopDebugging = { viewModel.stopDebugging() },
-                onSettings = { showDebugSettings = true },
-                onJumpToAddress = { addr -> onInstructionClick(addr) },
-                onRemoveBreakpoint = { addr -> viewModel.toggleBreakpoint(addr) },
-                onRefreshMemoryAtPc = { viewModel.readMemoryAtPc() },
-                onRefreshMemoryAtSp = { viewModel.readMemoryAtSp() },
-                onClearTrace = { viewModel.clearDebugTrace() }
-            )
-        }
-
         debugError?.let { error ->
             AlertDialog(
                 onDismissRequest = { viewModel.clearDebugError() },
@@ -738,7 +812,14 @@ fun DisassemblyViewer(
                 registers = registers,
                 autoShowRegisters = autoShowRegisters,
                 onAutoShowRegistersChange = { autoShowRegisters = it },
-                onDismissRequest = { showRegisters = false }
+                onDismissRequest = { showRegisters = false },
+                canEditRegisters = debugCapabilities.canEditRegisters && debugStatus == top.wsdx233.r2droid.feature.disasm.DebugStatus.SUSPENDED,
+                onWriteRegister = { name, value -> viewModel.writeDebugRegister(name, value) },
+                onJumpToDisasm = { addr -> onInstructionClick(addr) },
+                onInspectMemory = { addr ->
+                    viewModel.readMemoryAt(addr)
+                    showDebugControls = true
+                }
             )
         }
 
@@ -881,6 +962,23 @@ fun DisassemblyViewer(
             )
         }
     }
+}
+
+/**
+ * Computes the scroll delta needed to center [itemOffset]..([itemOffset] + [itemSize])
+ * within the unobstructed portion of the viewport above [occludedBottomPx].
+ */
+internal fun computeCenteredScrollDelta(
+    viewportStart: Int,
+    viewportEnd: Int,
+    occludedBottomPx: Int,
+    itemOffset: Int,
+    itemSize: Int
+): Int {
+    val visibleBottom = (viewportEnd - occludedBottomPx.coerceAtLeast(0))
+        .coerceAtLeast(viewportStart + itemSize)
+    val center = (viewportStart + visibleBottom - itemSize) / 2
+    return itemOffset - center
 }
 
 /** Isolate frequently changing list reads from the large viewer/menu/debug composition. */

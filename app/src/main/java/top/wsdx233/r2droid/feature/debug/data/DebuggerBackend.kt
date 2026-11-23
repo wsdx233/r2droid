@@ -20,6 +20,12 @@ interface DebuggerBackend {
 
     suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint>
     suspend fun removeBreakpoint(address: Long): Result<Unit>
+    suspend fun setBreakpointEnabled(address: Long, enabled: Boolean): Result<Unit> = Result.failure(
+        UnsupportedOperationException("Toggling breakpoint state is not supported by ${type.displayName}")
+    )
+    suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = Result.failure(
+        UnsupportedOperationException("Conditional breakpoints are not supported by ${type.displayName}")
+    )
     suspend fun listBreakpoints(): Result<List<DebugBreakpoint>>
 
     suspend fun readRegisters(): Result<List<DebugRegister>>
@@ -35,7 +41,14 @@ interface DebuggerBackend {
         UnsupportedOperationException("Memory writing is not supported by ${type.displayName}")
     )
 
+    suspend fun resolveExpression(expression: String): Result<Long> = Result.failure(
+        UnsupportedOperationException("Expression evaluation is not supported by ${type.displayName}")
+    )
+
     suspend fun listThreads(): Result<List<DebugThread>> = Result.success(emptyList())
+    suspend fun selectThread(threadId: String): Result<DebugStateSnapshot> = Result.failure(
+        UnsupportedOperationException("Thread switching is not supported by ${type.displayName}")
+    )
     suspend fun listFrames(): Result<List<DebugFrame>> = Result.success(emptyList())
     suspend fun readStack(count: Int = 16): Result<List<DebugStackEntry>> = Result.success(emptyList())
 }

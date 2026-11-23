@@ -89,6 +89,10 @@ class FridaDebuggerBackend @Inject constructor(
 
     override suspend fun removeBreakpoint(address: Long): Result<Unit> = runCatching {
         requireFridaSession().getOrThrow()
-        runner.executeFrida("db- $address").getOrThrow()
+        runner.executeFrida("db- ${formatHexAddress(address)}").getOrThrow()
     }
+
+    override suspend fun writeMemory(address: Long, bytes: ByteArray): Result<Unit> = Result.failure(
+        UnsupportedOperationException("Memory writing is not supported by ${type.displayName}")
+    )
 }

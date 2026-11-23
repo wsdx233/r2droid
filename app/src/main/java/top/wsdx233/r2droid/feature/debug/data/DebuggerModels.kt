@@ -34,6 +34,7 @@ data class DebugCapabilities(
     val canWriteMemory: Boolean = false,
     val canUseBreakpoints: Boolean = true,
     val canUseHardwareBreakpoints: Boolean = false,
+    val canUseWatchpoints: Boolean = false,
     val canUseConditionalBreakpoints: Boolean = false,
     val canListThreads: Boolean = false,
     val canListFrames: Boolean = false,
@@ -112,20 +113,36 @@ data class DebugRegister(
     val changed: Boolean get() = previousValue != null && previousValue != value
 }
 
+enum class BreakpointKind {
+    SOFTWARE,
+    HARDWARE,
+    WATCHPOINT
+}
+
+enum class WatchpointAccess(val r2Perm: String, val shortLabel: String) {
+    READ("r", "R"),
+    WRITE("w", "W"),
+    READ_WRITE("rw", "RW")
+}
+
 data class DebugBreakpoint(
     val address: Long,
     val enabled: Boolean = true,
     val temporary: Boolean = false,
     val condition: String? = null,
     val hitCount: Int = 0,
-    val backendId: String? = null
+    val backendId: String? = null,
+    val kind: BreakpointKind = BreakpointKind.SOFTWARE,
+    val size: Int = 1,
+    val access: WatchpointAccess? = null
 )
 
 data class DebugThread(
     val id: String,
     val name: String = id,
     val selected: Boolean = false,
-    val pc: Long? = null
+    val pc: Long? = null,
+    val status: String? = null
 )
 
 data class DebugFrame(
@@ -133,12 +150,18 @@ data class DebugFrame(
     val address: Long,
     val functionName: String? = null,
     val sp: Long? = null,
-    val bp: Long? = null
+    val bp: Long? = null,
+    val size: Int? = null,
+    val description: String? = null
 )
 
 data class DebugStackEntry(
     val address: Long,
-    val value: Long
+    val value: Long,
+    val reference: String? = null,
+    val symbol: String? = null,
+    val derefValue: Long? = null,
+    val stringPreview: String? = null
 )
 
 data class DebugTraceEntry(

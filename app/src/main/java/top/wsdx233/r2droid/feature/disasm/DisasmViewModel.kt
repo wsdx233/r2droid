@@ -31,15 +31,20 @@ import top.wsdx233.r2droid.feature.ai.data.ThinkingLevel
 import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
 import top.wsdx233.r2droid.feature.disasm.data.DisasmAnnotations
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
+import top.wsdx233.r2droid.feature.debug.data.BreakpointKind
 import top.wsdx233.r2droid.feature.debug.data.DebugBackend
+import top.wsdx233.r2droid.feature.debug.data.DebugBreakpoint
 import top.wsdx233.r2droid.feature.debug.data.DebugCapabilities
+import top.wsdx233.r2droid.feature.debug.data.DebugFrame
 import top.wsdx233.r2droid.feature.debug.data.DebugRegister
 import top.wsdx233.r2droid.feature.debug.data.DebugRunState
 import top.wsdx233.r2droid.feature.debug.data.DebugSessionConfig
 import top.wsdx233.r2droid.feature.debug.data.DebugStateSnapshot
 import top.wsdx233.r2droid.feature.debug.data.DebugStopReason
+import top.wsdx233.r2droid.feature.debug.data.DebugThread
 import top.wsdx233.r2droid.feature.debug.data.DebugTraceEntry
 import top.wsdx233.r2droid.feature.debug.data.RegisterRole
+import top.wsdx233.r2droid.feature.debug.data.WatchpointAccess
 import top.wsdx233.r2droid.feature.disasm.data.DisasmRepository
 import top.wsdx233.r2droid.util.R2PipeManager
 import top.wsdx233.r2droid.util.ViewerByteEdit
@@ -125,23 +130,37 @@ data class DebugMemoryState(
     val address: Long? = null,
     val bytes: ByteArray = ByteArray(0),
     val isLoading: Boolean = false,
+    val isWriting: Boolean = false,
     val error: String? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is DebugMemoryState) return false
         return address == other.address && bytes.contentEquals(other.bytes) &&
-            isLoading == other.isLoading && error == other.error
+            isLoading == other.isLoading && isWriting == other.isWriting && error == other.error
     }
 
     override fun hashCode(): Int {
         var result = address?.hashCode() ?: 0
         result = 31 * result + bytes.contentHashCode()
         result = 31 * result + isLoading.hashCode()
+        result = 31 * result + isWriting.hashCode()
         result = 31 * result + (error?.hashCode() ?: 0)
         return result
     }
 }
+
+data class DebugFramesState(
+    val frames: List<DebugFrame> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+data class DebugThreadsState(
+    val threads: List<DebugThread> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
 
 data class DebugLaunchConfigState(
     val startAddressText: String = "",
@@ -303,6 +322,9 @@ class DisasmViewModel @Inject constructor(
     private val _breakpoints = MutableStateFlow<Set<Long>>(emptySet())
     val breakpoints: StateFlow<Set<Long>> = _breakpoints.asStateFlow()
 
+    private val _debugBreakpoints = MutableStateFlow<List<DebugBreakpoint>>(emptyList())
+    val debugBreakpoints: StateFlow<List<DebugBreakpoint>> = _debugBreakpoints.asStateFlow()
+
     // 寄存器状态
     private val _registers = MutableStateFlow<List<DebugRegister>>(emptyList())
     val registers = _registers.asStateFlow()
@@ -312,6 +334,12 @@ class DisasmViewModel @Inject constructor(
 
     private val _debugMemoryState = MutableStateFlow(DebugMemoryState())
     val debugMemoryState: StateFlow<DebugMemoryState> = _debugMemoryState.asStateFlow()
+
+    private val _debugFramesState = MutableStateFlow(DebugFramesState())
+    val debugFramesState: StateFlow<DebugFramesState> = _debugFramesState.asStateFlow()
+
+    private val _debugThreadsState = MutableStateFlow(DebugThreadsState())
+    val debugThreadsState: StateFlow<DebugThreadsState> = _debugThreadsState.asStateFlow()
 
     private val _debugTraceEntries = MutableStateFlow<List<DebugTraceEntry>>(emptyList())
     val debugTraceEntries = _debugTraceEntries.asStateFlow()
@@ -440,9 +468,12 @@ class DisasmViewModel @Inject constructor(
         _pcAddress.value = null
         _debugStopReason.value = null
         _breakpoints.value = emptySet()
+        _debugBreakpoints.value = emptyList()
         _registers.value = emptyList()
         _debugStackState.value = DebugStackState()
         _debugMemoryState.value = DebugMemoryState()
+        _debugFramesState.value = DebugFramesState()
+        _debugThreadsState.value = DebugThreadsState()
         _debugTraceEntries.value = emptyList()
         lastTraceRegisters = emptyMap()
         traceIndex = 0
@@ -684,6 +715,12 @@ class DisasmViewModel @Inject constructor(
         }
     }
 
+    private fun updateBreakpointsState(list: List<DebugBreakpoint>) {
+        _debugBreakpoints.value = list
+        _breakpoints.value = list.map { it.address }.toSet()
+        _disasmCacheVersion.update { it + 1 }
+    }
+
     fun toggleBreakpoint(addr: Long) {
         val session = currentDebugSession() ?: return
         if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
@@ -692,15 +729,20 @@ class DisasmViewModel @Inject constructor(
             session.mutations.withLock {
                 debuggerRepository.awaitEsilCleanup(session.pipe)
                 if (!ownsDebugSession(session)) return@launch
-                val before = _breakpoints.value
-                val add = addr !in before
+                val beforeList = _debugBreakpoints.value
+                val beforeAddrs = _breakpoints.value
+                val add = addr !in beforeAddrs
                 val result = debuggerRepository.toggleBreakpoint(backend, addr, add)
                 if (!ownsDebugSession(session)) return@launch
                 if (result.isSuccess) {
-                    val addresses = debuggerRepository.listBreakpoints(backend).getOrNull()?.map { it.address }?.toSet()
+                    val listed = debuggerRepository.listBreakpoints(backend).getOrNull()
                     if (!ownsDebugSession(session)) return@launch
-                    _breakpoints.value = addresses ?: if (add) before + addr else before - addr
-                    _disasmCacheVersion.update { it + 1 }
+                    val updated = listed ?: if (add) {
+                        beforeList + DebugBreakpoint(address = addr)
+                    } else {
+                        beforeList.filterNot { it.address == addr }
+                    }
+                    updateBreakpointsState(updated)
                     _debugError.value = null
                 } else {
                     _debugError.value = result.exceptionOrNull()?.message ?: "Breakpoint update failed"
@@ -709,9 +751,148 @@ class DisasmViewModel @Inject constructor(
         }
     }
 
+    fun addDebugBreakpoint(
+        expression: String,
+        kind: BreakpointKind = BreakpointKind.SOFTWARE,
+        condition: String? = null,
+        access: WatchpointAccess? = null
+    ) {
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
+        viewModelScope.launch {
+            session.mutations.withLock {
+                debuggerRepository.awaitEsilCleanup(session.pipe)
+                if (!ownsDebugSession(session)) return@launch
+                val resolved = debuggerRepository.resolveExpression(backend, expression).getOrElse {
+                    _debugError.value = it.message ?: "Unable to resolve address: $expression"
+                    return@launch
+                }
+                if (!ownsDebugSession(session)) return@launch
+                val bp = DebugBreakpoint(
+                    address = resolved,
+                    enabled = true,
+                    condition = condition?.trim()?.ifBlank { null },
+                    kind = kind,
+                    access = if (kind == BreakpointKind.WATCHPOINT) (access ?: WatchpointAccess.WRITE) else null
+                )
+                val result = debuggerRepository.addBreakpoint(backend, bp)
+                if (!ownsDebugSession(session)) return@launch
+                result.fold(
+                    onSuccess = { list ->
+                        updateBreakpointsState(list)
+                        _debugError.value = null
+                    },
+                    onFailure = { err ->
+                        _debugError.value = err.message ?: "Failed to add breakpoint"
+                    }
+                )
+            }
+        }
+    }
+
+    fun removeDebugBreakpoint(addr: Long) {
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
+        viewModelScope.launch {
+            session.mutations.withLock {
+                debuggerRepository.awaitEsilCleanup(session.pipe)
+                if (!ownsDebugSession(session)) return@launch
+                val result = debuggerRepository.removeBreakpoint(backend, addr)
+                if (!ownsDebugSession(session)) return@launch
+                result.fold(
+                    onSuccess = { list ->
+                        updateBreakpointsState(list)
+                        _debugError.value = null
+                    },
+                    onFailure = { err ->
+                        _debugError.value = err.message ?: "Failed to remove breakpoint"
+                    }
+                )
+            }
+        }
+    }
+
+    fun setBreakpointEnabled(addr: Long, enabled: Boolean) {
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
+        viewModelScope.launch {
+            session.mutations.withLock {
+                debuggerRepository.awaitEsilCleanup(session.pipe)
+                if (!ownsDebugSession(session)) return@launch
+                val result = debuggerRepository.setBreakpointEnabled(backend, addr, enabled)
+                if (!ownsDebugSession(session)) return@launch
+                result.fold(
+                    onSuccess = { list ->
+                        updateBreakpointsState(list)
+                        _debugError.value = null
+                    },
+                    onFailure = { err ->
+                        _debugError.value = err.message ?: "Failed to toggle breakpoint"
+                    }
+                )
+            }
+        }
+    }
+
+    fun setBreakpointCondition(addr: Long, condition: String?) {
+        val session = currentDebugSession() ?: return
+        if (debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
+        viewModelScope.launch {
+            session.mutations.withLock {
+                debuggerRepository.awaitEsilCleanup(session.pipe)
+                if (!ownsDebugSession(session)) return@launch
+                val result = debuggerRepository.setBreakpointCondition(backend, addr, condition)
+                if (!ownsDebugSession(session)) return@launch
+                result.fold(
+                    onSuccess = { list ->
+                        updateBreakpointsState(list)
+                        _debugError.value = null
+                    },
+                    onFailure = { err ->
+                        _debugError.value = err.message ?: "Failed to update breakpoint condition"
+                    }
+                )
+            }
+        }
+    }
+
+    fun writeDebugRegister(name: String, value: Long) {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy() || !ensureDebugBackendMatchesCurrentSession()) return
+        val backend = _debugBackend.value
+        val operation = ++session.operation
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                val result = debuggerRepository.writeRegister(backend, name, value)
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                result.fold(
+                    onSuccess = { snapshot ->
+                        applyDebugSnapshot(session, snapshot, "reg:$name")
+                    },
+                    onFailure = { err ->
+                        _debugError.value = err.message ?: "Failed to write register $name"
+                    }
+                )
+            }
+        }
+    }
+
     fun runToCursor(addr: Long) = runDebugOperation("run-to-cursor") { debuggerRepository.runToCursor(it, addr) }
 
     fun setDebugPc(addr: Long) = runDebugOperation("set-pc") { debuggerRepository.setProgramCounter(it, addr) }
+
+    fun refreshStack() {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        val sp = _registers.value.firstOrNull { it.role == RegisterRole.SP }?.value
+            ?: _debugStackState.value.stackPointer
+        refreshDebugStack(session, _debugBackend.value, sp)
+    }
 
     private fun refreshDebugStack(session: DebugSession, backend: DebugBackend, stackPointer: Long?) {
         val operation = session.operation
@@ -722,6 +903,123 @@ class DisasmViewModel @Inject constructor(
                 val entries = debuggerRepository.readStack(backend).getOrDefault(emptyList())
                 if (!ownsDebugSession(session) || session.operation != operation) return@launch
                 _debugStackState.value = DebugStackState(entries, stackPointer ?: entries.firstOrNull()?.address)
+            }
+        }
+    }
+
+    fun refreshFrames() {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        refreshDebugFrames(session, _debugBackend.value)
+    }
+
+    private fun refreshDebugFrames(session: DebugSession, backend: DebugBackend) {
+        val operation = session.operation
+        _debugFramesState.value = _debugFramesState.value.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                val result = debuggerRepository.listFrames(backend)
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                _debugFramesState.value = result.fold(
+                    onSuccess = { DebugFramesState(frames = it) },
+                    onFailure = { DebugFramesState(error = it.message ?: "Failed to load call stack") }
+                )
+            }
+        }
+    }
+
+    fun refreshThreads() {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        refreshDebugThreads(session, _debugBackend.value)
+    }
+
+    private fun refreshDebugThreads(session: DebugSession, backend: DebugBackend) {
+        val operation = session.operation
+        _debugThreadsState.value = _debugThreadsState.value.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                val result = debuggerRepository.listThreads(backend)
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                _debugThreadsState.value = result.fold(
+                    onSuccess = { DebugThreadsState(threads = it) },
+                    onFailure = { DebugThreadsState(error = it.message ?: "Failed to load threads") }
+                )
+            }
+        }
+    }
+
+    fun selectDebugThread(threadId: String) = runDebugOperation("thread:$threadId") {
+        debuggerRepository.selectThread(it, threadId)
+    }
+
+    fun readMemoryAt(address: Long, size: Int = 128) = readDebugMemory(address, size)
+
+    fun readMemoryByExpression(expression: String, size: Int = 128) {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        val backend = _debugBackend.value
+        val operation = session.operation
+        val request = ++session.memoryRead
+        _debugMemoryState.value = _debugMemoryState.value.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation || session.memoryRead != request) return@launch
+                val address = debuggerRepository.resolveExpression(backend, expression).getOrElse { err ->
+                    _debugMemoryState.value = _debugMemoryState.value.copy(
+                        isLoading = false,
+                        error = err.message ?: "Unable to resolve expression: $expression"
+                    )
+                    return@launch
+                }
+                if (!ownsDebugSession(session) || session.operation != operation || session.memoryRead != request) return@launch
+                val result = debuggerRepository.readMemory(backend, address, size)
+                if (!ownsDebugSession(session) || session.operation != operation || session.memoryRead != request) return@launch
+                _debugMemoryState.value = result.fold(
+                    onSuccess = { bytes -> DebugMemoryState(address = address, bytes = bytes) },
+                    onFailure = { error -> DebugMemoryState(address = address, error = error.message) }
+                )
+            }
+        }
+    }
+
+    fun writeDebugMemory(address: Long, bytes: ByteArray) {
+        val session = currentDebugSession() ?: return
+        if (!session.started || debugBusy()) return
+        val backend = _debugBackend.value
+        val operation = session.operation
+        val currentBase = _debugMemoryState.value.address ?: address
+        val readSize = maxOf(_debugMemoryState.value.bytes.size, 128)
+        _debugMemoryState.value = _debugMemoryState.value.copy(isWriting = true, error = null)
+        viewModelScope.launch {
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                val writeResult = debuggerRepository.writeMemory(backend, address, bytes)
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                if (writeResult.isFailure) {
+                    _debugMemoryState.value = _debugMemoryState.value.copy(
+                        isWriting = false,
+                        error = writeResult.exceptionOrNull()?.message ?: "Memory write failed"
+                    )
+                    return@launch
+                }
+                val readTarget = if (address in currentBase until (currentBase + readSize)) currentBase else address
+                val readResult = debuggerRepository.readMemory(backend, readTarget, readSize)
+                if (!ownsDebugSession(session) || session.operation != operation) return@launch
+                _debugMemoryState.value = readResult.fold(
+                    onSuccess = { updated -> DebugMemoryState(address = readTarget, bytes = updated) },
+                    onFailure = { err -> DebugMemoryState(address = readTarget, error = err.message) }
+                )
+                // Also refresh stack in case stack memory was edited
+                val sp = _debugStackState.value.stackPointer
+                if (sp != null) {
+                    val entries = debuggerRepository.readStack(backend).getOrNull()
+                    if (ownsDebugSession(session) && session.operation == operation && entries != null) {
+                        _debugStackState.value = DebugStackState(entries, sp)
+                    }
+                }
             }
         }
     }
@@ -752,6 +1050,10 @@ class DisasmViewModel @Inject constructor(
 
     fun readMemoryAtSp() {
         _debugStackState.value.stackPointer?.let { readDebugMemory(it) }
+    }
+
+    fun readMemoryAtBp() {
+        _registers.value.firstOrNull { it.role == RegisterRole.BP }?.value?.let { readDebugMemory(it) }
     }
 
     fun clearDebugTrace() {
@@ -789,6 +1091,7 @@ class DisasmViewModel @Inject constructor(
         when (action) {
             "step" -> debuggerRepository.stepInto(backend)
             "over" -> debuggerRepository.stepOver(backend)
+            "out" -> debuggerRepository.stepOut(backend)
             "continue" -> debuggerRepository.continueRun(backend)
             else -> Result.failure(IllegalArgumentException("Unknown debug action: $action"))
         }
@@ -854,6 +1157,7 @@ class DisasmViewModel @Inject constructor(
         _pcAddress.value = snapshot.pc
         _debugStopReason.value = snapshot.stopReason
         _registers.value = snapshot.registers
+        _debugBreakpoints.value = snapshot.breakpoints
         _breakpoints.value = snapshot.breakpointAddresses()
         _debugError.value = null
         _debugStatus.value = when (snapshot.runState) {
@@ -871,6 +1175,21 @@ class DisasmViewModel @Inject constructor(
             val sp = snapshot.registers.firstOrNull { it.role == RegisterRole.SP }?.value
             refreshDebugStack(session, snapshot.backend, sp)
             snapshot.pc?.let { readDebugMemory(it) }
+            val caps = _debugCapabilities.value
+            if (caps.canListFrames) {
+                if (snapshot.frames.isNotEmpty()) {
+                    _debugFramesState.value = DebugFramesState(frames = snapshot.frames)
+                } else {
+                    refreshDebugFrames(session, snapshot.backend)
+                }
+            }
+            if (caps.canListThreads) {
+                if (snapshot.threads.isNotEmpty()) {
+                    _debugThreadsState.value = DebugThreadsState(threads = snapshot.threads)
+                } else {
+                    refreshDebugThreads(session, snapshot.backend)
+                }
+            }
         }
         if (ownsDebugSession(session)) snapshot.pc?.let(::loadAndScrollTo)
     }

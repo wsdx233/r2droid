@@ -30,6 +30,8 @@ open class NativeR2DebuggerBackend @Inject constructor(
             canWriteMemory = true,
             canUseBreakpoints = true,
             canUseHardwareBreakpoints = true,
+            canUseWatchpoints = true,
+            canUseConditionalBreakpoints = true,
             canListThreads = true,
             canListFrames = true
         )
@@ -105,16 +107,66 @@ open class NativeR2DebuggerBackend @Inject constructor(
     }
 
     override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = runCatching {
-        runner.execute("db ${breakpoint.address}").getOrThrow()
+        val addrHex = formatHexAddress(breakpoint.address)
+        val addCmd = when (breakpoint.kind) {
+            BreakpointKind.SOFTWARE -> "db $addrHex"
+            BreakpointKind.HARDWARE -> "dbH $addrHex"
+            BreakpointKind.WATCHPOINT -> {
+                val perm = (breakpoint.access ?: WatchpointAccess.WRITE).r2Perm
+                "dbw $addrHex $perm"
+            }
+        }
+        runner.execute(addCmd).getOrThrow()
+        breakpoint.condition?.trim()?.takeIf { it.isNotEmpty() }?.let { cond ->
+            require('\n' !in cond && '\r' !in cond) { "Invalid breakpoint condition" }
+            runner.execute("dbC $addrHex $cond").getOrThrow()
+        }
+        if (!breakpoint.enabled) {
+            runner.execute("dbd $addrHex").getOrThrow()
+        }
         breakpoint
     }
 
     override suspend fun removeBreakpoint(address: Long): Result<Unit> = runCatching {
-        runner.execute("db- $address").getOrThrow()
+        runner.execute("db- ${formatHexAddress(address)}").getOrThrow()
+    }
+
+    override suspend fun setBreakpointEnabled(address: Long, enabled: Boolean): Result<Unit> = runCatching {
+        val cmd = if (enabled) "dbe ${formatHexAddress(address)}" else "dbd ${formatHexAddress(address)}"
+        runner.execute(cmd).getOrThrow()
+    }
+
+    override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = runCatching {
+        val addrHex = formatHexAddress(address)
+        val clean = condition?.trim().orEmpty()
+        require('\n' !in clean && '\r' !in clean) { "Invalid breakpoint condition" }
+        val cmd = if (clean.isEmpty()) "dbC $addrHex" else "dbC $addrHex $clean"
+        runner.execute(cmd).getOrThrow()
     }
 
     override suspend fun writeRegister(name: String, value: Long): Result<Unit> = runCatching {
-        runner.execute("dr $name=$value").getOrThrow()
+        val cleanName = name.trim()
+        require(cleanName.matches(Regex("[A-Za-z_][A-Za-z0-9_.]*"))) { "Invalid register name: $name" }
+        runner.execute("dr $cleanName=${formatHexAddress(value)}").getOrThrow()
+    }
+
+    override suspend fun listFrames(): Result<List<DebugFrame>> = runCatching {
+        val raw = query("dbtj").getOrThrow()
+        runner.parseFrames(raw)
+    }
+
+    override suspend fun listThreads(): Result<List<DebugThread>> = runCatching {
+        val raw = query("dptj").getOrThrow()
+        runner.parseThreads(raw)
+    }
+
+    override suspend fun selectThread(threadId: String): Result<DebugStateSnapshot> = runCatching {
+        val clean = threadId.trim()
+        require(clean.matches(Regex("[0-9]+"))) { "Invalid thread id: $threadId" }
+        runner.execute("dpt=$clean").getOrThrow()
+        refresh().getOrThrow().copy(
+            stopReason = DebugStopReason(DebugStopReasonType.UNKNOWN, "Switched to thread #$clean")
+        )
     }
 
     private data class PreparedNativeTarget(
@@ -136,7 +188,19 @@ open class NativeR2DebuggerBackend @Inject constructor(
             expectedSession = session
         ).getOrThrow()
         breakpointsToRestore.forEach { bp ->
-            runner.execute(reopened, "db ${bp.address}").getOrNull()
+            val addrHex = formatHexAddress(bp.address)
+            val addCmd = when (bp.kind) {
+                BreakpointKind.SOFTWARE -> "db $addrHex"
+                BreakpointKind.HARDWARE -> "dbH $addrHex"
+                BreakpointKind.WATCHPOINT -> "dbw $addrHex ${(bp.access ?: WatchpointAccess.WRITE).r2Perm}"
+            }
+            runner.execute(reopened, addCmd).getOrNull()
+            bp.condition?.trim()?.takeIf { it.isNotEmpty() }?.let { cond ->
+                runner.execute(reopened, "dbC $addrHex $cond").getOrNull()
+            }
+            if (!bp.enabled) {
+                runner.execute(reopened, "dbd $addrHex").getOrNull()
+            }
         }
     }
 

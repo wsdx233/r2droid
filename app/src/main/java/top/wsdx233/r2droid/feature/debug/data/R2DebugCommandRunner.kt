@@ -111,18 +111,171 @@ class R2DebugCommandRunner @Inject constructor() {
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val addr = parseBreakpointAddress(obj) ?: continue
+            val hw = obj.optBoolean("hw", false)
+            val perm = obj.optString("perm", "").lowercase(Locale.ROOT)
+            val access = parseWatchpointAccess(perm)
+            val kind = when {
+                access != null -> BreakpointKind.WATCHPOINT
+                hw -> BreakpointKind.HARDWARE
+                else -> BreakpointKind.SOFTWARE
+            }
+            val condition = listOf("cond", "condition", "expr")
+                .firstNotNullOfOrNull { key -> obj.optString(key, "").trim().takeIf { it.isNotEmpty() } }
             list.add(
                 DebugBreakpoint(
                     address = addr,
                     enabled = obj.optBoolean("enabled", true),
                     temporary = obj.optBoolean("temporary", false),
-                    condition = obj.optString("cond", obj.optString("condition", "")).ifBlank { null },
+                    condition = condition,
                     hitCount = obj.optInt("hits", obj.optInt("hit", 0)),
-                    backendId = obj.optString("name", obj.optString("id", "")).ifBlank { null }
+                    backendId = obj.optString("name", obj.optString("id", "")).ifBlank { null },
+                    kind = kind,
+                    size = obj.optInt("size", 1).coerceAtLeast(1),
+                    access = access
                 )
             )
         }
-        return list.distinctBy { it.address }
+        return list.distinctBy { Triple(it.address, it.kind, it.access) }
+    }
+
+    fun parseFrames(raw: String): List<DebugFrame> {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val arr = parseJsonArray(trimmed)
+        val frames = mutableListOf<DebugFrame>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val addr = firstAddress(obj, "addr", "pc", "rip", "offset", "vaddr") ?: continue
+            val index = if (obj.has("idx")) obj.optInt("idx", i)
+            else if (obj.has("index")) obj.optInt("index", i)
+            else i
+            val functionName = firstNonBlank(obj, "func", "fname", "fcnname", "function", "name", "flag")
+            val sp = firstAddress(obj, "sp", "rsp", "esp")
+            val bp = firstAddress(obj, "bp", "fp", "rbp", "ebp")
+            val size = when {
+                obj.has("size") -> obj.optInt("size", 0).takeIf { it > 0 }
+                obj.has("frame_size") -> obj.optInt("frame_size", 0).takeIf { it > 0 }
+                else -> null
+            }
+            val desc = firstNonBlank(obj, "desc", "fcn", "module")
+                ?.takeIf { it != functionName }
+            frames.add(
+                DebugFrame(
+                    index = index,
+                    address = addr,
+                    functionName = functionName,
+                    sp = sp,
+                    bp = bp,
+                    size = size,
+                    description = desc
+                )
+            )
+        }
+        return frames
+    }
+
+    fun parseThreads(raw: String): List<DebugThread> {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val arr = parseJsonArray(trimmed)
+        val threads = mutableListOf<DebugThread>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val id = firstId(obj, "tid", "pid", "id") ?: continue
+            val selected = obj.optBoolean("current", obj.optBoolean("selected", false))
+            val name = firstNonBlank(obj, "path", "name", "title", "cmd") ?: id
+            val status = firstNonBlank(obj, "status", "state")
+            val pc = firstAddress(obj, "pc", "addr", "rip", "offset")
+            threads.add(
+                DebugThread(
+                    id = id,
+                    name = name,
+                    selected = selected,
+                    pc = pc,
+                    status = status
+                )
+            )
+        }
+        return threads.distinctBy { it.id }
+    }
+
+    fun parseStackJson(raw: String): List<DebugStackEntry> {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val arr = parseJsonArray(trimmed)
+        val entries = mutableListOf<DebugStackEntry>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val address = firstAddress(obj, "addr", "offset", "vaddr") ?: continue
+            val value = firstAddress(obj, "value", "val", "refaddr") ?: continue
+            val directFlag = firstNonBlank(obj, "flag", "fcn", "name", "sym")
+            val directStr = firstNonBlank(obj, "string", "str", "ascii")
+            val refField = obj.opt("ref") ?: obj.opt("refs")
+            val (refText, refSymbol, derefVal, refStr) = parseStackRefField(refField)
+            val symbol = directFlag ?: refSymbol
+            val stringPreview = directStr ?: refStr
+            val combinedRef = refText?.takeIf { it.isNotBlank() }
+                ?: listOfNotNull(symbol, stringPreview?.let { "\"$it\"" }).joinToString(" · ").ifBlank { null }
+            entries.add(
+                DebugStackEntry(
+                    address = address,
+                    value = value,
+                    reference = combinedRef,
+                    symbol = symbol,
+                    derefValue = derefVal,
+                    stringPreview = stringPreview
+                )
+            )
+        }
+        return entries
+    }
+
+    fun parseStackText(raw: String): List<DebugStackEntry> {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val entries = mutableListOf<DebugStackEntry>()
+        val lineRegex = Regex("^\\s*(0x[0-9a-fA-F]+)\\s+(0x[0-9a-fA-F]+)(?:\\s+(.*))?$")
+        val quotedStringRegex = Regex("\"([^\"]{1,96})\"")
+        val hexTokenRegex = Regex("0x[0-9a-fA-F]+")
+        trimmed.lineSequence().forEach { line ->
+            val cleanLine = ANSI_REGEX.replace(line, "").trim()
+            val match = lineRegex.matchEntire(cleanLine) ?: return@forEach
+            val address = parseLongFlexible(match.groupValues[1]) ?: return@forEach
+            val value = parseLongFlexible(match.groupValues[2]) ?: return@forEach
+            val tail = match.groupValues[3].trim()
+            val annotation = cleanPxrTail(tail)
+            val stringPreview = annotation?.let { quotedStringRegex.find(it)?.groupValues?.get(1) }
+            val derefValue = annotation?.let {
+                hexTokenRegex.findAll(it)
+                    .mapNotNull { m -> parseLongFlexible(m.value) }
+                    .firstOrNull { candidate -> candidate != address && candidate != value }
+            }
+            val symbol = annotation?.let { extractSymbolHint(it) }
+            entries.add(
+                DebugStackEntry(
+                    address = address,
+                    value = value,
+                    reference = annotation,
+                    symbol = symbol,
+                    derefValue = derefValue,
+                    stringPreview = stringPreview
+                )
+            )
+        }
+        return entries
+    }
+
+    fun parseHexBytes(input: String): ByteArray? {
+        val cleaned = input
+            .replace("0x", "", ignoreCase = true)
+            .replace(Regex("[\\s,;:_-]+"), "")
+        if (cleaned.isEmpty() || cleaned.length % 2 != 0) return null
+        val out = ByteArray(cleaned.length / 2)
+        for (i in out.indices) {
+            val byteVal = cleaned.substring(i * 2, i * 2 + 2).toIntOrNull(16) ?: return null
+            out[i] = byteVal.toByte()
+        }
+        return out
     }
 
     fun validateCommandOutput(command: String, output: String) {
@@ -139,18 +292,137 @@ class R2DebugCommandRunner @Inject constructor() {
         val trimmed = value.trim().removeSuffix(",")
         if (trimmed.isBlank()) return null
         return if (trimmed.startsWith("0x", ignoreCase = true)) {
-            trimmed.removePrefix("0x").removePrefix("0X").toLongOrNull(16)
+            val hex = trimmed.removePrefix("0x").removePrefix("0X")
+            hex.toLongOrNull(16) ?: hex.toULongOrNull(16)?.toLong()
         } else {
-            trimmed.toLongOrNull() ?: trimmed.toLongOrNull(16)
+            trimmed.toLongOrNull()
+                ?: trimmed.toULongOrNull()?.toLong()
+                ?: trimmed.toLongOrNull(16)
+                ?: trimmed.toULongOrNull(16)?.toLong()
         }
     }
 
-    private fun parseBreakpointAddress(obj: JSONObject): Long? {
-        listOf("addr", "address", "offset", "vaddr").forEach { key ->
+    private fun parseBreakpointAddress(obj: JSONObject): Long? =
+        firstAddress(obj, "addr", "address", "offset", "vaddr")
+
+    private fun parseWatchpointAccess(perm: String): WatchpointAccess? {
+        val hasR = perm.contains('r')
+        val hasW = perm.contains('w')
+        return when {
+            hasR && hasW -> WatchpointAccess.READ_WRITE
+            hasR -> WatchpointAccess.READ
+            hasW -> WatchpointAccess.WRITE
+            else -> null
+        }
+    }
+
+    private fun firstAddress(obj: JSONObject, vararg keys: String): Long? {
+        keys.forEach { key ->
             parseLongFlexible(obj.opt(key))?.let { return it }
         }
         return null
     }
+
+    private fun firstNonBlank(obj: JSONObject, vararg keys: String): String? {
+        keys.forEach { key ->
+            val raw = obj.opt(key)
+            if (raw != null && raw !== JSONObject.NULL) {
+                val text = raw.toString().trim()
+                if (text.isNotEmpty() && text != "null") return text
+            }
+        }
+        return null
+    }
+
+    private fun firstId(obj: JSONObject, vararg keys: String): String? {
+        keys.forEach { key ->
+            val raw = obj.opt(key)
+            if (raw != null && raw !== JSONObject.NULL) {
+                val text = when (raw) {
+                    is Number -> raw.toLong().toString()
+                    else -> raw.toString().trim()
+                }
+                if (text.isNotEmpty() && text != "null") return text
+            }
+        }
+        return null
+    }
+
+    private data class StackRefParsed(
+        val reference: String?,
+        val symbol: String?,
+        val derefValue: Long?,
+        val stringPreview: String?
+    )
+
+    private fun parseStackRefField(raw: Any?): StackRefParsed {
+        if (raw == null || raw === JSONObject.NULL) return StackRefParsed(null, null, null, null)
+        return when (raw) {
+            is String -> {
+                val text = cleanPxrTail(raw)
+                val str = text?.let { Regex("\"([^\"]{1,96})\"").find(it)?.groupValues?.get(1) }
+                val sym = text?.let { extractSymbolHint(it) }
+                val ptr = text?.let { Regex("0x[0-9a-fA-F]+").find(it)?.value?.let(::parseLongFlexible) }
+                StackRefParsed(text, sym, ptr, str)
+            }
+            is JSONObject -> {
+                val sym = firstNonBlank(raw, "flag", "fcn", "name", "sym")
+                val str = firstNonBlank(raw, "string", "str", "ascii")
+                val ptr = firstAddress(raw, "value", "addr", "offset")
+                val nested = parseStackRefField(raw.opt("ref"))
+                val refParts = listOfNotNull(
+                    sym,
+                    str?.let { "\"$it\"" },
+                    nested.reference
+                )
+                StackRefParsed(
+                    reference = refParts.joinToString(" → ").ifBlank { null },
+                    symbol = sym ?: nested.symbol,
+                    derefValue = ptr ?: nested.derefValue,
+                    stringPreview = str ?: nested.stringPreview
+                )
+            }
+            is JSONArray -> {
+                val parts = mutableListOf<String>()
+                var sym: String? = null
+                var ptr: Long? = null
+                var str: String? = null
+                for (i in 0 until raw.length()) {
+                    val parsed = parseStackRefField(raw.opt(i))
+                    parsed.reference?.let { parts.add(it) }
+                    if (sym == null) sym = parsed.symbol
+                    if (ptr == null) ptr = parsed.derefValue
+                    if (str == null) str = parsed.stringPreview
+                }
+                StackRefParsed(
+                    reference = parts.joinToString(" → ").ifBlank { null },
+                    symbol = sym,
+                    derefValue = ptr,
+                    stringPreview = str
+                )
+            }
+            else -> StackRefParsed(raw.toString().trim().ifBlank { null }, null, null, null)
+        }
+    }
+
+    private fun cleanPxrTail(tail: String): String? {
+        if (tail.isBlank()) return null
+        // pxr typically prints an ASCII column like "........" before annotations
+        val stripped = tail
+            .replace(Regex("^\\S*\\.\\.\\.\\S*\\s*"), "")
+            .replace(Regex("^@\\s+"), "")
+            .trim()
+        if (stripped.isBlank() || stripped == "0" || stripped == "NULL" || stripped == "null") return null
+        return stripped
+    }
+
+    private fun extractSymbolHint(text: String): String? {
+        val symRegex = Regex("\\b((?:sym|fcn|imp|reloc|str|obj|sub|loc|entry|section)\\.[A-Za-z0-9_.:+$-]+)")
+        symRegex.find(text)?.groupValues?.get(1)?.let { return it }
+        return null
+    }
+
+    private val ANSI_REGEX = Regex("\u001b\\[[0-?]*[ -/]*[@-~]")
 
     private fun mergeFridaRegisterBlock(target: JSONObject, block: String) {
         block.lineSequence().forEach { line ->

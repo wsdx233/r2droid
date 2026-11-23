@@ -83,6 +83,11 @@ internal class EsilSession(
         setOption("esil.breakoninvalid", "true")
         setOption("esil.iotrap", "true")
         setOption("esil.romem", "false")
+        // Prevent formatted disassembly (pd/pdf) from running inline ESIL emulation while debugging.
+        setOption("asm.emu", "false")
+        runCatching { option("emu.str") }.getOrNull()?.let {
+            if (it == "true") setOption("emu.str", "false")
+        }
         setOption("log.quiet", "false")
         // r2 reports breakpoint hits at INFO (2), but step-over faults at WARN (3).
         if (option("log.level").toInt() < 3) setOption("log.level", "3")

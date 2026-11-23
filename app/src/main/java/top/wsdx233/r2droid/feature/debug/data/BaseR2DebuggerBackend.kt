@@ -36,6 +36,11 @@ abstract class BaseR2DebuggerBackend(
     }
 
     override suspend fun readRegisters(): Result<List<DebugRegister>> = runCatching {
+        val current = readRawRegisterValues().getOrThrow()
+        parseRegisters(current)
+    }
+
+    protected suspend fun readRawRegisterValues(): Result<Map<String, Long>> = runCatching {
         var lastError: Throwable? = null
         for (command in registerCommands) {
             val output = query(command).getOrElse {
@@ -52,7 +57,7 @@ abstract class BaseR2DebuggerBackend(
                 lastError = e
                 continue
             }
-            return@runCatching parseRegisters(obj)
+            return@runCatching extractRegisterValues(obj)
         }
         throw lastError ?: IllegalStateException("Unable to read register state")
     }
@@ -62,7 +67,7 @@ abstract class BaseR2DebuggerBackend(
             ?: throw IllegalStateException("Unable to determine current seek address")
     }
 
-    protected fun parseRegisters(registers: JSONObject): List<DebugRegister> {
+    private fun extractRegisterValues(registers: JSONObject): Map<String, Long> {
         val current = mutableMapOf<String, Long>()
         val keys = registers.keys().asSequence().toList()
         keys.forEach { key ->
@@ -70,7 +75,13 @@ abstract class BaseR2DebuggerBackend(
                 current[key] = value
             }
         }
+        return current
+    }
 
+    protected fun parseRegisters(registers: JSONObject): List<DebugRegister> =
+        parseRegisters(extractRegisterValues(registers))
+
+    private fun parseRegisters(current: Map<String, Long>): List<DebugRegister> {
         val parsed = current.map { (name, value) ->
             DebugRegister(
                 name = name,
@@ -86,24 +97,63 @@ abstract class BaseR2DebuggerBackend(
 
     override suspend fun readMemory(address: Long, size: Int): Result<ByteArray> = runCatching {
         val safeSize = size.coerceIn(1, 4096)
-        val raw = query("pxj $safeSize @ $address").getOrThrow()
+        val addrHex = formatHexAddress(address)
+        val raw = query("pxj $safeSize @ $addrHex").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         ByteArray(arr.length()) { index ->
             (runner.parseLongFlexible(arr.opt(index)) ?: 0L).toInt().toByte()
         }
     }
 
+    override suspend fun writeMemory(address: Long, bytes: ByteArray): Result<Unit> = runCatching {
+        require(bytes.isNotEmpty()) { "No bytes provided for memory write" }
+        require(bytes.size <= 4096) { "Memory write exceeds 4096-byte limit" }
+        val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val addrHex = formatHexAddress(address)
+        query("wx $hex @ $addrHex").getOrThrow()
+    }
+
+    override suspend fun resolveExpression(expression: String): Result<Long> = runCatching {
+        val trimmed = expression.trim()
+        require(trimmed.isNotEmpty()) { "Expression cannot be empty" }
+        parseExplicitLiteral(trimmed)?.let { return@runCatching it }
+        require('\n' !in trimmed && '\r' !in trimmed && ';' !in trimmed) {
+            "Invalid characters in expression"
+        }
+        val output = query("?v $trimmed").getOrThrow()
+        runner.parseAddress(output)
+            ?: throw IllegalArgumentException("Unable to evaluate expression: $trimmed")
+    }
+
     override suspend fun readStack(count: Int): Result<List<DebugStackEntry>> = runCatching {
-        val registers = readRegisters().getOrThrow()
-        val sp = extractStackPointer(registers)
+        val rawRegs = readRawRegisterValues().getOrThrow()
+        val tempRegs = rawRegs.map { (name, value) ->
+            DebugRegister(name = name, value = value, role = registerRole(name))
+        }
+        val sp = extractStackPointer(tempRegs)
             ?: throw IllegalStateException("Stack pointer is unavailable")
         readStackAt(sp, count, 8)
     }
 
     protected suspend fun readStackAt(sp: Long, count: Int, wordBytes: Int): List<DebugStackEntry> {
         val bytes = count.coerceIn(1, 512 / wordBytes) * wordBytes
+        val spHex = formatHexAddress(sp)
+
+        if (wordBytes in setOf(4, 8)) {
+            val pxrJsonCandidates = listOf("pxr${wordBytes}j $bytes @ $spHex", "pxrj $bytes @ $spHex")
+            for (cmd in pxrJsonCandidates) {
+                val parsed = query(cmd).mapCatching { runner.parseStackJson(it) }.getOrNull()
+                if (!parsed.isNullOrEmpty()) return parsed.take(count)
+            }
+            val pxrTextCandidates = listOf("pxr$wordBytes $bytes @ $spHex", "pxr $bytes @ $spHex")
+            for (cmd in pxrTextCandidates) {
+                val parsed = query(cmd).mapCatching { runner.parseStackText(it) }.getOrNull()
+                if (!parsed.isNullOrEmpty()) return parsed.take(count)
+            }
+        }
+
         val format = when (wordBytes) { 1 -> "pxj"; 2 -> "pxhj"; 4 -> "pxwj"; 8 -> "pxqj"; else -> error("Invalid stack word size") }
-        val raw = query("$format $bytes @ $sp").getOrThrow()
+        val raw = query("$format $bytes @ $spHex").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         val entries = mutableListOf<DebugStackEntry>()
         for (i in 0 until arr.length()) {
@@ -112,6 +162,19 @@ abstract class BaseR2DebuggerBackend(
             }
         }
         return entries
+    }
+
+    protected fun formatHexAddress(address: Long): String = "0x${address.toULong().toString(16)}"
+
+    protected fun parseExplicitLiteral(trimmed: String): Long? = when {
+        trimmed.startsWith("0x", ignoreCase = true) -> {
+            val hex = trimmed.substring(2)
+            hex.toLongOrNull(16) ?: hex.toULongOrNull(16)?.toLong()
+        }
+        trimmed.matches(Regex("^-?\\d+$")) -> {
+            trimmed.toLongOrNull() ?: trimmed.toULongOrNull()?.toLong()
+        }
+        else -> null
     }
 
     protected fun extractProgramCounter(registers: List<DebugRegister>): Long? {

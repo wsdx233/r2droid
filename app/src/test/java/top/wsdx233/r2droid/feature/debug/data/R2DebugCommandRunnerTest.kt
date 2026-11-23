@@ -128,4 +128,137 @@ class R2DebugCommandRunnerTest {
         assertTrue(runner.isFridaCommand("  :dmj"))
         assertTrue(!runner.isFridaCommand("drj"))
     }
+
+    @Test
+    fun parseLongFlexible_supportsUnsigned64BitHex() {
+        assertEquals(0xffffffff80001000uL.toLong(), runner.parseLongFlexible("0xffffffff80001000"))
+        assertEquals(0x8000000000000000uL.toLong(), runner.parseLongFlexible("0x8000000000000000"))
+    }
+
+    @Test
+    fun parseBreakpoints_detectsHardwareWatchpointsAndExpr() {
+        val parsed = runner.parseBreakpoints(
+            """
+            [
+              {"addr":"0x401000","hw":true,"perm":"--x","enabled":true,"expr":"rax==0x10","size":1},
+              {"addr":"0x602000","hw":true,"perm":"rw-","enabled":false,"size":4,"name":"wp0"},
+              {"addr":"0x602010","hw":true,"perm":"-w-","enabled":true,"size":8},
+              {"addr":"0x602020","hw":true,"perm":"r--","enabled":true,"size":4}
+            ]
+            """.trimIndent()
+        )
+
+        assertEquals(4, parsed.size)
+        assertEquals(BreakpointKind.HARDWARE, parsed[0].kind)
+        assertEquals("rax==0x10", parsed[0].condition)
+        assertEquals(null, parsed[0].access)
+
+        assertEquals(BreakpointKind.WATCHPOINT, parsed[1].kind)
+        assertEquals(WatchpointAccess.READ_WRITE, parsed[1].access)
+        assertEquals(false, parsed[1].enabled)
+        assertEquals(4, parsed[1].size)
+        assertEquals("wp0", parsed[1].backendId)
+
+        assertEquals(BreakpointKind.WATCHPOINT, parsed[2].kind)
+        assertEquals(WatchpointAccess.WRITE, parsed[2].access)
+        assertEquals(8, parsed[2].size)
+
+        assertEquals(BreakpointKind.WATCHPOINT, parsed[3].kind)
+        assertEquals(WatchpointAccess.READ, parsed[3].access)
+    }
+
+    @Test
+    fun parseFrames_parsesDbtjJsonOutput() {
+        val frames = runner.parseFrames(
+            """
+            [
+              {"addr":4198912,"func":"sym.parse_packet","sp":140737488347136,"bp":140737488347200,"size":64,"desc":"main.c:42"},
+              {"pc":"0x401080","fname":"sym.main","rsp":"0x7fffffffe040","fp":"0x7fffffffe080","frame_size":32}
+            ]
+            """.trimIndent()
+        )
+
+        assertEquals(2, frames.size)
+        assertEquals(0, frames[0].index)
+        assertEquals(4198912L, frames[0].address)
+        assertEquals("sym.parse_packet", frames[0].functionName)
+        assertEquals(140737488347136L, frames[0].sp)
+        assertEquals(140737488347200L, frames[0].bp)
+        assertEquals(64, frames[0].size)
+        assertEquals("main.c:42", frames[0].description)
+
+        assertEquals(1, frames[1].index)
+        assertEquals(0x401080L, frames[1].address)
+        assertEquals("sym.main", frames[1].functionName)
+        assertEquals(0x7fffffffe040L, frames[1].sp)
+        assertEquals(0x7fffffffe080L, frames[1].bp)
+        assertEquals(32, frames[1].size)
+    }
+
+    @Test
+    fun parseThreads_parsesDptjJsonOutput() {
+        val threads = runner.parseThreads(
+            """
+            [
+              {"pid":1234,"status":"t","path":"/data/local/tmp/demo","current":true,"pc":"0x401200"},
+              {"tid":1235,"state":"s","name":"worker-1","selected":false,"addr":4199040}
+            ]
+            """.trimIndent()
+        )
+
+        assertEquals(2, threads.size)
+        assertEquals("1234", threads[0].id)
+        assertEquals("/data/local/tmp/demo", threads[0].name)
+        assertEquals("t", threads[0].status)
+        assertTrue(threads[0].selected)
+        assertEquals(0x401200L, threads[0].pc)
+
+        assertEquals("1235", threads[1].id)
+        assertEquals("worker-1", threads[1].name)
+        assertEquals("s", threads[1].status)
+        assertTrue(!threads[1].selected)
+        assertEquals(4199040L, threads[1].pc)
+    }
+
+    @Test
+    fun parseStackJsonAndText_extractsDerefAndSymbols() {
+        val fromJson = runner.parseStackJson(
+            """
+            [
+              {"addr":"0x7fffffffe000","value":"0x401280","flag":"sym.main+0x10","ref":"sym.main+0x10"},
+              {"addr":"0x7fffffffe008","value":"0x7fffffffe120","ref":{"value":"0x604000","string":"/bin/sh"}}
+            ]
+            """.trimIndent()
+        )
+        assertEquals(2, fromJson.size)
+        assertEquals("sym.main+0x10", fromJson[0].symbol)
+        assertEquals("/bin/sh", fromJson[1].stringPreview)
+        assertEquals(0x604000L, fromJson[1].derefValue)
+
+        val fromText = runner.parseStackText(
+            """
+            0x7fffffffe000 0x0000000000401180   ........ @ r-x sym.main+0x12
+            0x7fffffffe008 0x00007fffffffe100   ........ stack R W 0x7fffffffe120 --> ascii "/bin/sh"
+            0x7fffffffe010 0x0000000000000000   ........ 0
+            """.trimIndent()
+        )
+        assertEquals(3, fromText.size)
+        assertEquals("sym.main+0x12", fromText[0].symbol)
+        assertEquals("/bin/sh", fromText[1].stringPreview)
+        assertEquals(0x7fffffffe120L, fromText[1].derefValue)
+        assertEquals(null, fromText[2].reference)
+    }
+
+    @Test
+    fun parseHexBytes_parsesValidAndRejectsInvalid() {
+        val bytes = runner.parseHexBytes("0x90 90, c3-00")
+        assertTrue(bytes != null)
+        assertEquals(4, bytes!!.size)
+        assertEquals(0x90.toByte(), bytes[0])
+        assertEquals(0xC3.toByte(), bytes[2])
+
+        assertEquals(null, runner.parseHexBytes("90 9"))
+        assertEquals(null, runner.parseHexBytes("ZZ"))
+        assertEquals(null, runner.parseHexBytes("   "))
+    }
 }
