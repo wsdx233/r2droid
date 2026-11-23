@@ -98,10 +98,14 @@ internal fun rememberHexGridStyle(): HexGridStyle {
             placeholderBlock = color(R.color.hex_placeholder_block),
             highlight = Color(0x4DFFFDE7),
             selected = scheme.primaryContainer,
+            rangeSelected = scheme.secondaryContainer,
+            cursorInRange = scheme.tertiaryContainer,
             headerText = color(R.color.hex_column_header_text).toArgb(),
             addressText = color(R.color.hex_address_text).toArgb(),
             byteText = color(R.color.hex_byte_text).toArgb(),
             selectedText = scheme.onPrimaryContainer.toArgb(),
+            rangeSelectedText = scheme.onSecondaryContainer.toArgb(),
+            cursorInRangeText = scheme.onTertiaryContainer.toArgb(),
             editingText = scheme.tertiary.toArgb()
         )
     }
@@ -123,10 +127,14 @@ internal data class HexGridPalette(
     val placeholderBlock: Color,
     val highlight: Color,
     val selected: Color,
+    val rangeSelected: Color,
+    val cursorInRange: Color,
     val headerText: Int,
     val addressText: Int,
     val byteText: Int,
     val selectedText: Int,
+    val rangeSelectedText: Int,
+    val cursorInRangeText: Int,
     val editingText: Int
 )
 
@@ -215,7 +223,10 @@ internal fun HexGridRow(
     onByteClick: (Long) -> Unit,
     onByteLongClick: (Long) -> Unit,
     menuAddress: Long?,
-    menuContent: @Composable (Long) -> Unit
+    menuContent: @Composable (Long) -> Unit,
+    selectionActive: Boolean = false,
+    selectionStart: Long = 0L,
+    selectionEnd: Long = 0L
 ) {
     val row = remember(chunk, offset, byteCount) { HexGridRowBytes(chunk, offset, byteCount) }
     val firstAddress = remember(addr) { formatHexGridAddress(addr) }
@@ -288,7 +299,19 @@ internal fun HexGridRow(
 
     // The drawn row is also the popup's parent: no child to compose or measure during scrolling.
     Layout(modifier = canvasModifier.drawBehind {
-        drawHexGridRow(style, addr, row, firstAddress, secondAddress, selectedIndex, selectedColumn, editing)
+        drawHexGridRow(
+            style = style,
+            address = addr,
+            row = row,
+            firstAddress = firstAddress,
+            secondAddress = secondAddress,
+            selectedIndex = selectedIndex,
+            selectedColumn = selectedColumn,
+            editing = editing,
+            selectionActive = selectionActive,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd
+        )
     }, content = {
         if (menuAddress != null && menuIndex >= 0) {
             key(menuAddress) { Box { menuContent(menuAddress) } }
@@ -312,13 +335,18 @@ private fun DrawScope.drawHexGridRow(
     secondAddress: String,
     selectedIndex: Int,
     selectedColumn: Int,
-    editing: String
+    editing: String,
+    selectionActive: Boolean,
+    selectionStart: Long,
+    selectionEnd: Long
 ) {
     val grid = style.geometry(size.width.roundToInt())
     val palette = style.palette
     val canvas = drawContext.canvas.nativeCanvas
     val lineHeight = grid.lineHeight.toFloat()
     val addressPaint = style.addressPaint
+    val selStartU = selectionStart.toULong()
+    val selEndU = selectionEnd.toULong()
     addressPaint.color = palette.addressText
     for (line in 0 until row.lineCount) {
         val start = line * COLUMNS
@@ -357,13 +385,24 @@ private fun DrawScope.drawHexGridRow(
                     continue
                 }
                 val selected = index == selectedIndex
+                val byteAddrU = (address + index).toULong()
+                val inSelection = selectionActive && byteAddrU in selStartU..selEndU
                 val isEditing = isHex && selected && editing.isNotEmpty()
-                if (selected || cursorOnLine || column == selectedColumn) {
-                    drawRect(if (selected) palette.selected else palette.highlight, Offset(left, top), Size(cellWidth, lineHeight))
+                val cellBg = when {
+                    selected && inSelection -> palette.cursorInRange
+                    selected -> palette.selected
+                    inSelection -> palette.rangeSelected
+                    cursorOnLine || column == selectedColumn -> palette.highlight
+                    else -> Color.Unspecified
+                }
+                if (cellBg != Color.Unspecified) {
+                    drawRect(cellBg, Offset(left, top), Size(cellWidth, lineHeight))
                 }
                 paint.color = when {
                     isEditing -> palette.editingText
+                    selected && inSelection -> palette.cursorInRangeText
                     selected -> palette.selectedText
+                    inSelection -> palette.rangeSelectedText
                     else -> palette.byteText
                 }
                 val value = row[index]

@@ -196,4 +196,46 @@ class HexDataManagerTest {
         assertArrayEquals(byteArrayOf(42), first.value)
         assertEquals(2, readsAtStart)
     }
+
+    @Test fun readCachedBytesAndReadBytesHandleChunkBoundariesAndUncachedSlices() = runTest {
+        val start = 0x2000L
+        val end = start + 2L * CHUNK_SIZE + 8L
+        val remoteReads = mutableListOf<Pair<Long, Int>>()
+        val manager = HexDataManager(start, end) { address, length ->
+            remoteReads += address to length
+            Result.success(ByteArray(length) { idx -> ((address - start + idx) and 0xFFL).toByte() })
+        }
+
+        // Uncached before viewport load
+        assertNull(manager.readCachedBytes(start, 4))
+
+        // Load only chunk 0
+        manager.loadViewport(0, 0)
+        assertArrayEquals(byteArrayOf(0, 1, 2, 3), manager.readCachedBytes(start, 4))
+
+        // Crossing into chunk 1: chunk 1 was prefetched by loadViewport(0, 0), so cached read succeeds!
+        val crossAddr = start + CHUNK_SIZE - 2
+        val crossCached = manager.readCachedBytes(crossAddr, 4)
+        assertArrayEquals(
+            byteArrayOf(
+                ((CHUNK_SIZE - 2) and 0xFF).toByte(),
+                ((CHUNK_SIZE - 1) and 0xFF).toByte(),
+                (CHUNK_SIZE and 0xFF).toByte(),
+                ((CHUNK_SIZE + 1) and 0xFF).toByte()
+            ),
+            crossCached
+        )
+
+        // Reading near EOF clamps cleanly to displayEnd
+        val eofBytes = manager.readBytes(end - 3, 16).getOrThrow()
+        assertEquals(3, eofBytes.size)
+        assertArrayEquals(
+            byteArrayOf(
+                ((end - start - 3) and 0xFFL).toByte(),
+                ((end - start - 2) and 0xFFL).toByte(),
+                ((end - start - 1) and 0xFFL).toByte()
+            ),
+            eofBytes
+        )
+    }
 }

@@ -69,8 +69,10 @@ fun ProjectDetailView(
                     viewModel = hexViewModel,
                     hexDataManager = hexDataManager,
                     cursorAddress = state.cursorAddress,
+                    binInfo = state.binInfo,
                     scrollToSelectionTrigger = viewModel.scrollToSelectionTrigger,
                     onByteClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },
+                    onJumpToAddress = { addr -> viewModel.onEvent(ProjectEvent.JumpToAddress(addr)) },
                     onShowXrefs = { addr -> disasmViewModel.onEvent(DisasmEvent.FetchXrefs(addr)) },
                     functionActions = remember(disasmViewModel) { disasmViewModel.functionMenuActions() },
                     onAnnotate = onAnnotate

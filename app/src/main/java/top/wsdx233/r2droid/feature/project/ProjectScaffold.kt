@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FormatPaint
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
@@ -149,7 +150,11 @@ import top.wsdx233.r2droid.feature.annotations.AnnotationIndex
 import top.wsdx233.r2droid.feature.disasm.DisasmEvent
 import top.wsdx233.r2droid.feature.disasm.DisasmViewModel
 import top.wsdx233.r2droid.feature.hex.HexEvent
+import top.wsdx233.r2droid.feature.hex.HexPanelTab
 import top.wsdx233.r2droid.feature.hex.HexViewModel
+import top.wsdx233.r2droid.feature.hex.data.HexCopyFormat
+import top.wsdx233.r2droid.feature.hex.data.parseHexBytes
+import top.wsdx233.r2droid.core.ui.dialogs.requestByteEditor
 import top.wsdx233.r2droid.feature.project.patches.PatchesScreen
 import top.wsdx233.r2droid.feature.r2frida.R2FridaViewModel
 import top.wsdx233.r2droid.feature.r2frida.data.*
@@ -579,6 +584,13 @@ fun ProjectScaffold(
             selectedCategory == MainCategory.Detail &&
             selectedDetailTabIndex == 1 &&
             disasmMultiSelect.active
+    val hexSelection by hexViewModel.selectionState.collectAsState()
+    val isHexSelectionMode =
+        selectedPluginNavigation == null &&
+            selectedCategory == MainCategory.Detail &&
+            selectedDetailTabIndex == 0 &&
+            hexSelection.active
+    val isDetailSelectionMode = isDisasmSelectionMode || isHexSelectionMode
 
     val quickJumpToDetail: ((Long) -> Unit)? = when (SettingsManager.defaultJumpTarget) {
         "hex", "disasm" -> { addr: Long ->
@@ -628,7 +640,7 @@ fun ProjectScaffold(
                     containerColor = topBarContainerColor
                 ),
                 navigationIcon = {
-                    if (!isDisasmSelectionMode) {
+                    if (!isDetailSelectionMode) {
                         androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
                             Icon(
                                 imageVector = androidx.compose.material.icons.Icons.Filled.Menu,
@@ -638,7 +650,7 @@ fun ProjectScaffold(
                     }
                 },
                 title = {
-                    if (!isDisasmSelectionMode) {
+                    if (!isDetailSelectionMode) {
                         if (isAiChat) {
                             Column(
                                 modifier = Modifier
@@ -670,7 +682,7 @@ fun ProjectScaffold(
                 actions = {
                     if (selectedPluginNavigation == null && selectedCategory == MainCategory.Detail) {
                         val canGoBack by viewModel.canGoBack.collectAsState()
-                        if (!isDisasmSelectionMode) {
+                        if (!isDetailSelectionMode) {
                             Box(
                                 modifier = Modifier
                                     .size(48.dp)
@@ -845,8 +857,153 @@ fun ProjectScaffold(
                                 }
                             }
                         }
-                        // Multi-select actions for disasm tab
-                        if (selectedDetailTabIndex == 1 && disasmMultiSelect.active) {
+                        // Multi-select actions for hex tab (aligned with disasm multi-select)
+                        if (isHexSelectionMode) {
+                            val hexClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                            val hexScope = rememberCoroutineScope()
+                            val hexCursor = (uiState as? ProjectUiState.Success)?.cursorAddress ?: 0L
+                            var showHexReopenDialog by remember { mutableStateOf(false) }
+                            var pendingHexWriteAction by remember { mutableStateOf<(suspend () -> Unit)?>(null) }
+
+                            Text(
+                                stringResource(R.string.hex_selection_count, hexSelection.byteCount),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+
+                            var showHexCopyMenu by remember { mutableStateOf(false) }
+                            Box {
+                                androidx.compose.material3.IconButton(onClick = { showHexCopyMenu = true }) {
+                                    Icon(
+                                        Icons.Filled.ContentCopy,
+                                        contentDescription = stringResource(R.string.multiselect_copy),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                androidx.compose.material3.DropdownMenu(
+                                    expanded = showHexCopyMenu,
+                                    onDismissRequest = { showHexCopyMenu = false }
+                                ) {
+                                    listOf(
+                                        HexCopyFormat.HEX_SPACED to R.string.hex_copy_hex,
+                                        HexCopyFormat.HEX_COMPACT to R.string.hex_copy_hex_compact,
+                                        HexCopyFormat.C_ARRAY to R.string.hex_copy_c_array,
+                                        HexCopyFormat.PYTHON_BYTES to R.string.hex_copy_python_bytes
+                                    ).forEach { (format, labelRes) ->
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text(stringResource(labelRes)) },
+                                            onClick = {
+                                                showHexCopyMenu = false
+                                                hexScope.launch {
+                                                    hexViewModel.readFormattedSelection(hexCursor, format)
+                                                        .onSuccess { text ->
+                                                            if (text.length > 512 * 1024) {
+                                                                Toast.makeText(context, R.string.hex_selection_copy_limit_warning, Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                hexClipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                                                Toast.makeText(context, R.string.hex_copied_toast, Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                        .onFailure { err ->
+                                                            Toast.makeText(context, err.message ?: context.getString(R.string.common_error), Toast.LENGTH_SHORT).show()
+                                                        }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            var showHexFillDialog by remember { mutableStateOf(false) }
+                            androidx.compose.material3.IconButton(onClick = { showHexFillDialog = true }) {
+                                Icon(
+                                    Icons.Filled.FormatPaint,
+                                    contentDescription = stringResource(R.string.multiselect_fill),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            if (showHexFillDialog) {
+                                var fillValue by remember { mutableStateOf("") }
+                                val isValid = remember(fillValue) { parseHexBytes(fillValue) != null }
+                                AlertDialog(
+                                    onDismissRequest = { showHexFillDialog = false },
+                                    title = { Text(stringResource(R.string.hex_fill_title)) },
+                                    text = {
+                                        OutlinedTextField(
+                                            value = fillValue,
+                                            onValueChange = { fillValue = it },
+                                            label = { Text(stringResource(R.string.hex_fill_hint)) },
+                                            singleLine = true,
+                                            isError = fillValue.isNotBlank() && !isValid
+                                        )
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                val pattern = fillValue
+                                                showHexFillDialog = false
+                                                hexScope.launch {
+                                                    context.requestByteEditor(onReopen = {
+                                                        pendingHexWriteAction = it
+                                                        showHexReopenDialog = true
+                                                    }) { session ->
+                                                        hexViewModel.onEvent(HexEvent.FillSelection(session, pattern))
+                                                    }
+                                                }
+                                            },
+                                            enabled = isValid
+                                        ) { Text(stringResource(R.string.dialog_ok)) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showHexFillDialog = false }) {
+                                            Text(stringResource(R.string.dialog_cancel))
+                                        }
+                                    }
+                                )
+                            }
+                            if (showHexReopenDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showHexReopenDialog = false; pendingHexWriteAction = null },
+                                    title = { Text(stringResource(R.string.reopen_write_title)) },
+                                    text = { Text(stringResource(R.string.reopen_write_message)) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            showHexReopenDialog = false
+                                            val action = pendingHexWriteAction
+                                            pendingHexWriteAction = null
+                                            hexScope.launch { action?.invoke() }
+                                        }) { Text(stringResource(R.string.reopen_write_confirm)) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showHexReopenDialog = false; pendingHexWriteAction = null }) {
+                                            Text(stringResource(R.string.reopen_write_cancel))
+                                        }
+                                    }
+                                )
+                            }
+
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    hexViewModel.onEvent(HexEvent.SetToolsPanelVisible(true, HexPanelTab.SELECTION))
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Memory,
+                                    contentDescription = stringResource(R.string.hex_toggle_inspector_desc),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            androidx.compose.material3.IconButton(
+                                onClick = { hexViewModel.onEvent(HexEvent.ClearSelection) }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Cancel,
+                                    contentDescription = stringResource(R.string.multiselect_close),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else if (selectedDetailTabIndex == 1 && disasmMultiSelect.active) {
                             val msClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                             val msScope = rememberCoroutineScope()
                             // Selected count badge

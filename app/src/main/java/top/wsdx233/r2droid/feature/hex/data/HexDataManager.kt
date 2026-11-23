@@ -84,6 +84,104 @@ class HexDataManager internal constructor(
         else -> ((addr - viewStartAddress) / BYTES_PER_ROW).toInt()
     }
 
+    /**
+     * Reads up to [maxLength] bytes starting at [address] from already-cached chunks only.
+     * Returns null if any required chunk is not currently cached.
+     */
+    fun readCachedBytes(address: Long, maxLength: Int): ByteArray? {
+        if (maxLength <= 0 || displaySize <= 0L) return ByteArray(0)
+        if (address < viewStartAddress || address >= displayEnd) return ByteArray(0)
+        val remainingInView = displayEnd - address
+        val targetLength = minOf(maxLength.toLong(), remainingInView).toInt()
+        if (targetLength <= 0) return ByteArray(0)
+
+        val out = ByteArray(targetLength)
+        var copied = 0
+        synchronized(lock) {
+            if (closed) return null
+            while (copied < targetLength) {
+                val curAddr = address + copied
+                val rel = curAddr - viewStartAddress
+                val chunkIndex = (rel / CHUNK_SIZE).toInt()
+                val offsetInChunk = (rel % CHUNK_SIZE).toInt()
+                val chunkBytes = cache[chunkIndex]?.value ?: return null
+                if (offsetInChunk >= chunkBytes.size) {
+                    // Underlying short read ended before the logical view extent.
+                    return out.copyOf(copied)
+                }
+                val chunkExpected = minOf(CHUNK_SIZE.toLong(), displayEnd - (viewStartAddress + chunkIndex.toLong() * CHUNK_SIZE)).toInt()
+                val toCopy = minOf(targetLength - copied, chunkBytes.size - offsetInChunk)
+                System.arraycopy(chunkBytes, offsetInChunk, out, copied, toCopy)
+                copied += toCopy
+                // If this chunk itself was a short read (shorter than expected chunk size), stop here.
+                if (chunkBytes.size < chunkExpected) {
+                    return out.copyOf(copied)
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * Reads up to [maxLength] bytes starting at [address], using cached chunks when available
+     * and fetching uncached slices directly via [readChunk] without evicting viewport LRU entries.
+     */
+    suspend fun readBytes(address: Long, maxLength: Int): Result<ByteArray> {
+        readCachedBytes(address, maxLength)?.let { return Result.success(it) }
+        if (maxLength <= 0 || displaySize <= 0L) return Result.success(ByteArray(0))
+        if (address < viewStartAddress || address >= displayEnd) return Result.success(ByteArray(0))
+
+        val targetLength = minOf(maxLength.toLong(), displayEnd - address).toInt()
+        if (targetLength <= 0) return Result.success(ByteArray(0))
+
+        val context = currentCoroutineContext()
+        val out = ByteArray(targetLength)
+        var copied = 0
+        while (copied < targetLength) {
+            context.ensureActive()
+            val curAddr = address + copied
+            val rel = curAddr - viewStartAddress
+            val chunkIndex = (rel / CHUNK_SIZE).toInt()
+            val offsetInChunk = (rel % CHUNK_SIZE).toInt()
+            val chunkStart = viewStartAddress + chunkIndex.toLong() * CHUNK_SIZE
+            val chunkExpected = minOf(CHUNK_SIZE.toLong(), displayEnd - chunkStart).toInt()
+            val sliceLen = minOf(targetLength - copied, chunkExpected - offsetInChunk)
+
+            val cachedSlice = synchronized(lock) {
+                if (closed) return Result.failure(CancellationException("HexDataManager closed"))
+                cache[chunkIndex]?.value
+            }
+
+            if (cachedSlice != null) {
+                if (offsetInChunk >= cachedSlice.size) {
+                    return Result.success(out.copyOf(copied))
+                }
+                val available = minOf(sliceLen, cachedSlice.size - offsetInChunk)
+                System.arraycopy(cachedSlice, offsetInChunk, out, copied, available)
+                copied += available
+                if (cachedSlice.size < chunkExpected) {
+                    return Result.success(out.copyOf(copied))
+                }
+            } else {
+                val fetched = readChunk(curAddr, sliceLen).getOrElse { err ->
+                    if (err is CancellationException) throw err
+                    return Result.failure(err)
+                }
+                context.ensureActive()
+                if (fetched.isEmpty()) {
+                    return Result.success(out.copyOf(copied))
+                }
+                val toCopy = minOf(sliceLen, fetched.size)
+                System.arraycopy(fetched, 0, out, copied, toCopy)
+                copied += toCopy
+                if (fetched.size < sliceLen) {
+                    return Result.success(out.copyOf(copied))
+                }
+            }
+        }
+        return Result.success(out)
+    }
+
     /** Load the inclusive visible range before any adjacent prefetch. Cancel on viewport changes. */
     suspend fun loadViewport(firstChunk: Int, lastChunk: Int) {
         val first = maxOf(0, firstChunk)

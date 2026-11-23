@@ -19,6 +19,7 @@ import top.wsdx233.r2droid.core.ui.components.FunctionMenuItems
 import top.wsdx233.r2droid.core.ui.components.SubmenuBackItem
 import top.wsdx233.r2droid.core.ui.components.SubmenuItem
 import top.wsdx233.r2droid.feature.annotations.AnnotationAction
+import top.wsdx233.r2droid.feature.hex.data.HexCopyFormat
 
 @Composable
 fun HexContextMenu(
@@ -31,6 +32,9 @@ fun HexContextMenu(
     onCustomCommand: () -> Unit,
     functionActions: FunctionMenuActions,
     onAnnotate: (AnnotationAction, Long) -> Unit,
+    onStartSelection: () -> Unit = {},
+    onOpenInspector: () -> Unit = {},
+    onCopyBytes: ((HexCopyFormat) -> Unit)? = null,
     offset: DpOffset = DpOffset.Zero
 ) {
     if (expanded) {
@@ -45,6 +49,14 @@ fun HexContextMenu(
                 "main" -> {
                     SubmenuItem(R.string.menu_copy_submenu) { currentMenu = "copy" }
                     SubmenuItem(R.string.menu_modify_submenu) { currentMenu = "modify" }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.hex_menu_select_range)) },
+                        onClick = { onStartSelection() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.hex_menu_data_inspector)) },
+                        onClick = { onOpenInspector() }
+                    )
                     SubmenuItem(R.string.annotation_menu_define_submenu) { currentMenu = "define" }
                     SubmenuItem(R.string.menu_function_submenu) { currentMenu = "function" }
                     HorizontalDivider()
@@ -64,6 +76,24 @@ fun HexContextMenu(
                         text = { Text(stringResource(R.string.copy_address)) },
                         onClick = { onCopy("0x%08x".format(address)) }
                     )
+                    if (onCopyBytes != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.hex_copy_hex)) },
+                            onClick = { onCopyBytes(HexCopyFormat.HEX_SPACED) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.hex_copy_hex_compact)) },
+                            onClick = { onCopyBytes(HexCopyFormat.HEX_COMPACT) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.hex_copy_c_array)) },
+                            onClick = { onCopyBytes(HexCopyFormat.C_ARRAY) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.hex_copy_python_bytes)) },
+                            onClick = { onCopyBytes(HexCopyFormat.PYTHON_BYTES) }
+                        )
+                    }
                 }
                 "modify" -> {
                     SubmenuBackItem { currentMenu = "main" }
