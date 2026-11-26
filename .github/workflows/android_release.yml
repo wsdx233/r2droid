@@ -75,6 +75,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JAVA_TOOL_OPTIONS: '-Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2'
         run: |
           export PATH="$PWD/.native-runtime-venv/bin:$PATH"
           NATIVE_RUNTIME_GITHUB_TOKEN="$GITHUB_TOKEN"
