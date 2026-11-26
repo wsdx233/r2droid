@@ -31,6 +31,7 @@ class R2PipeHttp private constructor(
         .encodedPath(baseUrl.encodedPath.trimEnd('/') + "/cmd/")
         .build()
     private val requestLock = Any()
+    @Volatile
     private var closed = false
     private val activeRequests = mutableMapOf<Call, HttpResponseInputStream?>()
     private val httpClient = OkHttpClient.Builder()
@@ -258,7 +259,9 @@ class R2PipeHttp private constructor(
                     }
                 }
             } catch (e: Exception) {
-                logger?.log(R2PipeLogLevel.ERROR, "Failed to read $name: ${e.message}")
+                if (!closed && running) {
+                    logger?.log(R2PipeLogLevel.ERROR, "Failed to read $name: ${e.message}")
+                }
             }
         }
     }

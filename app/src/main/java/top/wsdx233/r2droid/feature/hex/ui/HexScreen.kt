@@ -777,8 +777,13 @@ fun HexViewer(
                             viewModel.onEvent(HexEvent.WriteHex(session, cursorAddress, byteValue))
                         }
                         editingBuffer = ""
-                        // Move to next byte
-                        onByteClick(cursorAddress + 1)
+                        // Move to next byte within view bounds
+                        if (hexDataManager.viewEndAddress > hexDataManager.viewStartAddress) {
+                            val maxAddr = hexDataManager.viewEndAddress - 1L
+                            if (cursorAddress < maxAddr) {
+                                onByteClick(cursorAddress + 1)
+                            }
+                        }
                     } else {
                         editingBuffer = newBuffer
                     }
@@ -788,8 +793,8 @@ fun HexViewer(
                         // Delete last character from buffer
                         editingBuffer = editingBuffer.dropLast(1)
                     } else {
-                        // Move to previous byte
-                        if (cursorAddress > 0) {
+                        // Move to previous byte within view bounds
+                        if (cursorAddress > hexDataManager.viewStartAddress) {
                             onByteClick(cursorAddress - 1)
                         }
                     }

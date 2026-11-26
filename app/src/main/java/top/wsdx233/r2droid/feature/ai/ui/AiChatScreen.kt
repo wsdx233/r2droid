@@ -206,7 +206,8 @@ fun AiChatScreen(
     topBarState: AiChatTopBarState? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val r2State by R2PipeManager.state.collectAsState()
+    val activeSessionId by R2PipeManager.activeSessionId.collectAsState()
+    val sessions by R2PipeManager.sessions.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
     // MainActivity uses adjustPan for other editors. Chat uses ADJUST_RESIZE + imePadding()
@@ -217,9 +218,9 @@ fun AiChatScreen(
         window?.setSoftInputMode((original and LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         onDispose { window?.setSoftInputMode(original) }
     }
-    val isFridaSession = remember(r2State) { R2PipeManager.isR2FridaSession }
-    val currentSessionId = remember(r2State) { R2PipeManager.sessionId }
-    val targetSubtitle = remember(r2State) {
+    val isFridaSession = remember(activeSessionId, sessions) { R2PipeManager.isR2FridaSession }
+    val currentSessionId = remember(activeSessionId, sessions) { R2PipeManager.sessionId }
+    val targetSubtitle = remember(activeSessionId, sessions) {
         R2PipeManager.currentFilePath?.let { path ->
             if (path.contains('/')) File(path).name.ifBlank { path } else path
         }

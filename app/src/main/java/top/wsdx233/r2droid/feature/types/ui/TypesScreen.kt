@@ -177,6 +177,37 @@ internal fun LocalTypesScreen(
         Toast.makeText(context, R.string.types_copied, Toast.LENGTH_SHORT).show()
     }
 
+    fun runMutation(
+        beforeStart: () -> Unit = {},
+        onError: (String) -> Unit = { msg -> notice = TypesNotice(msg, isError = true) },
+        action: suspend (TypesCommandSession) -> String
+    ) {
+        if (mutating || !isCurrentSession()) return
+        mutating = true
+        beforeStart()
+        scope.launch {
+            try {
+                val session = checkNotNull(TypesCommandSession.capture(sessionToken)) {
+                    context.getString(R.string.proj_session_disconnected)
+                }
+                val successMessage = action(session)
+                if (isCurrentSession()) {
+                    notice = TypesNotice(successMessage)
+                    refreshTick++
+                    onTypesChanged()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                if (isCurrentSession()) {
+                    onError(e.localizedMessage ?: context.getString(R.string.common_error))
+                }
+            } finally {
+                mutating = false
+            }
+        }
+    }
+
     // Load snapshot
     LaunchedEffect(selected, selectionGeneration, projectVersion, disasmVersion, refreshTick) {
         if (!selected) return@LaunchedEffect
@@ -220,10 +251,14 @@ internal fun LocalTypesScreen(
     val openHeaderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        if (uri == null || !isCurrentSession()) return@rememberLauncherForActivityResult
-        mutating = true
-        importError = null
-        scope.launch {
+        if (uri == null) return@rememberLauncherForActivityResult
+        runMutation(
+            beforeStart = { importError = null },
+            onError = { msg ->
+                if (showImportDialog) importError = msg
+                else notice = TypesNotice(context.getString(R.string.types_import_failed, msg), isError = true)
+            }
+        ) { session ->
             var stagedFile: File? = null
             try {
                 val (file, displayName) = withContext(Dispatchers.IO) {
@@ -237,27 +272,11 @@ internal fun LocalTypesScreen(
                     target to name
                 }
                 stagedFile = file
-                val session = checkNotNull(TypesCommandSession.capture(sessionToken)) {
-                    context.getString(R.string.proj_session_disconnected)
-                }
                 TypesRepository.importHeaderFile(session, file.absolutePath)
-                if (isCurrentSession()) {
-                    showImportDialog = false
-                    notice = TypesNotice(context.getString(R.string.types_import_success, displayName))
-                    refreshTick++
-                    onTypesChanged()
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                if (isCurrentSession()) {
-                    val msg = e.localizedMessage ?: context.getString(R.string.common_error)
-                    if (showImportDialog) importError = msg
-                    else notice = TypesNotice(context.getString(R.string.types_import_failed, msg), isError = true)
-                }
+                if (isCurrentSession()) showImportDialog = false
+                context.getString(R.string.types_import_success, displayName)
             } finally {
                 stagedFile?.let { runCatching { it.delete() } }
-                mutating = false
             }
         }
     }
@@ -291,26 +310,9 @@ internal fun LocalTypesScreen(
         },
         onInspectType = { inspectedType = it },
         onUnlinkAddress = { link ->
-            if (mutating || !isCurrentSession()) return@LocalTypesContent
-            mutating = true
-            scope.launch {
-                try {
-                    val session = checkNotNull(TypesCommandSession.capture(sessionToken))
-                    TypesRepository.unlinkAddress(session, link.address)
-                    if (isCurrentSession()) {
-                        notice = TypesNotice(context.getString(R.string.types_unlink_success, link.hexAddress))
-                        refreshTick++
-                        onTypesChanged()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (e: Exception) {
-                    if (isCurrentSession()) {
-                        notice = TypesNotice(e.localizedMessage ?: context.getString(R.string.common_error), isError = true)
-                    }
-                } finally {
-                    mutating = false
-                }
+            runMutation { session ->
+                TypesRepository.unlinkAddress(session, link.address)
+                context.getString(R.string.types_unlink_success, link.hexAddress)
             }
         },
         onToggleLinkPreview = { link ->
@@ -378,42 +380,28 @@ internal fun LocalTypesScreen(
             errorMessage = editorError,
             onDismiss = { editorRequest = null; editorError = null },
             onSubmit = { newCode ->
-                if (mutating || !isCurrentSession()) return@CDeclarationEditorDialog
-                mutating = true
-                editorError = null
-                scope.launch {
-                    try {
-                        val session = checkNotNull(TypesCommandSession.capture(sessionToken)) {
-                            context.getString(R.string.proj_session_disconnected)
+                runMutation(
+                    beforeStart = { editorError = null },
+                    onError = { editorError = it }
+                ) { session ->
+                    val message = when (req) {
+                        is TypeEditorRequest.CreateNew -> {
+                            TypesRepository.defineFromC(session, newCode, context.cacheDir)
+                            context.getString(R.string.types_defined_success)
                         }
-                        when (req) {
-                            is TypeEditorRequest.CreateNew -> {
-                                TypesRepository.defineFromC(session, newCode, context.cacheDir)
-                                notice = TypesNotice(context.getString(R.string.types_defined_success))
-                            }
-                            is TypeEditorRequest.EditExisting -> {
-                                TypesRepository.updateTypeCDefinition(
-                                    session = session,
-                                    originalName = req.name,
-                                    previousC = req.previousC,
-                                    newC = newCode,
-                                    cacheDir = context.cacheDir
-                                )
-                                notice = TypesNotice(context.getString(R.string.types_updated_success, req.name))
-                            }
+                        is TypeEditorRequest.EditExisting -> {
+                            TypesRepository.updateTypeCDefinition(
+                                session = session,
+                                originalName = req.name,
+                                previousC = req.previousC,
+                                newC = newCode,
+                                cacheDir = context.cacheDir
+                            )
+                            context.getString(R.string.types_updated_success, req.name)
                         }
-                        if (isCurrentSession()) {
-                            editorRequest = null
-                            refreshTick++
-                            onTypesChanged()
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (e: Exception) {
-                        editorError = e.localizedMessage ?: context.getString(R.string.common_error)
-                    } finally {
-                        mutating = false
                     }
+                    if (isCurrentSession()) editorRequest = null
+                    message
                 }
             }
         )
@@ -429,29 +417,13 @@ internal fun LocalTypesScreen(
                 openHeaderLauncher.launch(arrayOf("text/*", "application/octet-stream", "*/*"))
             },
             onImportPath = { path ->
-                if (mutating || !isCurrentSession()) return@ImportHeaderDialog
-                mutating = true
-                importError = null
-                scope.launch {
-                    try {
-                        val session = checkNotNull(TypesCommandSession.capture(sessionToken)) {
-                            context.getString(R.string.proj_session_disconnected)
-                        }
-                        TypesRepository.importHeaderFile(session, path)
-                        if (isCurrentSession()) {
-                            showImportDialog = false
-                            val shortName = path.substringAfterLast('/')
-                            notice = TypesNotice(context.getString(R.string.types_import_success, shortName))
-                            refreshTick++
-                            onTypesChanged()
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (e: Exception) {
-                        importError = e.localizedMessage ?: context.getString(R.string.common_error)
-                    } finally {
-                        mutating = false
-                    }
+                runMutation(
+                    beforeStart = { importError = null },
+                    onError = { importError = it }
+                ) { session ->
+                    TypesRepository.importHeaderFile(session, path)
+                    if (isCurrentSession()) showImportDialog = false
+                    context.getString(R.string.types_import_success, path.substringAfterLast('/'))
                 }
             }
         )
@@ -467,29 +439,14 @@ internal fun LocalTypesScreen(
             errorMessage = linkError,
             onDismiss = { showLinkDialog = false; linkError = null },
             onConfirm = { typeName, addr ->
-                if (mutating || !isCurrentSession()) return@LinkTypeDialog
-                mutating = true
-                linkError = null
-                scope.launch {
-                    try {
-                        val session = checkNotNull(TypesCommandSession.capture(sessionToken)) {
-                            context.getString(R.string.proj_session_disconnected)
-                        }
-                        TypesRepository.linkTypeToAddress(session, typeName, addr)
-                        if (isCurrentSession()) {
-                            val hexAddr = "0x${addr.toULong().toString(16).uppercase()}"
-                            showLinkDialog = false
-                            notice = TypesNotice(context.getString(R.string.types_link_success, typeName, hexAddr))
-                            refreshTick++
-                            onTypesChanged()
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (e: Exception) {
-                        linkError = e.localizedMessage ?: context.getString(R.string.common_error)
-                    } finally {
-                        mutating = false
-                    }
+                runMutation(
+                    beforeStart = { linkError = null },
+                    onError = { linkError = it }
+                ) { session ->
+                    TypesRepository.linkTypeToAddress(session, typeName, addr)
+                    if (isCurrentSession()) showLinkDialog = false
+                    val hexAddr = "0x${addr.toULong().toString(16).uppercase()}"
+                    context.getString(R.string.types_link_success, typeName, hexAddr)
                 }
             }
         )
@@ -502,28 +459,15 @@ internal fun LocalTypesScreen(
             busy = mutating,
             onDismiss = { deleteCandidate = null },
             onConfirm = {
-                if (mutating || !isCurrentSession()) return@DeleteTypeConfirmDialog
-                mutating = true
-                scope.launch {
-                    try {
-                        val session = checkNotNull(TypesCommandSession.capture(sessionToken))
-                        TypesRepository.deleteType(session, nameToDelete)
-                        if (isCurrentSession()) {
-                            deleteCandidate = null
-                            notice = TypesNotice(context.getString(R.string.types_delete_success, nameToDelete))
-                            refreshTick++
-                            onTypesChanged()
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (e: Exception) {
-                        if (isCurrentSession()) {
-                            deleteCandidate = null
-                            notice = TypesNotice(e.localizedMessage ?: context.getString(R.string.common_error), isError = true)
-                        }
-                    } finally {
-                        mutating = false
+                runMutation(
+                    onError = { msg ->
+                        deleteCandidate = null
+                        notice = TypesNotice(msg, isError = true)
                     }
+                ) { session ->
+                    TypesRepository.deleteType(session, nameToDelete)
+                    if (isCurrentSession()) deleteCandidate = null
+                    context.getString(R.string.types_delete_success, nameToDelete)
                 }
             }
         )

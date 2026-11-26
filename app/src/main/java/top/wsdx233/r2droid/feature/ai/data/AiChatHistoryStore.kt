@@ -81,12 +81,15 @@ class AiChatHistoryStore(context: Context) {
         if (isDeleted(sessionId)) return null
         val file = sessionFile(sessionId)
         if (!file.isFile) return null
-        return runCatching {
+        return try {
             JsonReader(InputStreamReader(file.inputStream(), Charsets.UTF_8)).use { reader ->
                 reader.isLenient = true
                 readSession(reader).takeIf { it.id == sessionId }
             }
-        }.getOrNull()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load chat session $sessionId", e)
+            null
+        }
     }
 
     fun saveSession(session: ChatSession): Boolean {
@@ -233,7 +236,7 @@ class AiChatHistoryStore(context: Context) {
                     hasMessages = true
                     break
                 }
-                else -> error("Unexpected chat metadata field")
+                else -> reader.skipValue()
             }
         }
         if (session) check(hasMessages) else reader.endObject()

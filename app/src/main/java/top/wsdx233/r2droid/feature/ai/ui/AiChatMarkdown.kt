@@ -297,11 +297,11 @@ internal fun HighlightedCodeView(
     val highlighted = remember(text, language, dark, colors.onSurface, deferHighlighting) {
         if (deferHighlighting) AnnotatedString(text) else highlightCodeSnippet(text, language, dark, colors.onSurface)
     }
-    val linked = if (references == null) null else remember(highlighted, references) {
-        references.forCode(highlighted)
+    val linked = remember(highlighted, references) {
+        references?.forCode(highlighted)
     }
-    val tapLayout = if (linked?.denseRanges.isNullOrEmpty()) null else remember(linked) {
-        mutableStateOf<TextLayoutResult?>(null)
+    val tapLayout = remember(linked) {
+        if (linked?.denseRanges.isNullOrEmpty()) null else mutableStateOf<TextLayoutResult?>(null)
     }
     val numbers = remember(text, showLineNumbers) {
         if (showLineNumbers) (1..(text.count { it == '\n' } + 1)).joinToString("\n") else ""
@@ -339,6 +339,37 @@ internal fun HighlightedCodeView(
     }
 }
 
+private sealed interface PlainMarkdownItem {
+    data object HorizontalRule : PlainMarkdownItem
+    data class Table(val data: MdTableData, val endsAtLastLine: Boolean) : PlainMarkdownItem
+    data class Line(val text: String, val isLastLine: Boolean) : PlainMarkdownItem
+}
+
+private fun parsePlainMarkdownItems(text: String): List<PlainMarkdownItem> {
+    val lines = text.lines()
+    val items = mutableListOf<PlainMarkdownItem>()
+    var index = 0
+    while (index < lines.size) {
+        val line = lines[index]
+        val table = if ('|' in line) parseMarkdownTable(lines, index) else null
+        when {
+            isHorizontalRule(line) -> {
+                items += PlainMarkdownItem.HorizontalRule
+                index++
+            }
+            table != null -> {
+                items += PlainMarkdownItem.Table(table, endsAtLastLine = table.nextLine == lines.size)
+                index = table.nextLine
+            }
+            else -> {
+                items += PlainMarkdownItem.Line(line, isLastLine = index == lines.lastIndex)
+                index++
+            }
+        }
+    }
+    return items
+}
+
 @Composable
 private fun PlainMarkdownBlock(
     text: String,
@@ -349,38 +380,32 @@ private fun PlainMarkdownBlock(
     deferLastLine: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
-    val lines = remember(text) { text.lines() }
+    val items = remember(text) { parsePlainMarkdownItems(text) }
     SelectionContainer {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            var index = 0
-            while (index < lines.size) {
-                val line = lines[index]
-                val table = if ('|' in line) remember(lines, index) { parseMarkdownTable(lines, index) } else null
-                when {
-                    isHorizontalRule(line) -> {
+            items.forEach { item ->
+                when (item) {
+                    PlainMarkdownItem.HorizontalRule -> {
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 4.dp),
                             color = colors.outlineVariant.copy(alpha = 0.7f)
                         )
-                        index++
                     }
-                    table != null -> {
+                    is PlainMarkdownItem.Table -> {
                         MarkdownTableView(
-                            table,
+                            item.data,
                             references,
-                            deferLastRow = deferLastLine && table.rows.size > 1 && table.nextLine == lines.size
+                            deferLastRow = deferLastLine && item.data.rows.size > 1 && item.endsAtLastLine
                         )
-                        index = table.nextLine
                     }
-                    else -> {
+                    is PlainMarkdownItem.Line -> {
                         PlainMarkdownLine(
-                            line = line,
+                            line = item.text,
                             baseColor = baseColor,
                             baseFontSize = baseFontSize,
                             baseLineHeight = baseLineHeight,
-                            references = if (deferLastLine && index == lines.lastIndex) null else references
+                            references = if (deferLastLine && item.isLastLine) null else references
                         )
-                        index++
                     }
                 }
             }
@@ -571,8 +596,8 @@ private fun InlineMarkdownText(
         )
     }
     // Cache per rendered line/cell, independently of the growing message and callback changes.
-    val annotated = if (references == null) markdown else remember(markdown, references) {
-        references.forProse(markdown)
+    val annotated = remember(markdown, references) {
+        references?.forProse(markdown) ?: markdown
     }
     val codes = remember(annotated) { annotated.getStringAnnotations("CODE", 0, annotated.length) }
     if (codes.isEmpty()) {

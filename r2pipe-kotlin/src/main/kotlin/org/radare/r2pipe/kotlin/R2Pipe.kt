@@ -284,7 +284,9 @@ class R2Pipe private constructor(
                     }
                 }
             } catch (e: Exception) {
-                logger?.log(R2PipeLogLevel.ERROR, "Failed to read $name: ${e.message}")
+                if (!closed.get() && running) {
+                    logger?.log(R2PipeLogLevel.ERROR, "Failed to read $name: ${e.message}")
+                }
             }
         }
     }

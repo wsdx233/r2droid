@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -74,7 +75,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.hex.HexExportStatus
 import top.wsdx233.r2droid.feature.hex.HexHashUiState
@@ -83,6 +86,7 @@ import top.wsdx233.r2droid.feature.hex.HexPanelTab
 import top.wsdx233.r2droid.feature.hex.HexSelectionDataState
 import top.wsdx233.r2droid.feature.hex.data.HexBase64DecodeResult
 import top.wsdx233.r2droid.feature.hex.data.HexCopyFormat
+import top.wsdx233.r2droid.feature.hex.data.HexDecodePreview
 import top.wsdx233.r2droid.feature.hex.data.HexEndianness
 import top.wsdx233.r2droid.feature.hex.data.HexSelectionState
 import top.wsdx233.r2droid.feature.hex.data.HexXorKeyMode
@@ -1394,27 +1398,52 @@ private fun HexDecodeTab(
                         )
                     }
                     else -> {
-                        val preview = remember(selectionDataState.bytes, parsedKey) {
-                            xorDecode(selectionDataState.bytes, parsedKey)
+                        val bytes = selectionDataState.bytes
+                        val preview by produceState<HexDecodePreview?>(
+                            initialValue = if (bytes.size <= 4096) xorDecode(bytes, parsedKey) else null,
+                            key1 = bytes,
+                            key2 = parsedKey
+                        ) {
+                            value = if (bytes.size > 4096) {
+                                withContext(Dispatchers.Default) { xorDecode(bytes, parsedKey) }
+                            } else {
+                                xorDecode(bytes, parsedKey)
+                            }
                         }
-                        HexDecodedPreviewCard(
-                            title = stringResource(R.string.hex_decode_xor_result, preview.bytes.size),
-                            textPreview = preview.textPreview,
-                            hexPreview = preview.hexPreview,
-                            truncated = preview.truncated,
-                            onCopyText = { onCopyText(formatPrintableUtf8Preview(preview.bytes, preview.bytes.size)) },
-                            onCopyHex = { onCopyText(formatAsHexSpaced(preview.bytes)) }
-                        )
+                        val resolved = preview
+                        if (resolved == null) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        } else {
+                            HexDecodedPreviewCard(
+                                title = stringResource(R.string.hex_decode_xor_result, resolved.bytes.size),
+                                textPreview = resolved.textPreview,
+                                hexPreview = resolved.hexPreview,
+                                truncated = resolved.truncated,
+                                onCopyText = { onCopyText(formatPrintableUtf8Preview(resolved.bytes, resolved.bytes.size)) },
+                                onCopyHex = { onCopyText(formatAsHexSpaced(resolved.bytes)) }
+                            )
+                        }
                     }
                 }
             }
             else -> {
-                val b64Decoded = remember(selectionDataState.bytes) {
-                    decodeBase64Bytes(selectionDataState.bytes)
+                val bytes = selectionDataState.bytes
+                val b64Decoded by produceState<HexBase64DecodeResult?>(
+                    initialValue = if (bytes.size <= 4096) decodeBase64Bytes(bytes) else null,
+                    key1 = bytes
+                ) {
+                    value = if (bytes.size > 4096) {
+                        withContext(Dispatchers.Default) { decodeBase64Bytes(bytes) }
+                    } else {
+                        decodeBase64Bytes(bytes)
+                    }
                 }
-                when (b64Decoded) {
+                when (val decoded = b64Decoded) {
+                    null -> {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                     is HexBase64DecodeResult.Success -> {
-                        val preview = b64Decoded.preview
+                        val preview = decoded.preview
                         HexDecodedPreviewCard(
                             title = stringResource(R.string.hex_decode_b64_result, preview.bytes.size),
                             textPreview = preview.textPreview,
@@ -1430,10 +1459,18 @@ private fun HexDecodeTab(
                 }
 
                 // Base64 Encode preview of the selected raw bytes
-                val encodedFull = remember(selectionDataState.bytes) {
-                    encodeBase64Bytes(selectionDataState.bytes)
+                val encodedFull by produceState<String?>(
+                    initialValue = if (bytes.size <= 4096) encodeBase64Bytes(bytes) else null,
+                    key1 = bytes
+                ) {
+                    value = if (bytes.size > 4096) {
+                        withContext(Dispatchers.Default) { encodeBase64Bytes(bytes) }
+                    } else {
+                        encodeBase64Bytes(bytes)
+                    }
                 }
-                if (encodedFull.isNotEmpty()) {
+                val encodedText = encodedFull
+                if (!encodedText.isNullOrEmpty()) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1443,7 +1480,7 @@ private fun HexDecodeTab(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onCopyText(encodedFull) }
+                                .clickable { onCopyText(encodedText) }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
@@ -1466,7 +1503,7 @@ private fun HexDecodeTab(
                                 )
                             }
                             Text(
-                                text = if (encodedFull.length > 256) encodedFull.take(256) + "…" else encodedFull,
+                                text = if (encodedText.length > 256) encodedText.take(256) + "…" else encodedText,
                                 fontFamily = LocalAppFont.current,
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface,
