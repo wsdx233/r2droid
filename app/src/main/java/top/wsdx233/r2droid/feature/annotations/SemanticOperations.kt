@@ -7,13 +7,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-private val definitionName = Regex("[A-Za-z_][A-Za-z0-9_]{0,127}")
-private val inlineStructFormat = Regex("[A-Za-z0-9_ .?*()\\[\\]]{1,255}")
+private val definitionName = Regex("[^\\s;@~|`'\"\\u0000-\\u001f]{1,256}")
+private val inlineStructFormat = Regex("[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,4096}")
 private val formatDeclaration = Regex("'pf\\.${definitionName.pattern} ${inlineStructFormat.pattern}")
 private val unsignedDecimal = Regex("[0-9]+")
 private val unsignedHex = Regex("0[xX][0-9A-Fa-f]+")
+private val bareHex = Regex("[0-9A-Fa-f]+")
 private val displayMetadata = listOf("Cd", "Cs", "Cf")
 private const val maxFormatSize = 1024 * 1024
+
+internal fun isValidDefinitionName(name: String): Boolean = definitionName.matches(name)
 
 internal suspend fun AnnotationSession.applySemantic(action: AnnotationAction, address: Long, argument: String) {
     val at = address.toULong()
@@ -123,10 +126,10 @@ internal suspend fun AnnotationSession.applySemantic(action: AnnotationAction, a
                 // afu uses the first function containing its seek and analyzes anew if it finds none.
                 lookupFunctionBounds(command, start, requireUniqueEntry = true)
                 command("afu ${end.hexAddress()} @ ${start.hexAddress()}")
-                // Save the dirty state even if r2 changed analysis but didn't reach the requested end.
+                // Fail only if r2 did not change the function bounds at all; allow instruction-boundary alignment.
                 runCatching {
                     val (_, actualEnd) = lookupFunctionBounds(command, start, requireUniqueEntry = true)
-                    check(actualEnd == end) {
+                    check(actualEnd != previousEnd) {
                         "Radare2 could not resize the function to ${end.hexAddress()} (actual end: ${actualEnd.hexAddress()})."
                     }
                 }
@@ -248,6 +251,7 @@ private fun JsonElement?.nativeAddress(): ULong? = text()?.let { parseUnsigned(i
 private fun parseUnsigned(input: String): ULong? = when {
     unsignedHex.matches(input) -> input.drop(2).toULongOrNull(16)
     unsignedDecimal.matches(input) -> input.toULongOrNull()
+    bareHex.matches(input) -> input.toULongOrNull(16)
     else -> null
 }
 

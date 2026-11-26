@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import java.io.File
 import java.util.UUID
 
@@ -39,19 +40,20 @@ interface TypesCommandSession {
 
 object TypesRepository {
 
-    private val typeNamePattern = Regex("^[A-Za-z_][A-Za-z0-9_.:* \\t-]{0,127}$")
-    private val deleteTargetPattern = Regex("^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$")
+    private val typeNamePattern = Regex("^[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,256}$")
+    private val deleteTargetPattern = Regex("^[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,256}$")
+    private val whitespaceRuns = Regex("\\s+")
 
     suspend fun loadSnapshot(session: TypesCommandSession): LocalTypesSnapshot =
         withContext(Dispatchers.Default) {
             val (tsj, tej, tuj, ttj, tl, tj) = session.transaction("Load local types", markDirty = false) { cmd ->
                 RawTypesPayload(
-                    tsj = runCatching { cmd("tsj") }.getOrDefault("[]"),
-                    tej = runCatching { cmd("tej") }.getOrDefault("{}"),
-                    tuj = runCatching { cmd("tuj") }.getOrDefault("[]"),
-                    ttj = runCatching { cmd("ttj") }.getOrDefault("{}"),
-                    tl = runCatching { cmd("tl") }.getOrDefault(""),
-                    tj = runCatching { cmd("tj") }.getOrDefault("{}")
+                    tsj = cmd("tsj").ifBlank { "[]" },
+                    tej = cmd("tej").ifBlank { "{}" },
+                    tuj = cmd("tuj").ifBlank { "[]" },
+                    ttj = cmd("ttj").ifBlank { "{}" },
+                    tl = cmd("tl"),
+                    tj = cmd("tj").ifBlank { "{}" }
                 )
             }
             LocalTypesSnapshot(
@@ -204,9 +206,13 @@ object TypesRepository {
             "unknown type" in lowered -> error("Unknown type '$cleanType'. Define or import it first.")
             "address is invalid" in lowered -> error("Invalid target address $hexAddr.")
         }
-        // Verify the link actually landed in r2's type database.
+        // Verify the link actually landed in r2's type database (tolerating pointer whitespace normalization).
+        val normalizedTarget = cleanType.replace(whitespaceRuns, " ").replace(" *", "*")
         val links = TypesJsonParser.parseTl(session.executeRaw("tl", markDirty = false))
-        check(links.any { it.address == address && it.typeName == cleanType }) {
+        check(links.any {
+            it.address == address &&
+                it.typeName.replace(whitespaceRuns, " ").replace(" *", "*") == normalizedTarget
+        }) {
             "Radare2 could not link '$cleanType' at $hexAddr."
         }
     }
@@ -227,16 +233,16 @@ object TypesRepository {
         val cleanType = typeName.trim()
         require(typeNamePattern.matches(cleanType)) { "Invalid type name." }
         val hexAddr = "0x${address.toULong().toString(16)}"
-        return session.executeRaw("tp $cleanType $hexAddr", markDirty = false).trimIndent().trimEnd()
+        return session.executeRaw("tp $cleanType @ $hexAddr", markDirty = false).trimIndent().trimEnd()
     }
 
     suspend fun loadCallingConventions(session: TypesCommandSession): List<CallingConventionInfo> {
-        val rawJson = runCatching {
+        val rawJson = suspendRunCatching {
             session.executeRaw("tccj", markDirty = false)
         }.getOrDefault("")
         val parsed = TypesJsonParser.parseTccj(rawJson)
         if (parsed.isNotEmpty()) return parsed
-        val rawList = runCatching {
+        val rawList = suspendRunCatching {
             session.executeRaw("afcl", markDirty = false)
         }.getOrDefault("")
         return TypesJsonParser.parseAfclFallback(rawList)

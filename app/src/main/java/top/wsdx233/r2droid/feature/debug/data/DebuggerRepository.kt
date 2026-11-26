@@ -11,6 +11,7 @@ import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.util.LogManager
 import top.wsdx233.r2droid.util.LogType
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import java.util.IdentityHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -100,7 +101,7 @@ class DebuggerRepository @Inject constructor(
 
     suspend fun addBreakpoint(backend: DebugBackend, breakpoint: DebugBreakpoint): Result<List<DebugBreakpoint>> =
         withBackend(backend) { target ->
-            runCatching {
+            suspendRunCatching {
                 target.setBreakpoint(breakpoint).getOrThrow()
                 target.listBreakpoints().getOrDefault(listOf(breakpoint))
             }
@@ -108,7 +109,7 @@ class DebuggerRepository @Inject constructor(
 
     suspend fun removeBreakpoint(backend: DebugBackend, address: Long): Result<List<DebugBreakpoint>> =
         withBackend(backend) { target ->
-            runCatching {
+            suspendRunCatching {
                 target.removeBreakpoint(address).getOrThrow()
                 target.listBreakpoints().getOrDefault(emptyList())
             }
@@ -119,7 +120,7 @@ class DebuggerRepository @Inject constructor(
         address: Long,
         enabled: Boolean
     ): Result<List<DebugBreakpoint>> = withBackend(backend) { target ->
-        runCatching {
+        suspendRunCatching {
             target.setBreakpointEnabled(address, enabled).getOrThrow()
             target.listBreakpoints().getOrThrow()
         }
@@ -130,7 +131,7 @@ class DebuggerRepository @Inject constructor(
         address: Long,
         condition: String?
     ): Result<List<DebugBreakpoint>> = withBackend(backend) { target ->
-        runCatching {
+        suspendRunCatching {
             target.setBreakpointCondition(address, condition).getOrThrow()
             target.listBreakpoints().getOrThrow()
         }
@@ -140,7 +141,7 @@ class DebuggerRepository @Inject constructor(
 
     suspend fun writeRegister(backend: DebugBackend, name: String, value: Long): Result<DebugStateSnapshot> =
         withBackend(backend) { target ->
-            runCatching {
+            suspendRunCatching {
                 val pipe = R2PipeManager.activeSessionPipe
                 target.writeRegister(name, value).getOrThrow()
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
@@ -152,7 +153,7 @@ class DebuggerRepository @Inject constructor(
         withBackend(backend) { target ->
             if (backend == DebugBackend.ESIL) {
                 esilBackend.runToCursor(address)
-            } else runCatching {
+            } else suspendRunCatching {
                 val pipe = R2PipeManager.activeSessionPipe
                 val existing = target.listBreakpoints().getOrDefault(emptyList()).firstOrNull { it.address == address }
                 val addedTemp = if (existing == null) {
@@ -184,7 +185,7 @@ class DebuggerRepository @Inject constructor(
         withBackend(backend) { target ->
             if (backend == DebugBackend.ESIL) {
                 esilBackend.setPc(address)
-            } else runCatching {
+            } else suspendRunCatching {
                 val pipe = R2PipeManager.activeSessionPipe
                 val registers = target.readRegisters().getOrThrow()
                 val pcName = registers.firstOrNull { it.role == RegisterRole.PC }?.name ?: "pc"

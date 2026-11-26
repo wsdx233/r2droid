@@ -425,32 +425,6 @@ fun ProjectSettingsScreen(
             }
         }
         
-        // Startup Flags Section (for saved projects)
-        if (!isFridaSession && R2PipeManager.currentProjectId != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = stringResource(top.wsdx233.r2droid.R.string.project_startup_flags),
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            var startupFlags by remember { mutableStateOf("") }
-            
-            OutlinedTextField(
-                value = startupFlags,
-                onValueChange = { startupFlags = it },
-                label = { Text(stringResource(top.wsdx233.r2droid.R.string.project_startup_flags_hint)) },
-                placeholder = { Text("-w -n") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            Text(
-                text = stringResource(top.wsdx233.r2droid.R.string.project_startup_flags_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        
         // Analysis Section
         Card(
             modifier = Modifier

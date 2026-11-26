@@ -116,10 +116,20 @@ internal object AndroidR2PipeSupport {
     }
 
     private fun runShellCommand(command: String) {
+        var process: Process? = null
         try {
-            Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", command))
+            process = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", command))
+            process.outputStream.close()
+            process.inputStream.close()
+            process.errorStream.close()
+            process.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
         } catch (e: Exception) {
             LogManager.log(LogType.WARNING, "Failed to run shell command: ${e.message}")
+        } finally {
+            try {
+                process?.destroy()
+            } catch (_: Exception) {
+            }
         }
     }
 

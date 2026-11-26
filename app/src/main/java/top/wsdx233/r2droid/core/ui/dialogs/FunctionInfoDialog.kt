@@ -98,7 +98,7 @@ fun FunctionInfoDialog(
     onOpenVariables: (() -> Unit)? = null
 ) {
     Dialog(
-        onDismissRequest = { if (!isMutating) onDismiss() },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         FunctionInfoDialogCard(
@@ -207,7 +207,7 @@ internal fun FunctionInfoDialogCard(
                             }
                         }
                     }
-                    IconButton(onClick = onDismiss, enabled = !isMutating) {
+                    IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = stringResource(R.string.func_close)
@@ -331,7 +331,7 @@ internal fun FunctionInfoDialogCard(
                     } else {
                         Spacer(Modifier.width(1.dp))
                     }
-                    TextButton(onClick = onDismiss, enabled = !isMutating) {
+                    TextButton(onClick = onDismiss) {
                         Text(stringResource(R.string.func_close))
                     }
                 }
@@ -429,7 +429,6 @@ private fun FunctionInfoContent(
                                 if (trimmed.isNotEmpty() && trimmed != info.name) {
                                     onRename(trimmed)
                                 }
-                                isRenaming = false
                             },
                             enabled = !busy && newName.trim().isNotEmpty() && newName.trim() != info.name,
                             shape = RoundedCornerShape(10.dp),
@@ -660,7 +659,6 @@ private fun FunctionInfoContent(
                                 if (trimmed.isNotEmpty()) {
                                     onUpdateSignature(trimmed)
                                 }
-                                isEditingSignature = false
                             },
                             enabled = !busy && signatureInput.trim().trimEnd(';').isNotBlank(),
                             shape = RoundedCornerShape(10.dp),

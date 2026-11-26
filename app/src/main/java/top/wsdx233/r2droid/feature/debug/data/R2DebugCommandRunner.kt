@@ -3,6 +3,7 @@ package top.wsdx233.r2droid.feature.debug.data
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -61,11 +62,11 @@ class R2DebugCommandRunner @Inject constructor() {
     private suspend fun executeFirstSuccessful(
         commands: Array<out String>,
         execute: suspend (String) -> Result<String>
-    ): Result<String> = runCatching {
+    ): Result<String> = suspendRunCatching {
         var lastError: Throwable? = null
         for (command in commands.filter { it.isNotBlank() }) {
             val result = execute(command)
-            if (result.isSuccess) return@runCatching result.getOrThrow()
+            if (result.isSuccess) return@suspendRunCatching result.getOrThrow()
             lastError = result.exceptionOrNull()
         }
         throw lastError ?: IllegalStateException("No command candidates were provided")

@@ -623,14 +623,12 @@ fun DisassemblyViewer(
                         modifyInitialValue = result.getOrDefault("").trim()
                     }
                     "comment" -> {
-                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute("CC. @ ${menuTargetAddress}")
+                        val addrHex = "0x${menuTargetAddress!!.toULong().toString(16)}"
+                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute("CC. @ $addrHex")
                         val raw = result.getOrDefault("").trim()
-                        modifyInitialValue = if (raw.matches(Regex("^[A-Za-z0-9+/]+=*$"))) {
+                        modifyInitialValue = if (raw.startsWith("base64:")) {
                             try {
-                                val bytes = android.util.Base64.decode(raw, android.util.Base64.NO_WRAP)
-                                val decoded = String(bytes, Charsets.UTF_8)
-                                val reEncoded = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                                if (reEncoded == raw) decoded else raw
+                                String(android.util.Base64.decode(raw.removePrefix("base64:"), android.util.Base64.DEFAULT), Charsets.UTF_8)
                             } catch (_: Exception) { raw }
                         } else raw
                     }
@@ -828,7 +826,12 @@ fun DisassemblyViewer(
                 onDismissRequest = { showDebugSettings = false },
                 title = { Text(stringResource(R.string.debug_backend_title)) },
                 text = {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         if (debugBackend == DebugBackend.FRIDA && !isR2FridaSession) {
                             Text(
                                 text = stringResource(R.string.debug_frida_requires_session),
@@ -856,7 +859,7 @@ fun DisassemblyViewer(
                                     .clickable {
                                         viewModel.setDebugBackend(backend)
                                     }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 androidx.compose.material3.RadioButton(
@@ -876,82 +879,88 @@ fun DisassemblyViewer(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.updateDebugLaunchConfig(
-                                        debugLaunchConfig.copy(startAtCurrentSeek = !debugLaunchConfig.startAtCurrentSeek)
-                                    )
-                                },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = debugLaunchConfig.startAtCurrentSeek,
-                                onCheckedChange = { checked ->
-                                    viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(startAtCurrentSeek = checked))
-                                }
+                        if (debugBackend == DebugBackend.ESIL) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.updateDebugLaunchConfig(
+                                            debugLaunchConfig.copy(startAtCurrentSeek = !debugLaunchConfig.startAtCurrentSeek)
+                                        )
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = debugLaunchConfig.startAtCurrentSeek,
+                                    onCheckedChange = { checked ->
+                                        viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(startAtCurrentSeek = checked))
+                                    }
+                                )
+                                Text(stringResource(R.string.debug_config_start_current_seek))
+                            }
+                            OutlinedTextField(
+                                value = debugLaunchConfig.startAddressText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(startAddressText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_start_address)) },
+                                placeholder = { Text(stringResource(R.string.debug_config_start_address_hint)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
                             )
-                            Text(stringResource(R.string.debug_config_start_current_seek))
+                            OutlinedTextField(
+                                value = debugLaunchConfig.stackAddressText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(stackAddressText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_stack_address)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = debugLaunchConfig.stackSizeText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(stackSizeText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_stack_size)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = debugLaunchConfig.maxEsilStepsText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(maxEsilStepsText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_max_esil_steps)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = debugLaunchConfig.esilTimeoutMsText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(esilTimeoutMsText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_esil_timeout_ms)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
                         }
-                        OutlinedTextField(
-                            value = debugLaunchConfig.startAddressText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(startAddressText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_start_address)) },
-                            placeholder = { Text(stringResource(R.string.debug_config_start_address_hint)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.stackAddressText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(stackAddressText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_stack_address)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.stackSizeText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(stackSizeText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_stack_size)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.maxEsilStepsText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(maxEsilStepsText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_max_esil_steps)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.esilTimeoutMsText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(esilTimeoutMsText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_esil_timeout_ms)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.attachPidText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(attachPidText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_attach_pid)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.gdbRemoteHostText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(gdbRemoteHostText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_gdb_host)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = debugLaunchConfig.gdbRemotePortText,
-                            onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(gdbRemotePortText = it)) },
-                            label = { Text(stringResource(R.string.debug_config_gdb_port)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
+                        if (debugBackend == DebugBackend.NATIVE_GDB) {
+                            OutlinedTextField(
+                                value = debugLaunchConfig.attachPidText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(attachPidText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_attach_pid)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                        if (debugBackend == DebugBackend.GDB_REMOTE) {
+                            OutlinedTextField(
+                                value = debugLaunchConfig.gdbRemoteHostText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(gdbRemoteHostText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_gdb_host)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = debugLaunchConfig.gdbRemotePortText,
+                                onValueChange = { viewModel.updateDebugLaunchConfig(debugLaunchConfig.copy(gdbRemotePortText = it)) },
+                                label = { Text(stringResource(R.string.debug_config_gdb_port)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
                     }
                 },
                 confirmButton = {

@@ -102,13 +102,15 @@ internal fun AnnotationEditor(request: AnnotationRequest, onDismiss: () -> Unit,
 
     val valid = when (action) {
         AnnotationAction.NAME -> isValidAnnotationName(value.trim()) && oldName != value.trim()
-        AnnotationAction.ENUM, AnnotationAction.STRUCT -> value in choices
+        AnnotationAction.ENUM, AnnotationAction.STRUCT -> isValidDefinitionName(value.trim())
         AnnotationAction.RESIZE_FUNCTION, AnnotationAction.OFFSET -> value.isNotBlank()
         else -> true
     }
     val edit: (String) -> Unit = { value = it; error = null }
+    // Avoid flashing a modal progress dialog for instant 1-click actions unless an error needs to be shown.
+    if (!needsInput && error == null) return
     AlertDialog(
-        onDismissRequest = { if (!applying) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text(stringResource(action.label)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -131,9 +133,12 @@ internal fun AnnotationEditor(request: AnnotationRequest, onDismiss: () -> Unit,
                             label = { Text(stringResource(if (action == AnnotationAction.OFFSET) R.string.annot_offset_target else R.string.annot_end)) },
                             placeholder = { Text(stringResource(R.string.dialog_jump_address_hint)) }
                         )
-                        AnnotationAction.STRUCT, AnnotationAction.ENUM -> if (choices.isEmpty()) {
-                            Text(stringResource(if (action == AnnotationAction.STRUCT) R.string.annot_no_structs else R.string.annot_no_enums))
-                        } else TypeSelector(choices, value, edit)
+                        AnnotationAction.STRUCT, AnnotationAction.ENUM -> TypeSelector(
+                            choices = choices,
+                            value = value,
+                            emptyHint = stringResource(if (action == AnnotationAction.STRUCT) R.string.annot_no_structs else R.string.annot_no_enums),
+                            onSelect = edit
+                        )
                         AnnotationAction.DELETE_FUNCTION -> Text(stringResource(R.string.annot_delete_warning))
                         AnnotationAction.UNDEFINE -> Text(stringResource(R.string.annot_undefine_warning))
                         else -> Unit
@@ -147,7 +152,7 @@ internal fun AnnotationEditor(request: AnnotationRequest, onDismiss: () -> Unit,
                 Text(stringResource(R.string.dialog_ok))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !applying) { Text(stringResource(R.string.dialog_cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) } }
     )
 }
 
@@ -169,9 +174,13 @@ private fun NameSelector(names: List<String>, selected: String?, onSelect: (Stri
 }
 
 @Composable
-private fun TypeSelector(choices: List<String>, value: String, onSelect: (String) -> Unit) {
+private fun TypeSelector(choices: List<String>, value: String, emptyHint: String, onSelect: (String) -> Unit) {
     OutlinedTextField(value, onSelect, Modifier.fillMaxWidth(), singleLine = true,
         label = { Text(stringResource(R.string.annot_type_input)) })
+    if (choices.isEmpty()) {
+        Text(emptyHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
     val matches = remember(choices, value) { if (value.isEmpty()) choices else choices.filter { it.contains(value, ignoreCase = true) } }
     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp)) {
         items(matches, key = { it }) { type ->

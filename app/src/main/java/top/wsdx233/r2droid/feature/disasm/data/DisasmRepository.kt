@@ -264,8 +264,8 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     }
 
     suspend fun setFunctionSignature(addr: Long, signature: String): Result<String> {
-        val cleanSig = signature.trim().trimEnd(';').trim()
-        if (cleanSig.isEmpty() || cleanSig.any { it.isISOControl() || it == ';' || it == '\n' || it == '\r' }) {
+        val cleanSig = signature.replace('\r', ' ').replace('\n', ' ').trim().trimEnd(';').trim()
+        if (cleanSig.isEmpty() || cleanSig.any { it.isISOControl() || it == ';' }) {
             return Result.failure(IllegalArgumentException("Invalid function signature."))
         }
         val cmd = "afs $cleanSig @ ${addr.toHexAddr()}"
@@ -282,17 +282,17 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     }
 
     suspend fun getAvailableCallingConventions(): Result<List<top.wsdx233.r2droid.feature.types.data.CallingConventionInfo>> {
-        return runCatching {
+        return top.wsdx233.r2droid.util.suspendRunCatching {
             val tccj = r2DataSource.executeJson("tccj").getOrDefault("")
             val parsed = top.wsdx233.r2droid.feature.types.data.TypesJsonParser.parseTccj(tccj)
-            if (parsed.isNotEmpty()) return@runCatching parsed
+            if (parsed.isNotEmpty()) return@suspendRunCatching parsed
             val afcl = r2DataSource.execute("afcl").getOrDefault("")
             top.wsdx233.r2droid.feature.types.data.TypesJsonParser.parseAfclFallback(afcl)
         }
     }
 
     suspend fun getAvailableTypeSuggestions(): Result<List<String>> {
-        return runCatching {
+        return top.wsdx233.r2droid.util.suspendRunCatching {
             val tsj = r2DataSource.executeJson("tsj").getOrDefault("[]")
             val tej = r2DataSource.executeJson("tej").getOrDefault("{}")
             val tuj = r2DataSource.executeJson("tuj").getOrDefault("[]")
@@ -312,7 +312,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     private suspend fun executeCheckedMutation(command: String): Result<String> {
         val target = R2PipeManager.captureActiveTarget()
         return if (target != null) {
-            runCatching {
+            top.wsdx233.r2droid.util.suspendRunCatching {
                 target.checkedTransaction(command, markDirty = true) { cmd -> cmd(command) }
             }
         } else {

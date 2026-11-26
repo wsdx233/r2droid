@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.radare.r2pipe.kotlin.R2PipeSession
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import javax.inject.Inject
 
 class EsilDebuggerBackend @Inject constructor(
@@ -46,7 +47,7 @@ class EsilDebuggerBackend @Inject constructor(
     private fun owner(): EsilSession = session?.takeIf { it.lease.pipe === R2PipeManager.activeSessionPipe }
         ?: error("ESIL is not active in this session")
 
-    override suspend fun query(command: String): Result<String> = runCatching {
+    override suspend fun query(command: String): Result<String> = suspendRunCatching {
         owner().lease.command(command).stdout.also { runner.validateCommandOutput(command, it) }
     }
 

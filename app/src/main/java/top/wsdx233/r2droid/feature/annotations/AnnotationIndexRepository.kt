@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 private const val BOOKMARK_SPACE = "r2droid.bookmarks"
 private const val BOOKMARK_PREFIX = "r2droid.bookmark."
 private const val BOOKMARK_MARKER = "r2droid:bookmark"
-private val flagNamePattern = Regex("[A-Za-z_:][A-Za-z0-9_.:]*")
+private val flagNamePattern = Regex("[A-Za-z_:.$-][A-Za-z0-9_.:$-]*")
 
 internal fun isValidAnnotationName(name: String): Boolean {
     val trimmed = name.trim()

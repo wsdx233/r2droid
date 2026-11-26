@@ -4,6 +4,7 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import java.io.File
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -37,7 +38,7 @@ open class NativeR2DebuggerBackend @Inject constructor(
         )
     )
 
-    override open suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = runCatching {
+    override open suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = suspendRunCatching {
         val session = R2PipeManager.activeSession() ?: error("No active session.")
         check(!session.writeCacheEnabled) {
             context?.getString(R.string.write_cache_replace_blocked)
@@ -69,33 +70,33 @@ open class NativeR2DebuggerBackend @Inject constructor(
         )
     }
 
-    override open suspend fun stop(): Result<Unit> = runCatching {
+    override open suspend fun stop(): Result<Unit> = suspendRunCatching {
         runner.executeFirstSuccessful("doc", "dk").getOrThrow()
         lastRegisters = emptyMap()
     }
 
-    override suspend fun stepInto(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun stepInto(): Result<DebugStateSnapshot> = suspendRunCatching {
         runner.execute("ds").getOrThrow()
         refresh().getOrThrow().copy(
             stopReason = DebugStopReason(DebugStopReasonType.STEP, "Step into")
         )
     }
 
-    override suspend fun stepOver(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun stepOver(): Result<DebugStateSnapshot> = suspendRunCatching {
         runner.execute("dso").getOrThrow()
         refresh().getOrThrow().copy(
             stopReason = DebugStopReason(DebugStopReasonType.STEP, "Step over")
         )
     }
 
-    override suspend fun stepOut(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun stepOut(): Result<DebugStateSnapshot> = suspendRunCatching {
         runner.execute("dsf").getOrThrow()
         refresh().getOrThrow().copy(
             stopReason = DebugStopReason(DebugStopReasonType.STEP, "Step out")
         )
     }
 
-    override suspend fun continueRun(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun continueRun(): Result<DebugStateSnapshot> = suspendRunCatching {
         val output = runner.execute("dc").getOrThrow()
         refresh().getOrThrow().copy(
             stopReason = parseNativeStopReason(output)
@@ -106,7 +107,7 @@ open class NativeR2DebuggerBackend @Inject constructor(
         it.copy(stopReason = DebugStopReason(DebugStopReasonType.MANUAL_PAUSE, "Execution interrupted"))
     }
 
-    override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = runCatching {
+    override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = suspendRunCatching {
         val addrHex = formatHexAddress(breakpoint.address)
         val addCmd = when (breakpoint.kind) {
             BreakpointKind.SOFTWARE -> "db $addrHex"
@@ -127,16 +128,16 @@ open class NativeR2DebuggerBackend @Inject constructor(
         breakpoint
     }
 
-    override suspend fun removeBreakpoint(address: Long): Result<Unit> = runCatching {
+    override suspend fun removeBreakpoint(address: Long): Result<Unit> = suspendRunCatching {
         runner.execute("db- ${formatHexAddress(address)}").getOrThrow()
     }
 
-    override suspend fun setBreakpointEnabled(address: Long, enabled: Boolean): Result<Unit> = runCatching {
+    override suspend fun setBreakpointEnabled(address: Long, enabled: Boolean): Result<Unit> = suspendRunCatching {
         val cmd = if (enabled) "dbe ${formatHexAddress(address)}" else "dbd ${formatHexAddress(address)}"
         runner.execute(cmd).getOrThrow()
     }
 
-    override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = runCatching {
+    override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = suspendRunCatching {
         val addrHex = formatHexAddress(address)
         val clean = condition?.trim().orEmpty()
         require('\n' !in clean && '\r' !in clean) { "Invalid breakpoint condition" }
@@ -144,23 +145,23 @@ open class NativeR2DebuggerBackend @Inject constructor(
         runner.execute(cmd).getOrThrow()
     }
 
-    override suspend fun writeRegister(name: String, value: Long): Result<Unit> = runCatching {
+    override suspend fun writeRegister(name: String, value: Long): Result<Unit> = suspendRunCatching {
         val cleanName = name.trim()
         require(cleanName.matches(Regex("[A-Za-z_][A-Za-z0-9_.]*"))) { "Invalid register name: $name" }
         runner.execute("dr $cleanName=${formatHexAddress(value)}").getOrThrow()
     }
 
-    override suspend fun listFrames(): Result<List<DebugFrame>> = runCatching {
+    override suspend fun listFrames(): Result<List<DebugFrame>> = suspendRunCatching {
         val raw = query("dbtj").getOrThrow()
         runner.parseFrames(raw)
     }
 
-    override suspend fun listThreads(): Result<List<DebugThread>> = runCatching {
+    override suspend fun listThreads(): Result<List<DebugThread>> = suspendRunCatching {
         val raw = query("dptj").getOrThrow()
         runner.parseThreads(raw)
     }
 
-    override suspend fun selectThread(threadId: String): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun selectThread(threadId: String): Result<DebugStateSnapshot> = suspendRunCatching {
         val clean = threadId.trim()
         require(clean.matches(Regex("[0-9]+"))) { "Invalid thread id: $threadId" }
         runner.execute("dpt=$clean").getOrThrow()

@@ -25,17 +25,22 @@ class HexRepository @Inject constructor() {
     internal suspend fun getSingleDisasm(session: R2PipeManager.R2Session, address: Long): Result<HexSingleDisasm?> {
         return try {
             val addrExpr = "0x${address.toULong().toString(16)}"
-            val jsonOutput = R2PipeManager.execute(session, "pdj 1 @ $addrExpr", markDirty = false).getOrNull()
-            val parsed = jsonOutput?.let {
+            val jsonResult = R2PipeManager.execute(session, "pdj 1 @ $addrExpr", markDirty = false)
+            val parsed = jsonResult.getOrNull()?.let {
                 withContext(Dispatchers.Default) { parseSingleDisasmJson(it) }
             }
             if (parsed != null) return Result.success(parsed)
 
-            val fallback = R2PipeManager.execute(session, "pi 1 @ $addrExpr", markDirty = false).getOrNull()
+            val fallbackResult = R2PipeManager.execute(session, "pi 1 @ $addrExpr", markDirty = false)
+            val fallback = fallbackResult.getOrNull()
                 ?.lineSequence()
                 ?.map { it.trim() }
                 ?.firstOrNull { it.isNotEmpty() }
-            Result.success(fallback?.let { HexSingleDisasm(text = it) })
+            if (fallback != null) return Result.success(HexSingleDisasm(text = fallback))
+
+            // Propagate real session/pipe errors instead of masking them as empty disassembly.
+            val failure = fallbackResult.exceptionOrNull() ?: jsonResult.exceptionOrNull()
+            if (failure != null) Result.failure(failure) else Result.success(null)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {

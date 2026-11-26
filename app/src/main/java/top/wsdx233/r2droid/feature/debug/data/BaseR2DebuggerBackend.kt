@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.debug.data
 
 import org.json.JSONObject
+import top.wsdx233.r2droid.util.suspendRunCatching
 import java.util.Locale
 
 abstract class BaseR2DebuggerBackend(
@@ -16,7 +17,7 @@ abstract class BaseR2DebuggerBackend(
     protected open suspend fun query(command: String): Result<String> = runner.executeForBackend(type, command)
     protected open fun registerRole(name: String): RegisterRole = registerRoleForName(name)
 
-    override suspend fun refresh(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun refresh(): Result<DebugStateSnapshot> = suspendRunCatching {
         val registers = readRegisters().getOrThrow()
         val pc = extractProgramCounter(registers) ?: readSeekAddress().getOrNull()
         val breakpoints = listBreakpoints().getOrDefault(emptyList())
@@ -30,17 +31,17 @@ abstract class BaseR2DebuggerBackend(
         )
     }
 
-    override suspend fun listBreakpoints(): Result<List<DebugBreakpoint>> = runCatching {
+    override suspend fun listBreakpoints(): Result<List<DebugBreakpoint>> = suspendRunCatching {
         val raw = query(breakpointListCommand).getOrThrow()
         runner.parseBreakpoints(raw)
     }
 
-    override suspend fun readRegisters(): Result<List<DebugRegister>> = runCatching {
+    override suspend fun readRegisters(): Result<List<DebugRegister>> = suspendRunCatching {
         val current = readRawRegisterValues().getOrThrow()
         parseRegisters(current)
     }
 
-    protected suspend fun readRawRegisterValues(): Result<Map<String, Long>> = runCatching {
+    protected suspend fun readRawRegisterValues(): Result<Map<String, Long>> = suspendRunCatching {
         var lastError: Throwable? = null
         for (command in registerCommands) {
             val output = query(command).getOrElse {
@@ -57,12 +58,12 @@ abstract class BaseR2DebuggerBackend(
                 lastError = e
                 continue
             }
-            return@runCatching extractRegisterValues(obj)
+            return@suspendRunCatching extractRegisterValues(obj)
         }
         throw lastError ?: IllegalStateException("Unable to read register state")
     }
 
-    protected suspend fun readSeekAddress(): Result<Long> = runCatching {
+    protected suspend fun readSeekAddress(): Result<Long> = suspendRunCatching {
         runner.parseAddress(query(seekCommand).getOrThrow())
             ?: throw IllegalStateException("Unable to determine current seek address")
     }
@@ -95,7 +96,7 @@ abstract class BaseR2DebuggerBackend(
         return parsed
     }
 
-    override suspend fun readMemory(address: Long, size: Int): Result<ByteArray> = runCatching {
+    override suspend fun readMemory(address: Long, size: Int): Result<ByteArray> = suspendRunCatching {
         val safeSize = size.coerceIn(1, 4096)
         val addrHex = formatHexAddress(address)
         val raw = query("pxj $safeSize @ $addrHex").getOrThrow()
@@ -105,7 +106,7 @@ abstract class BaseR2DebuggerBackend(
         }
     }
 
-    override suspend fun writeMemory(address: Long, bytes: ByteArray): Result<Unit> = runCatching {
+    override suspend fun writeMemory(address: Long, bytes: ByteArray): Result<Unit> = suspendRunCatching {
         require(bytes.isNotEmpty()) { "No bytes provided for memory write" }
         require(bytes.size <= 4096) { "Memory write exceeds 4096-byte limit" }
         val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -113,10 +114,10 @@ abstract class BaseR2DebuggerBackend(
         query("wx $hex @ $addrHex").getOrThrow()
     }
 
-    override suspend fun resolveExpression(expression: String): Result<Long> = runCatching {
+    override suspend fun resolveExpression(expression: String): Result<Long> = suspendRunCatching {
         val trimmed = expression.trim()
         require(trimmed.isNotEmpty()) { "Expression cannot be empty" }
-        parseExplicitLiteral(trimmed)?.let { return@runCatching it }
+        parseExplicitLiteral(trimmed)?.let { return@suspendRunCatching it }
         require('\n' !in trimmed && '\r' !in trimmed && ';' !in trimmed) {
             "Invalid characters in expression"
         }
@@ -125,7 +126,7 @@ abstract class BaseR2DebuggerBackend(
             ?: throw IllegalArgumentException("Unable to evaluate expression: $trimmed")
     }
 
-    override suspend fun readStack(count: Int): Result<List<DebugStackEntry>> = runCatching {
+    override suspend fun readStack(count: Int): Result<List<DebugStackEntry>> = suspendRunCatching {
         val rawRegs = readRawRegisterValues().getOrThrow()
         val tempRegs = rawRegs.map { (name, value) ->
             DebugRegister(name = name, value = value, role = registerRole(name))

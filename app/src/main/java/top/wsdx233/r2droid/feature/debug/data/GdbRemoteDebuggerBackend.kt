@@ -4,6 +4,7 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import javax.inject.Inject
 
 class GdbRemoteDebuggerBackend @Inject constructor(
@@ -32,7 +33,7 @@ class GdbRemoteDebuggerBackend @Inject constructor(
         )
     )
 
-    override suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = suspendRunCatching {
         val host = config.gdbRemoteHost?.trim().orEmpty()
         val port = config.gdbRemotePort
         require(host.isNotBlank()) { "GDB remote host is required" }
@@ -54,12 +55,8 @@ class GdbRemoteDebuggerBackend @Inject constructor(
         )
     }
 
-    override suspend fun stop(): Result<Unit> = runCatching {
+    override suspend fun stop(): Result<Unit> = suspendRunCatching {
         val session = R2PipeManager.activeSession() ?: error("No active session.")
-        check(!session.writeCacheEnabled) {
-            context?.getString(R.string.write_cache_replace_blocked)
-                ?: "Export or write pending patches before replacing the backend."
-        }
         runner.executeFirstSuccessful(session, "doc", "dk", "q").getOrThrow()
         lastRegisters = emptyMap()
     }

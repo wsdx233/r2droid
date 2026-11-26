@@ -89,7 +89,7 @@ fun FunctionVariablesDialog(
     onOpenTypesManager: (() -> Unit)? = null
 ) {
     Dialog(
-        onDismissRequest = { if (!isMutating) onDismiss() },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         FunctionVariablesDialogCard(
@@ -127,7 +127,7 @@ internal fun FunctionVariablesDialogCard(
     modifier: Modifier = Modifier
 ) {
     val allVars = variables.all
-    val argsCount = remember(allVars) { allVars.count { it.kind == "arg" || it.kind == "reg" } }
+    val argsCount = remember(allVars) { allVars.count { it.kind == "arg" } }
     val localsCount = remember(allVars) { (allVars.size - argsCount).coerceAtLeast(0) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -193,7 +193,7 @@ internal fun FunctionVariablesDialogCard(
                             }
                         }
                     }
-                    IconButton(onClick = onDismiss, enabled = !isMutating) {
+                    IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = stringResource(R.string.func_close)
@@ -335,7 +335,7 @@ internal fun FunctionVariablesDialogCard(
                     } else {
                         Spacer(Modifier.width(1.dp))
                     }
-                    TextButton(onClick = onDismiss, enabled = !isMutating) {
+                    TextButton(onClick = onDismiss) {
                         Text(stringResource(R.string.func_close))
                     }
                 }
@@ -694,7 +694,6 @@ private fun VariableItem(
                                 if (trimmed.isNotEmpty() && trimmed != variable.name) {
                                     onRename(variable.name, trimmed)
                                 }
-                                editMode = VarEditMode.NONE
                             },
                             enabled = !busy && newName.trim().isNotEmpty() && newName.trim() != variable.name,
                             shape = RoundedCornerShape(10.dp),
@@ -818,7 +817,6 @@ private fun VariableItem(
                                 if (trimmed.isNotEmpty() && trimmed != variable.type) {
                                     onRetype(variable.name, trimmed)
                                 }
-                                editMode = VarEditMode.NONE
                             },
                             enabled = !busy && newType.trim().isNotEmpty() && newType.trim() != variable.type,
                             shape = RoundedCornerShape(10.dp),

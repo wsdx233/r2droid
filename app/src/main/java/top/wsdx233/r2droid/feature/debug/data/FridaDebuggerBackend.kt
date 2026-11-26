@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.feature.debug.data
 
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.suspendRunCatching
 import javax.inject.Inject
 
 class FridaDebuggerBackend @Inject constructor(
@@ -18,7 +19,7 @@ class FridaDebuggerBackend @Inject constructor(
         Result.failure(IllegalStateException(R2DebugCommandRunner.FRIDA_SESSION_REQUIRED_MESSAGE))
     }
 
-    override suspend fun probe(): Result<DebugCapabilities> = runCatching {
+    override suspend fun probe(): Result<DebugCapabilities> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         val canReadRegisters = runner.executeFrida("drj").isSuccess
         val canListBreakpoints = runner.executeFrida("dbj").isSuccess
@@ -42,7 +43,7 @@ class FridaDebuggerBackend @Inject constructor(
         }
     }
 
-    override suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun start(config: DebugSessionConfig): Result<DebugStateSnapshot> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         probe().getOrThrow()
         refresh().getOrThrow().copy(
@@ -51,7 +52,7 @@ class FridaDebuggerBackend @Inject constructor(
         )
     }
 
-    override suspend fun stop(): Result<Unit> = runCatching {
+    override suspend fun stop(): Result<Unit> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         lastRegisters = emptyMap()
     }
@@ -64,7 +65,7 @@ class FridaDebuggerBackend @Inject constructor(
         UnsupportedOperationException("r2frida does not provide :dso step-over; use breakpoints/:dc or Native R2/GDB for stepping")
     )
 
-    override suspend fun continueRun(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun continueRun(): Result<DebugStateSnapshot> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         runner.executeFrida("dc").getOrThrow()
         refresh().getOrThrow().copy(
@@ -72,20 +73,20 @@ class FridaDebuggerBackend @Inject constructor(
         )
     }
 
-    override suspend fun pause(): Result<DebugStateSnapshot> = runCatching {
+    override suspend fun pause(): Result<DebugStateSnapshot> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         refresh().getOrThrow().copy(
             stopReason = DebugStopReason(DebugStopReasonType.MANUAL_PAUSE, "Frida execution interrupted")
         )
     }
 
-    override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = runCatching {
+    override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         runner.executeFrida("db ${formatHexAddress(breakpoint.address)}").getOrThrow()
         breakpoint
     }
 
-    override suspend fun removeBreakpoint(address: Long): Result<Unit> = runCatching {
+    override suspend fun removeBreakpoint(address: Long): Result<Unit> = suspendRunCatching {
         requireFridaSession().getOrThrow()
         runner.executeFrida("db- ${formatHexAddress(address)}").getOrThrow()
     }

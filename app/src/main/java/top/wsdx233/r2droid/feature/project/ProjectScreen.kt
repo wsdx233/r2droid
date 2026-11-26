@@ -82,7 +82,6 @@ import top.wsdx233.r2droid.util.R2PipeManager
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
-import java.util.Base64
 
 private enum class SessionAction { Close, Exit, Reconnect }
 
@@ -850,10 +849,10 @@ private fun CryptoDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TextButton(onClick = { onShowResult(Base64.getEncoder().encodeToString(input.toByteArray())) }) { Text("B64") }
-                    TextButton(onClick = { onShowResult(runCatching { String(Base64.getDecoder().decode(input)) }.getOrDefault("error")) }) { Text("B64-DEC") }
-                    TextButton(onClick = { onShowResult(URLEncoder.encode(input, "UTF-8")) }) { Text("URL") }
-                    TextButton(onClick = { onShowResult(URLDecoder.decode(input, "UTF-8")) }) { Text("URL-DEC") }
+                    TextButton(onClick = { onShowResult(android.util.Base64.encodeToString(input.toByteArray(), android.util.Base64.NO_WRAP)) }) { Text("B64") }
+                    TextButton(onClick = { onShowResult(runCatching { String(android.util.Base64.decode(input, android.util.Base64.DEFAULT)) }.getOrDefault("error")) }) { Text("B64-DEC") }
+                    TextButton(onClick = { onShowResult(runCatching { URLEncoder.encode(input, "UTF-8") }.getOrDefault("error")) }) { Text("URL") }
+                    TextButton(onClick = { onShowResult(runCatching { URLDecoder.decode(input, "UTF-8") }.getOrDefault("error")) }) { Text("URL-DEC") }
                     TextButton(onClick = { onShowResult("MD5 ${md("MD5", input)}\nSHA256 ${md("SHA-256", input)}") }) { Text("HASH") }
                 }
             }
