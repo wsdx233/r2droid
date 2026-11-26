@@ -6,6 +6,11 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc*'
   workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 'Existing tag to rebuild as a candidate (optional)'
+        type: string
+        required: false
 
 jobs:
   build:
@@ -19,6 +24,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_tag && format('refs/tags/{0}', inputs.source_tag) || '' }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -74,6 +80,7 @@ jobs:
           NATIVE_RUNTIME_GITHUB_TOKEN="$GITHUB_TOKEN"
           unset GITHUB_TOKEN
           ./gradlew \
+            --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4g \
             :r2pipe-kotlin:test :app:testFullDebugUnitTest :app:testProotOnlyDebugUnitTest \
             :app:assembleFullRelease \
             :app:assembleProotOnlyRelease \
@@ -86,6 +93,8 @@ jobs:
 
       - name: Check packaged versions and collect artifacts
         id: package
+        env:
+          EXPECTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.source_tag }}
         run: |
           full=app/build/outputs/apk/full/release
           proot=app/build/outputs/apk/prootOnly/release
@@ -94,8 +103,8 @@ jobs:
           jq -e --arg v "$version" --argjson c "$code" \
             '.elements | length == 1 and .[0].versionName == $v and .[0].versionCode == $c' "$proot/output-metadata.json"
           tag="v$version"
-          if [[ $GITHUB_EVENT_NAME == push && ${GITHUB_REF_NAME%%-rc*} != "$tag" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match packaged version $version"
+          if [[ -n $EXPECTED_TAG && ${EXPECTED_TAG%%-rc*} != "$tag" ]]; then
+            echo "::error::Tag $EXPECTED_TAG does not match packaged version $version"
             exit 1
           fi
           echo "stable_tag=$tag" >> "$GITHUB_OUTPUT"
