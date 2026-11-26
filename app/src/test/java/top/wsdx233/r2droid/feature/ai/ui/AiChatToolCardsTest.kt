@@ -106,17 +106,19 @@ class AiChatToolCardsTest {
     }
 
     @Test
-    fun toolRowsKeepDirectCopyAndExposeMessageActionsMenu() {
+    fun toolRowsKeepDirectCopyButOnlyTextRepliesShowMoreMenu() {
         val tool = toolMessage("tool", "lookup", "{}", ToolCallStatus.Succeeded, "found")
         var message by mutableStateOf(tool)
         val copied = mutableListOf<String>()
         showCards({ listOf(message) }, busy = false, onCopy = { copied.add(it) })
 
-        compose.onNodeWithContentDescription("Message actions").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Message actions").assertDoesNotExist()
         compose.runOnIdle { message = tool.copy(content = "Looking it up") }
+        compose.onNodeWithContentDescription("Message actions").assertDoesNotExist()
         compose.onNodeWithContentDescription("Copy").performClick()
         compose.runOnIdle {
             assertEquals(listOf("Looking it up"), copied)
+            message = ChatMessage(role = ChatRole.Assistant, content = "Final answer")
         }
         compose.onNodeWithContentDescription("Message actions").performClick()
         compose.onNodeWithText("Regenerate").assertIsDisplayed()

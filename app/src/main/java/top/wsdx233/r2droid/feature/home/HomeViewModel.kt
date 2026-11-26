@@ -7,10 +7,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.SavedProject
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
@@ -30,6 +32,13 @@ sealed class HomeUiEvent {
     data class ShowMessage(val message: String) : HomeUiEvent()
 }
 
+private sealed interface RestorePrecheckResult {
+    data class Ready(val project: SavedProject, val needsProotSetup: Boolean) : RestorePrecheckResult
+    data object BinaryNotFound : RestorePrecheckResult
+    data object ScriptNotFound : RestorePrecheckResult
+    data class Failure(val error: Throwable) : RestorePrecheckResult
+}
+
 class HomeViewModel : ViewModel() {
     private val _uiEvent = Channel<HomeUiEvent>()
     val uiEvent: Flow<HomeUiEvent> = _uiEvent.receiveAsFlow()
@@ -37,10 +46,25 @@ class HomeViewModel : ViewModel() {
     // Saved projects from repository
     var savedProjects by mutableStateOf<List<SavedProject>>(emptyList())
         private set
-    
+
+    // Precomputed off the main thread so SavedProjectCard avoids File I/O during composition.
+    var projectBinaryAccessible by mutableStateOf<Map<String, Boolean>>(emptyMap())
+        private set
+
     // Loading state
     var isLoadingProjects by mutableStateOf(false)
         private set
+
+    // Non-null while a saved project is being prepared to open.
+    var restoringProjectId by mutableStateOf<String?>(null)
+        private set
+
+    // True while resolving/copying a file selected from the system picker.
+    var isOpeningFile by mutableStateOf(false)
+        private set
+
+    val isOpeningAnyTarget: Boolean
+        get() = restoringProjectId != null || isOpeningFile
 
     // Repository instance (will be initialized with context)
     private var repository: SavedProjectRepository? = null
@@ -62,7 +86,12 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             isLoadingProjects = true
             try {
-                savedProjects = repository?.getAllProjects() ?: emptyList()
+                val projects = repository?.getAllProjects() ?: emptyList()
+                val accessibility = withContext(Dispatchers.IO) {
+                    projects.associate { it.id to it.isBinaryAccessible() }
+                }
+                savedProjects = projects
+                projectBinaryAccessible = accessibility
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -72,28 +101,37 @@ class HomeViewModel : ViewModel() {
     }
 
     fun onFileSelected(context: Context, uri: Uri) {
+        if (isOpeningAnyTarget) return
+        val appContext = context.applicationContext
+        isOpeningFile = true
         viewModelScope.launch {
             try {
-                // Determine file path.
-                // Since R2Pipe likely requires a real file path (native access),
-                // if it's a content URI, we might need to copy it to a temp file.
-                val filePath = resolvePath(context, uri)
+                // Determine file path off the main thread (content URIs may require copying to cache).
+                val (filePath, needsProotSetup) = withContext(Dispatchers.IO) {
+                    val path = resolvePath(appContext, uri)
+                    val prootRequired = path != null &&
+                        SettingsManager.useProotMode &&
+                        !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(appContext)
+                    path to prootRequired
+                }
 
                 if (filePath != null) {
                     R2PipeManager.pendingFilePath = filePath
                     R2PipeManager.pendingProjectRestore = null
                     R2PipeManager.pendingAutoSaveProject = null
-                    if (SettingsManager.useProotMode && !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(context)) {
-                        _uiEvent.send(HomeUiEvent.ShowMessage(context.getString(R.string.proot_setup_required_message)))
+                    if (needsProotSetup) {
+                        _uiEvent.send(HomeUiEvent.ShowMessage(appContext.getString(R.string.proot_setup_required_message)))
                         _uiEvent.send(HomeUiEvent.NavigateToProotSetup)
                     } else {
                         _uiEvent.send(HomeUiEvent.NavigateToProject)
                     }
                 } else {
-                    _uiEvent.send(HomeUiEvent.ShowError(context.getString(R.string.home_error_resolve_path)))
+                    _uiEvent.send(HomeUiEvent.ShowError(appContext.getString(R.string.home_error_resolve_path)))
                 }
             } catch (e: Exception) {
-                _uiEvent.send(HomeUiEvent.ShowError(e.message ?: context.getString(R.string.home_error_unknown)))
+                _uiEvent.send(HomeUiEvent.ShowError(e.message ?: appContext.getString(R.string.home_error_unknown)))
+            } finally {
+                isOpeningFile = false
             }
         }
     }
@@ -102,41 +140,71 @@ class HomeViewModel : ViewModel() {
      * Restore a saved project
      */
     fun onRestoreProject(context: Context, project: SavedProject) {
+        if (isOpeningAnyTarget) return
+        val appContext = context.applicationContext
+        val repo = repository ?: SavedProjectRepository(appContext).also { repository = it }
+        restoringProjectId = project.id
         viewModelScope.launch {
             try {
-                // Check if binary is accessible
-                if (!project.isBinaryAccessible()) {
-                    _uiEvent.send(HomeUiEvent.ShowError(
-                        context.getString(R.string.home_error_binary_not_found)
-                    ))
-                    return@launch
+                val result = withContext(Dispatchers.IO) {
+                    val resolved = repo.resolveProjectForRestore(project.id).getOrElse { error ->
+                        return@withContext if (!project.isBinaryAccessible()) {
+                            RestorePrecheckResult.BinaryNotFound
+                        } else if (!project.isScriptAccessible()) {
+                            RestorePrecheckResult.ScriptNotFound
+                        } else {
+                            RestorePrecheckResult.Failure(error)
+                        }
+                    }
+                    if (!resolved.isBinaryAccessible()) {
+                        return@withContext RestorePrecheckResult.BinaryNotFound
+                    }
+                    if (!resolved.isScriptAccessible()) {
+                        return@withContext RestorePrecheckResult.ScriptNotFound
+                    }
+                    val needsProotSetup = SettingsManager.useProotMode &&
+                        !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(appContext)
+                    RestorePrecheckResult.Ready(resolved, needsProotSetup)
                 }
 
-                // Check if script is accessible
-                if (!project.isScriptAccessible()) {
-                    _uiEvent.send(HomeUiEvent.ShowError(
-                        context.getString(R.string.home_error_script_not_found)
-                    ))
-                    return@launch
-                }
+                when (result) {
+                    RestorePrecheckResult.BinaryNotFound -> {
+                        projectBinaryAccessible = projectBinaryAccessible + (project.id to false)
+                        _uiEvent.send(HomeUiEvent.ShowError(appContext.getString(R.string.home_error_binary_not_found)))
+                    }
+                    RestorePrecheckResult.ScriptNotFound -> {
+                        _uiEvent.send(HomeUiEvent.ShowError(appContext.getString(R.string.home_error_script_not_found)))
+                    }
+                    is RestorePrecheckResult.Failure -> {
+                        _uiEvent.send(
+                            HomeUiEvent.ShowError(
+                                result.error.message ?: appContext.getString(R.string.home_error_unknown)
+                            )
+                        )
+                    }
+                    is RestorePrecheckResult.Ready -> {
+                        val prepared = result.project
+                        R2PipeManager.pendingFilePath = prepared.binaryPath
+                        R2PipeManager.pendingProjectRestore =
+                            R2PipeManager.PendingProjectRestore(prepared.id, prepared.scriptPath, prepared.writeCacheEnabled)
+                        R2PipeManager.pendingAutoSaveProject = null
 
-                val prepared = checkNotNull(repository).validateProjectForRestore(project.id).getOrThrow()
-                // Set pending file path and restore script path
-                R2PipeManager.pendingFilePath = prepared.binaryPath
-                R2PipeManager.pendingProjectRestore =
-                    R2PipeManager.PendingProjectRestore(prepared.id, prepared.scriptPath, prepared.writeCacheEnabled)
-                R2PipeManager.pendingAutoSaveProject = null
-
-                if (SettingsManager.useProotMode && !top.wsdx233.r2droid.util.ProotInstaller.isEnvironmentReady(context)) {
-                    _uiEvent.send(HomeUiEvent.ShowMessage(context.getString(R.string.proot_setup_required_message)))
-                    _uiEvent.send(HomeUiEvent.NavigateToProotSetup)
-                } else {
-                    _uiEvent.send(HomeUiEvent.NavigateToProject)
+                        if (result.needsProotSetup) {
+                            _uiEvent.send(HomeUiEvent.ShowMessage(appContext.getString(R.string.proot_setup_required_message)))
+                            _uiEvent.send(HomeUiEvent.NavigateToProotSetup)
+                        } else {
+                            _uiEvent.send(HomeUiEvent.NavigateToProject)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 _uiEvent.send(HomeUiEvent.ShowError(
-                    e.message ?: context.getString(R.string.home_error_unknown)
+                    e.message ?: appContext.getString(R.string.home_error_unknown)
                 ))
+            } finally {
+                if (restoringProjectId == project.id) {
+                    restoringProjectId = null
+                }
             }
         }
     }

@@ -171,6 +171,8 @@ fun HomeScreen(
                 HomeLeftPane(
                     modifier = Modifier.weight(0.4f),
                     hasActiveSessions = hasActiveSessions,
+                    isOpeningFile = viewModel.isOpeningFile,
+                    actionsEnabled = !viewModel.isOpeningAnyTarget,
                     onOpenExistingSession = onNavigateToProject,
                     onOpenFile = { filePickerLauncher.launch("*/*") },
                     onFeatures = viewModel::onFeaturesClicked,
@@ -203,6 +205,8 @@ fun HomeScreen(
 private fun HomeLeftPane(
     modifier: Modifier,
     hasActiveSessions: Boolean,
+    isOpeningFile: Boolean,
+    actionsEnabled: Boolean,
     onOpenExistingSession: () -> Unit,
     onOpenFile: () -> Unit,
     onFeatures: () -> Unit,
@@ -224,7 +228,7 @@ private fun HomeLeftPane(
                 )
             )
             if (hasActiveSessions) {
-                IconButton(onClick = onOpenExistingSession) {
+                IconButton(onClick = onOpenExistingSession, enabled = actionsEnabled) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = stringResource(R.string.home_resume_session),
@@ -244,7 +248,9 @@ private fun HomeLeftPane(
             title = stringResource(R.string.home_open_file_title),
             description = stringResource(R.string.home_open_file_desc),
             icon = Icons.Default.FolderOpen,
-            onClick = onOpenFile
+            onClick = onOpenFile,
+            enabled = actionsEnabled,
+            isLoading = isOpeningFile
         )
         Spacer(modifier = Modifier.height(12.dp))
         HomeActionButton(
@@ -252,6 +258,7 @@ private fun HomeLeftPane(
             description = stringResource(R.string.home_features_desc),
             icon = Icons.Default.Build,
             onClick = onFeatures,
+            enabled = actionsEnabled,
             containerColor = Color(0xFFE0F2F1),
             contentColor = Color(0xFF00695C),
             iconContainerColor = Color(0xFF009688).copy(alpha = 0.12f),
@@ -280,6 +287,8 @@ private fun HomeSavedProjectsPane(
     context: Context,
     onDeleteRequest: (SavedProject) -> Unit
 ) {
+    val restoringId = viewModel.restoringProjectId
+    val interactionEnabled = !viewModel.isOpeningAnyTarget
     Column(modifier = modifier) {
         Spacer(modifier = Modifier.height(16.dp))
         Row(
@@ -306,6 +315,9 @@ private fun HomeSavedProjectsPane(
                 items(viewModel.savedProjects, key = { it.id }) { project ->
                     SavedProjectCard(
                         project = project,
+                        isBinaryAccessible = viewModel.projectBinaryAccessible[project.id] ?: true,
+                        isRestoring = restoringId == project.id,
+                        interactionEnabled = interactionEnabled,
                         onRestore = { viewModel.onRestoreProject(context, project) },
                         onDelete = { onDeleteRequest(project) }
                     )
@@ -324,6 +336,8 @@ private fun HomeCompactLayout(
     context: Context,
     onDeleteRequest: (SavedProject) -> Unit
 ) {
+    val restoringId = viewModel.restoringProjectId
+    val interactionEnabled = !viewModel.isOpeningAnyTarget
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -344,7 +358,7 @@ private fun HomeCompactLayout(
                 )
             )
             if (hasActiveSessions) {
-                IconButton(onClick = onOpenExistingSession) {
+                IconButton(onClick = onOpenExistingSession, enabled = interactionEnabled) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = stringResource(R.string.home_resume_session),
@@ -369,6 +383,8 @@ private fun HomeCompactLayout(
                 description = stringResource(R.string.home_open_file_desc),
                 icon = Icons.Default.FolderOpen,
                 onClick = onOpenFile,
+                enabled = interactionEnabled,
+                isLoading = viewModel.isOpeningFile,
                 modifier = Modifier.weight(1f)
             )
             HomeActionButton(
@@ -376,6 +392,7 @@ private fun HomeCompactLayout(
                 description = stringResource(R.string.home_features_desc),
                 icon = Icons.Default.Build,
                 onClick = viewModel::onFeaturesClicked,
+                enabled = interactionEnabled,
                 modifier = Modifier.weight(1f),
                 containerColor = Color(0xFFE0F2F1),
                 contentColor = Color(0xFF00695C),
@@ -408,6 +425,9 @@ private fun HomeCompactLayout(
                 items(viewModel.savedProjects, key = { it.id }) { project ->
                     SavedProjectCard(
                         project = project,
+                        isBinaryAccessible = viewModel.projectBinaryAccessible[project.id] ?: true,
+                        isRestoring = restoringId == project.id,
+                        interactionEnabled = interactionEnabled,
                         onRestore = { viewModel.onRestoreProject(context, project) },
                         onDelete = { onDeleteRequest(project) }
                     )
@@ -452,9 +472,14 @@ private fun HomeCompactLayout(
 fun SavedProjectCard(
     project: SavedProject,
     onRestore: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    isBinaryAccessible: Boolean = remember(project.id, project.binaryPath) { project.isBinaryAccessible() },
+    isRestoring: Boolean = false,
+    interactionEnabled: Boolean = true
 ) {
-    val isBinaryAccessible = project.isBinaryAccessible()
+    val formattedFileSize = remember(project.fileSize) { project.getFormattedFileSize() }
+    val formattedLastModified = remember(project.lastModified) { project.getFormattedLastModified() }
+    val canInteract = interactionEnabled && !isRestoring
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -470,7 +495,7 @@ fun SavedProjectCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = isBinaryAccessible) { onRestore() }
+                .clickable(enabled = isBinaryAccessible && canInteract) { onRestore() }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -513,13 +538,13 @@ fun SavedProjectCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${project.archType} | ${project.binType} | ${project.getFormattedFileSize()}",
+                    text = "${project.archType} | ${project.binType} | $formattedFileSize",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = project.getFormattedLastModified(),
+                    text = formattedLastModified,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
@@ -536,20 +561,34 @@ fun SavedProjectCard(
             
             // Actions
             if (isBinaryAccessible) {
-                IconButton(onClick = onRestore) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = stringResource(R.string.home_restore_project),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                IconButton(
+                    onClick = onRestore,
+                    enabled = canInteract
+                ) {
+                    if (isRestoring) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = stringResource(R.string.home_restore_project),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             
-            IconButton(onClick = onDelete) {
+            IconButton(
+                onClick = onDelete,
+                enabled = canInteract
+            ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = stringResource(R.string.home_delete_project),
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = if (canInteract) 0.7f else 0.3f)
                 )
             }
         }
@@ -563,6 +602,8 @@ fun HomeActionButton(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     iconContainerColor: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -570,6 +611,7 @@ fun HomeActionButton(
 ) {
     Card(
         onClick = onClick,
+        enabled = enabled && !isLoading,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -588,12 +630,20 @@ fun HomeActionButton(
                         .background(iconContainerColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconColor,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = iconColor
+                        )
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(

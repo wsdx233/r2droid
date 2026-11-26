@@ -95,21 +95,28 @@ fun AnalysisConfigScreen(
     var benchmarking by remember { mutableStateOf(false) }
     
     LaunchedEffect(filePath) {
-        try {
-            val file = java.io.File(filePath)
-            if (file.exists()) {
-                fileSize = file.length()
-            } else if (filePath.startsWith("content://")) {
-                val uri = android.net.Uri.parse(filePath)
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                        if (sizeIndex != -1) fileSize = cursor.getLong(sizeIndex)
+        fileSize = withContext(Dispatchers.IO) {
+            try {
+                val file = java.io.File(filePath)
+                if (file.exists()) {
+                    file.length()
+                } else if (filePath.startsWith("content://")) {
+                    val uri = android.net.Uri.parse(filePath)
+                    var size = 0L
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                            if (sizeIndex != -1) size = cursor.getLong(sizeIndex)
+                        }
                     }
+                    size
+                } else {
+                    0L
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                0L
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 

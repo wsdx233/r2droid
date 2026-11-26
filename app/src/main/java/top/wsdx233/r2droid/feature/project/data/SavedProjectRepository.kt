@@ -267,48 +267,75 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         getAllProjects().find { it.id == projectId }
     }
 
-    /** Validate a saved project script without modifying the stored project.r2 or index. */
-    suspend fun validateProjectForRestore(projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
+    /**
+     * Lightweight pre-flight check before navigating to ProjectScreen.
+     * Resolves the script path from the index and verifies the script header without scanning the
+     * full replay script.
+     */
+    suspend fun resolveProjectForRestore(projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
         projectFilesMutex.withLock {
             try {
                 val root = projectsDir
                 val project = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
                     ?: error("Project not found: $projectId")
                 val script = File(project.scriptPath)
-                script.bufferedReader().use { reader ->
-                    writeProjectReplay(reader, NullWriter)
+                require(script.isFile && script.canRead()) {
+                    "Project script is not readable: ${script.absolutePath}"
                 }
+                val header = script.bufferedReader().use { it.readLine() }
+                check(header?.startsWith(PS_HEADER) == true) { "Failed to save analysis script" }
                 Result.success(project)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e(TAG, "Failed to validate project replay", e)
+                Log.e(TAG, "Failed to resolve project for restore", e)
                 Result.failure(e)
             }
         }
     }
 
+    internal data class PreparedProjectReplay(
+        val project: SavedProject,
+        val prepared: PreparedReplayScript
+    )
+
     /**
-     * Generate a temporary filtered replay script from the original project.r2 without mutating
-     * the stored project archive, run [block], and delete the temporary file afterwards.
+     * Prepare a replay script for restoring [projectId]:
+     * - Already-normalized scripts (carrying [DESCRIPTOR_NEUTRAL]) are reused directly with zero
+     *   full-file scanning or copying.
+     * - Legacy scripts are filtered into a temporary replay file without mutating the archive.
+     *
+     * Callers must invoke [PreparedReplayScript.cleanup] in a `finally` block.
      */
-    internal suspend fun <T> withTemporaryReplayScript(
-        projectId: String,
-        block: suspend (tempScript: File, report: ProjectReplayReport, project: SavedProject) -> T
-    ): Result<T> = withContext(Dispatchers.IO) {
-        val (project, prepared) = projectFilesMutex.withLock {
-            try {
-                val root = projectsDir
-                val found = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
-                    ?: error("Project not found: $projectId")
-                val script = File(found.scriptPath)
-                val tempDir = File(context.cacheDir, RESTORE_TEMP_DIR)
-                found to createTemporaryReplayScript(script, tempDir)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Log.e(TAG, "Failed to prepare temporary project replay", e)
-                return@withContext Result.failure(e)
+    internal suspend fun prepareReplayScript(projectId: String): Result<PreparedProjectReplay> =
+        withContext(Dispatchers.IO) {
+            projectFilesMutex.withLock {
+                try {
+                    val root = projectsDir
+                    val found = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
+                        ?: error("Project not found: $projectId")
+                    val script = File(found.scriptPath)
+                    val tempDir = File(context.cacheDir, RESTORE_TEMP_DIR)
+                    Result.success(PreparedProjectReplay(found, prepareReplayScript(script, tempDir)))
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.e(TAG, "Failed to prepare project replay", e)
+                    Result.failure(e)
+                }
             }
         }
+
+    /**
+     * Prepare a replay script (direct for normalized scripts, temporary filtered copy for legacy
+     * scripts), run [block], and clean up any temporary file afterwards.
+     */
+    internal suspend fun <T> withReplayScript(
+        projectId: String,
+        block: suspend (replayScript: File, report: ProjectReplayReport, project: SavedProject) -> T
+    ): Result<T> = withContext(Dispatchers.IO) {
+        val preparedProject = prepareReplayScript(projectId).getOrElse {
+            return@withContext Result.failure(it)
+        }
+        val (project, prepared) = preparedProject
         try {
             Result.success(block(prepared.file, prepared.report, project))
         } catch (e: Exception) {
@@ -316,7 +343,7 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
             Log.e(TAG, "Failed to replay project script", e)
             Result.failure(e)
         } finally {
-            runCatching { prepared.file.delete() }
+            prepared.cleanup()
         }
     }
 
@@ -481,13 +508,12 @@ internal data class ProjectReplayReport(
 
 internal data class PreparedReplayScript(
     val file: File,
-    val report: ProjectReplayReport
-)
-
-private object NullWriter : Writer() {
-    override fun write(cbuf: CharArray, off: Int, len: Int) = Unit
-    override fun flush() = Unit
-    override fun close() = Unit
+    val report: ProjectReplayReport,
+    val isTemporary: Boolean = true
+) {
+    fun cleanup() {
+        if (isTemporary) runCatching { file.delete() }
+    }
 }
 
 internal fun legacyScriptBackupFile(scriptFile: File): File {
@@ -571,6 +597,35 @@ internal fun updateProjectScriptWithLegacyBackup(
     return backup
 }
 
+private const val REPLAY_STREAM_BUFFER_BYTES = 64 * 1024
+
+/**
+ * Reuse already-normalized scripts directly (reading only the first two header lines),
+ * and fall back to [createTemporaryReplayScript] only for legacy scripts.
+ */
+internal fun prepareReplayScript(sourceScript: File, tempDir: File): PreparedReplayScript {
+    require(sourceScript.isFile && sourceScript.canRead()) {
+        "Project script is not readable: ${sourceScript.absolutePath}"
+    }
+    val isNormalized = sourceScript.bufferedReader().use { reader ->
+        val header = reader.readLine()
+        check(header?.startsWith(PS_HEADER) == true) { "Failed to save analysis script" }
+        reader.readLine()?.trim() == DESCRIPTOR_NEUTRAL
+    }
+    if (isNormalized) {
+        return PreparedReplayScript(
+            file = sourceScript,
+            report = ProjectReplayReport(
+                isLegacyScript = false,
+                filteredLegacyPatches = false,
+                filteredLegacyCacheOptions = false
+            ),
+            isTemporary = false
+        )
+    }
+    return createTemporaryReplayScript(sourceScript, tempDir)
+}
+
 internal fun createTemporaryReplayScript(sourceScript: File, tempDir: File): PreparedReplayScript {
     require(sourceScript.isFile && sourceScript.canRead()) {
         "Project script is not readable: ${sourceScript.absolutePath}"
@@ -580,16 +635,23 @@ internal fun createTemporaryReplayScript(sourceScript: File, tempDir: File): Pre
     }
     val tempFile = File(tempDir, "restore-${UUID.randomUUID()}.r2")
     try {
-        val report = sourceScript.bufferedReader().use { reader ->
-            tempFile.bufferedWriter().use { writer ->
+        val report = sourceScript.bufferedReader(bufferSize = REPLAY_STREAM_BUFFER_BYTES).use { reader ->
+            tempFile.bufferedWriter(bufferSize = REPLAY_STREAM_BUFFER_BYTES).use { writer ->
                 writeProjectReplay(reader, writer)
             }
         }
-        return PreparedReplayScript(tempFile, report)
+        return PreparedReplayScript(tempFile, report, isTemporary = true)
     } catch (e: Exception) {
         runCatching { tempFile.delete() }
         throw e
     }
+}
+
+private fun firstNonWhitespaceIndex(line: String): Int {
+    var index = 0
+    val len = line.length
+    while (index < len && line[index].isWhitespace()) index++
+    return index
 }
 
 internal fun writeProjectReplay(
@@ -606,6 +668,7 @@ internal fun writeProjectReplay(
 
     val maps = mutableListOf<MatchResult>()
     fun writeMaps(fd: Int?) {
+        if (maps.isEmpty()) return
         // Older cached saves omitted o= but retained numeric map lines. If every map uses the
         // same fd, rebind it to the already-open binary; don't guess across multiple fds.
         val onlyFd = maps.firstOrNull()?.groupValues?.get(1)
@@ -621,51 +684,128 @@ internal fun writeProjectReplay(
     var filteredLegacyPatches = false
     var filteredLegacyCacheOptions = false
     var beforeAnalysis = true
-    reader.lineSequence().forEach { line ->
-        val command = line.trim()
-        if (firstBodyLine) {
-            firstBodyLine = false
-            if (command == DESCRIPTOR_NEUTRAL) {
-                isLegacyScript = false
-                return@forEach
+    while (true) {
+        val line = reader.readLine() ?: break
+        val isFirst = firstBodyLine
+        if (firstBodyLine) firstBodyLine = false
+
+        val start = firstNonWhitespaceIndex(line)
+        if (start == line.length) {
+            writer.appendLine(line)
+            continue
+        }
+
+        // Fast-path by leading character: 99%+ of lines (f, af+, CCu, ax, s, etc.) cannot match
+        // any replay filter or descriptor directive, avoiding trim() allocations and regex calls.
+        val first = line[start]
+        when (first) {
+            '#' -> {
+                val command = line.trim()
+                if (command == DESCRIPTOR_NEUTRAL) {
+                    if (isFirst) isLegacyScript = false
+                    continue
+                }
+                if (command == "# functions") {
+                    writeMaps(sourceFd)
+                    beforeAnalysis = false
+                }
+                writer.appendLine(line)
             }
-        } else if (command == DESCRIPTOR_NEUTRAL) {
-            return@forEach
-        }
-        // PS includes a wc* dump even outside supported write cache mode. Neither cache
-        // settings nor cached bytes should be replayed onto a file; the mode is in metadata.
-        if (CACHE_PATCH_COMMAND.matches(command)) {
-            filteredLegacyPatches = true
-            return@forEach
-        }
-        if (CACHE_OPTION.matches(command)) {
-            filteredLegacyCacheOptions = true
-            return@forEach
-        }
-        if (command == "# functions") {
-            writeMaps(sourceFd)
-            beforeAnalysis = false
-        }
-        if (beforeAnalysis) {
-            val selectedFd = FD_SELECTION.matchEntire(command)
-            if (selectedFd != null) {
-                writeMaps(sourceFd ?: selectedFd.groupValues[1].toIntOrNull())
-                return@forEach
+            'w' -> {
+                if (start + 2 < line.length && line[start + 1] == 'x' && line[start + 2].isWhitespace()) {
+                    val command = line.trim()
+                    if (CACHE_PATCH_COMMAND.matches(command)) {
+                        filteredLegacyPatches = true
+                        continue
+                    }
+                }
+                writer.appendLine(line)
             }
-            val map = FD_MAP.matchEntire(command)
-            if (map != null) {
-                maps += map
-                return@forEach
+            'e' -> {
+                if (start + 1 < line.length && line[start + 1].isWhitespace()) {
+                    val maybeCache = line.indexOf("io.cache", start + 2) >= 0
+                    val maybeHook = beforeAnalysis &&
+                        (line.indexOf("cmd.", start + 2) >= 0 || line.indexOf("cfg.debug", start + 2) >= 0)
+                    if (maybeCache || maybeHook) {
+                        val command = line.trim()
+                        if (maybeCache && CACHE_OPTION.matches(command)) {
+                            filteredLegacyCacheOptions = true
+                            continue
+                        }
+                        if (maybeHook && REPLAY_HOOK.matches(command)) {
+                            continue
+                        }
+                    }
+                }
+                writer.appendLine(line)
             }
-            if (REPLAY_OPEN.matches(command) || REPLAY_HOOK.matches(command) ||
-                command.startsWith("om \$d ") || command.startsWith("pushd ") || command == "popd"
-            ) return@forEach
-        } else {
-            check(!REPLAY_OPEN.matches(command) && !FD_SELECTION.matches(command)) {
-                "Project replay attempts to change descriptors after its analysis section starts"
+            '\'', '"' -> {
+                val second = if (start + 1 < line.length) line[start + 1] else '\u0000'
+                if (second == 'w' && start + 3 < line.length && line[start + 2] == 'x' && line[start + 3].isWhitespace()) {
+                    val command = line.trim()
+                    if (CACHE_PATCH_COMMAND.matches(command)) {
+                        filteredLegacyPatches = true
+                        continue
+                    }
+                } else if (second == 'e' && start + 2 < line.length && line[start + 2].isWhitespace()) {
+                    val maybeCache = line.indexOf("io.cache", start + 3) >= 0
+                    val maybeHook = beforeAnalysis &&
+                        (line.indexOf("cmd.", start + 3) >= 0 || line.indexOf("cfg.debug", start + 3) >= 0)
+                    if (maybeCache || maybeHook) {
+                        val command = line.trim()
+                        if (maybeCache && CACHE_OPTION.matches(command)) {
+                            filteredLegacyCacheOptions = true
+                            continue
+                        }
+                        if (maybeHook && REPLAY_HOOK.matches(command)) {
+                            continue
+                        }
+                    }
+                }
+                writer.appendLine(line)
+            }
+            'o' -> {
+                val second = if (start + 1 < line.length) line[start + 1] else '\u0000'
+                if (second == '=' || second == 'n' || second == 'o' || second == 'm' || second.isWhitespace()) {
+                    val command = line.trim()
+                    if (beforeAnalysis) {
+                        val selectedFd = FD_SELECTION.matchEntire(command)
+                        if (selectedFd != null) {
+                            writeMaps(sourceFd ?: selectedFd.groupValues[1].toIntOrNull())
+                            continue
+                        }
+                        val map = FD_MAP.matchEntire(command)
+                        if (map != null) {
+                            maps += map
+                            continue
+                        }
+                        if (REPLAY_OPEN.matches(command) || command.startsWith("om \$d ")) {
+                            continue
+                        }
+                    } else {
+                        check(!REPLAY_OPEN.matches(command) && !FD_SELECTION.matches(command)) {
+                            "Project replay attempts to change descriptors after its analysis section starts"
+                        }
+                    }
+                }
+                writer.appendLine(line)
+            }
+            'p' -> {
+                if (beforeAnalysis && start + 3 < line.length) {
+                    val second = line[start + 1]
+                    if (second == 'u' || second == 'o') {
+                        val command = line.trim()
+                        if (command.startsWith("pushd ") || command == "popd") {
+                            continue
+                        }
+                    }
+                }
+                writer.appendLine(line)
+            }
+            else -> {
+                writer.appendLine(line)
             }
         }
-        writer.appendLine(line)
     }
     writeMaps(sourceFd)
     return ProjectReplayReport(

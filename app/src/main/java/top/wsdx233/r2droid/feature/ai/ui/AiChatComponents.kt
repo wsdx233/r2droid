@@ -324,7 +324,7 @@ internal fun MessageBubble(
             val selectLabel = stringResource(R.string.ai_select_copy)
             MessageActions(
                 alignEnd = isUser,
-                showMenu = true,
+                showMenu = message.toolCalls.isEmpty() && message.actionResults.isEmpty(),
                 onCopy = copyText.takeIf(String::isNotBlank)?.let { { onCopy(it) } },
                 onSelect = copyText.takeIf(String::isNotBlank)?.let { { onDetail(ChatTextDetail(selectLabel, it)) } },
                 onEdit = onEdit.takeIf { isUser && !busy },

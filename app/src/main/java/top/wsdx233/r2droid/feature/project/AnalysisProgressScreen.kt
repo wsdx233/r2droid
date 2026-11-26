@@ -41,9 +41,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -71,7 +74,11 @@ fun AnalysisProgressScreen(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val tips = remember { loadAnalysisTips(context) }
+    val tips by produceState(initialValue = cachedAnalysisTips ?: emptyList(), key1 = context.applicationContext) {
+        if (value.isEmpty()) {
+            value = withContext(Dispatchers.IO) { loadAnalysisTips(context.applicationContext) }
+        }
+    }
     val tipSequence = remember(tips) {
         mutableStateListOf<Int>().apply {
             addAll(shuffledTipIndices(tips.size))
@@ -477,7 +484,11 @@ private data class AnalysisTip(
     val en: String
 )
 
+@Volatile
+private var cachedAnalysisTips: List<AnalysisTip>? = null
+
 private fun loadAnalysisTips(context: android.content.Context): List<AnalysisTip> {
+    cachedAnalysisTips?.let { return it }
     return runCatching {
         val json = context.assets.open("analysis_tips.json")
             .bufferedReader(Charsets.UTF_8)
@@ -494,7 +505,9 @@ private fun loadAnalysisTips(context: android.content.Context): List<AnalysisTip
                 }
             }
         }
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()).also { loaded ->
+        if (loaded.isNotEmpty()) cachedAnalysisTips = loaded
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -414,4 +414,123 @@ class SavedProjectScriptTest {
             restored.quit()
         }
     }
+
+    @Test
+    fun `fast path writeProjectReplay filters quoted, indented, and analysis-section directives identically`() {
+        val input = """
+            # r2 rdb project file
+              # eval
+              'wx 9090 @ 0x40
+              "wx 4141 @ 0x42
+              "e io.cache.read = true
+              e cfg.debug = true
+              'e cmd.vprompt = !id
+              'e cmd.hitinfo = 1
+              'e cmd.undo = true
+              'e asm.arch = arm
+              pushd /tmp/old
+              popd
+              o = 5
+              on+ /tmp/extra
+              oo+ /tmp/extra2
+              # functions
+              px 16 @ 0x40
+              pd 4 @ 0x40
+              af+ 0x40 sym.main
+              f flag.ok 4 0x40
+              'wx deadbeef @ 0x44
+              e io.cache=true
+              # seek
+              s 0x40
+        """.trimIndent()
+
+        val output = StringWriter()
+        val report = writeProjectReplay(input.reader().buffered(), output)
+        val text = output.toString()
+
+        assertTrue(report.isLegacyScript)
+        assertTrue(report.filteredLegacyPatches)
+        assertTrue(report.filteredLegacyCacheOptions)
+        assertFalse(text.contains("wx "))
+        assertFalse(text.contains("io.cache"))
+        assertFalse(text.contains("cfg.debug"))
+        assertFalse(text.contains("cmd.vprompt"))
+        assertFalse(text.contains("pushd "))
+        assertFalse(text.contains("popd"))
+        assertFalse(text.contains("on+ "))
+        assertFalse(text.contains("oo+ "))
+        assertTrue(text.contains("'e cmd.hitinfo = 1"))
+        assertTrue(text.contains("'e cmd.undo = true"))
+        assertTrue(text.contains("'e asm.arch = arm"))
+        assertTrue(text.contains("px 16 @ 0x40"))
+        assertTrue(text.contains("pd 4 @ 0x40"))
+        assertTrue(text.contains("af+ 0x40 sym.main"))
+        assertTrue(text.contains("f flag.ok 4 0x40"))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `fast path rejects spaced fd selection after functions header`() {
+        replay("# r2 rdb project file\n# functions\n  o = 3\n")
+    }
+
+    @Test
+    fun `prepareReplayScript reuses normalized script directly without temporary copy`() {
+        val projectDir = temp.newFolder("direct-modern")
+        val tempDir = temp.newFolder("direct-modern-temp")
+        val normalized = replay(
+            """
+            # r2 rdb project file
+            # eval
+            'e asm.bits = 64
+            # functions
+            af+ 0x40 entry0
+            # seek
+            s 0x40
+            """.trimIndent()
+        )
+        val script = File(projectDir, "project.r2").apply { writeText(normalized) }
+
+        val prepared = prepareReplayScript(script, tempDir)
+        assertFalse(prepared.isTemporary)
+        assertEquals(script.canonicalFile, prepared.file.canonicalFile)
+        assertFalse(prepared.report.isLegacyScript)
+        assertFalse(prepared.report.filteredLegacyPatches)
+        assertFalse(prepared.report.filteredLegacyCacheOptions)
+        assertEquals(0, tempDir.listFiles()?.size ?: 0)
+
+        // Cleanup must never delete the user's real project.r2 when reused directly.
+        prepared.cleanup()
+        assertTrue(script.isFile)
+        assertEquals(normalized, script.readText())
+    }
+
+    @Test
+    fun `prepareReplayScript creates and cleans up temporary filtered copy only for legacy scripts`() {
+        val projectDir = temp.newFolder("direct-legacy")
+        val tempDir = temp.newFolder("direct-legacy-temp")
+        val legacyText = """
+            # r2 rdb project file
+            # eval
+            'e io.cache = true
+            # functions
+            af+ 0x40 entry0
+            wx 9090 @ 0x40
+            # seek
+            s 0x40
+        """.trimIndent() + "\n"
+        val script = File(projectDir, "project.r2").apply { writeText(legacyText) }
+
+        val prepared = prepareReplayScript(script, tempDir)
+        assertTrue(prepared.isTemporary)
+        assertNotEquals(script.canonicalFile, prepared.file.canonicalFile)
+        assertTrue(prepared.report.isLegacyScript)
+        assertTrue(prepared.report.filteredLegacyPatches)
+        assertTrue(prepared.report.filteredLegacyCacheOptions)
+        assertTrue(prepared.file.isFile)
+
+        prepared.cleanup()
+        assertFalse(prepared.file.exists())
+        assertTrue(script.isFile)
+        assertEquals(legacyText, script.readText())
+    }
 }

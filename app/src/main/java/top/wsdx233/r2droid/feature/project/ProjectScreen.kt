@@ -440,49 +440,71 @@ fun ProjectScreen(
         )
     }
 
+            val pendingRestore = R2PipeManager.pendingProjectRestore
+            val pendingCustom = R2PipeManager.pendingCustomCommand
+            val pendingFile = R2PipeManager.pendingFilePath
             when (val state = uiState) {
                 is ProjectUiState.Configuring -> {
-                    val tutorialAutoStart = OnboardingTutorial.isAutoStartPendingFor(state.filePath)
-                    androidx.compose.runtime.LaunchedEffect(state.filePath) {
-                        if (OnboardingTutorial.consumeAutoStartFor(state.filePath)) {
-                            viewModel.onEvent(ProjectEvent.StartAnalysisSession("aaa", writable = false, flags = "-e io.cache=true"))
-                        }
-                    }
-                    if (tutorialAutoStart) {
-                        AnalysisProgressScreen(logs = logs, isRestoring = false)
+                    if (pendingRestore != null || pendingCustom != null) {
+                        AnalysisProgressScreen(logs = logs, isRestoring = pendingRestore != null)
                     } else {
-                        AnalysisConfigScreen(
-                            filePath = state.filePath,
-                            onStartAnalysis = { cmd, writable, writeCacheEnabled, flags, saveAsProject, projectName, copyBinary ->
-                                viewModel.onEvent(
-                                    ProjectEvent.StartAnalysisSession(
-                                        cmd = cmd,
-                                        writable = writable,
-                                        writeCacheEnabled = writeCacheEnabled,
-                                        flags = flags,
-                                        saveAsProject = saveAsProject,
-                                        projectName = projectName,
-                                        copyBinary = copyBinary
-                                    )
-                                )
+                        val tutorialAutoStart = OnboardingTutorial.isAutoStartPendingFor(state.filePath)
+                        androidx.compose.runtime.LaunchedEffect(state.filePath) {
+                            if (OnboardingTutorial.consumeAutoStartFor(state.filePath)) {
+                                viewModel.onEvent(ProjectEvent.StartAnalysisSession("aaa", writable = false, flags = "-e io.cache=true"))
                             }
-                        )
+                        }
+                        if (tutorialAutoStart) {
+                            AnalysisProgressScreen(logs = logs, isRestoring = false)
+                        } else {
+                            AnalysisConfigScreen(
+                                filePath = state.filePath,
+                                onStartAnalysis = { cmd, writable, writeCacheEnabled, flags, saveAsProject, projectName, copyBinary ->
+                                    viewModel.onEvent(
+                                        ProjectEvent.StartAnalysisSession(
+                                            cmd = cmd,
+                                            writable = writable,
+                                            writeCacheEnabled = writeCacheEnabled,
+                                            flags = flags,
+                                            saveAsProject = saveAsProject,
+                                            projectName = projectName,
+                                            copyBinary = copyBinary
+                                        )
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
                 is ProjectUiState.Analyzing -> {
-                    AnalysisProgressScreen(logs = logs, isRestoring = R2PipeManager.pendingProjectRestore != null)
+                    AnalysisProgressScreen(logs = logs, isRestoring = state.isRestoring)
                 }
                 else -> {
-                    val sid = activeSessionId ?: "legacy-session"
-                    key(sid) {
-                        ProjectScaffold(
-                            sessionId = sid,
-                            viewModel = viewModel,
-                            onOpenDrawer = { drawerScope.launch { drawerState.open() } },
-                            onReconnect = {
-                                activeSession?.let { requestAction(SessionAction.Reconnect, it) }
+                    when {
+                        pendingRestore != null || pendingCustom != null -> {
+                            AnalysisProgressScreen(logs = logs, isRestoring = pendingRestore != null)
+                        }
+                        state is ProjectUiState.Idle || pendingFile != null -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
                             }
-                        )
+                        }
+                        else -> {
+                            val sid = activeSessionId ?: "legacy-session"
+                            key(sid) {
+                                ProjectScaffold(
+                                    sessionId = sid,
+                                    viewModel = viewModel,
+                                    onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                                    onReconnect = {
+                                        activeSession?.let { requestAction(SessionAction.Reconnect, it) }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }

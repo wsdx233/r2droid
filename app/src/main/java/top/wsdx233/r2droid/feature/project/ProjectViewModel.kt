@@ -12,8 +12,11 @@ import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +25,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
 import org.radare.r2pipe.kotlin.R2PipeSession
 
 import top.wsdx233.r2droid.core.data.db.*
@@ -29,6 +34,7 @@ import top.wsdx233.r2droid.core.data.model.*
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.bininfo.data.BinInfoRepository
 import top.wsdx233.r2droid.feature.disasm.data.DisasmAddressLayout
+import top.wsdx233.r2droid.feature.project.data.PreparedReplayScript
 import top.wsdx233.r2droid.feature.project.data.ProjectRepository
 import top.wsdx233.r2droid.feature.project.data.SavedProjectRepository
 import top.wsdx233.r2droid.feature.r2frida.data.R2FridaRepository
@@ -97,7 +103,7 @@ sealed interface ProjectEvent {
 sealed class ProjectUiState {
     object Idle : ProjectUiState()
     data class Configuring(val filePath: String) : ProjectUiState()
-    object Analyzing : ProjectUiState()
+    data class Analyzing(val isRestoring: Boolean = false) : ProjectUiState()
     object Loading : ProjectUiState()
     data class Success(
         val binInfo: BinInfo? = null,
@@ -607,11 +613,11 @@ class ProjectViewModel @Inject constructor(
 
         if (customCmd != null) {
             // Custom command - skip config, go directly to analyzing
-            _uiState.value = ProjectUiState.Analyzing
+            _uiState.value = ProjectUiState.Analyzing(isRestoring = false)
         } else if (path != null) {
             if (pendingRestore != null) {
                 // Restoring a saved project - skip config screen
-                _uiState.value = ProjectUiState.Analyzing
+                _uiState.value = ProjectUiState.Analyzing(isRestoring = true)
             } else {
                 // New file waiting to be configured
                 _uiState.value = ProjectUiState.Configuring(path)
@@ -637,49 +643,68 @@ class ProjectViewModel @Inject constructor(
     /**
      * Start a restore session for a saved project.
      * Called from LaunchedEffect when restoring.
-     * Opens the binary file first, then replays a temporary filtered script without modifying the stored project.r2.
+     * Opens the binary file and prepares a temporary filtered replay script concurrently without
+     * modifying the stored project.r2.
      */
     fun startRestoreSession() {
         val path = R2PipeManager.pendingFilePath ?: return
         val restore = R2PipeManager.pendingProjectRestore ?: return
+
+        // Consume pending restore immediately so intermediate session updates cannot re-trigger it.
+        R2PipeManager.pendingFilePath = null
+        R2PipeManager.pendingProjectRestore = null
         
         viewModelScope.launch {
-            _uiState.value = ProjectUiState.Analyzing
+            _uiState.value = ProjectUiState.Analyzing(isRestoring = true)
             
             // Clear logs before starting new session
             clearLogs()
-            
-            val openResult = R2PipeManager.createSession(
-                context, path, writeCacheEnabled = restore.writeCacheEnabled, currentProjectId = restore.projectId
-            )
-            
-            val sessionId = openResult.getOrNull()
-            if (sessionId != null) {
-                val openedSession = R2PipeManager.sessions.value[sessionId]
-                val replayOutcome = savedProjectRepository.withTemporaryReplayScript(restore.projectId) { tempScript, report, project ->
-                    val loadScriptResult = R2PipeManager.execute(
-                        sessionId,
-                        ". ${tempScript.absolutePath} ; iIj",
-                        markDirty = false
-                    )
-                    if (loadScriptResult.isFailure) {
-                        // Log warning but continue - script may have partial success
-                        android.util.Log.w("ProjectViewModel", "Script load warning: ${loadScriptResult.exceptionOrNull()?.message}")
+
+            val preparedRef = AtomicReference<PreparedReplayScript?>(null)
+            try {
+                val (openResult, preparedResult) = coroutineScope {
+                    val scriptDeferred = async {
+                        savedProjectRepository.prepareReplayScript(restore.projectId).also { res ->
+                            res.getOrNull()?.prepared?.let { preparedRef.set(it) }
+                        }
                     }
-                    report to project
+                    val openDeferred = async {
+                        R2PipeManager.createSession(
+                            context, path, writeCacheEnabled = restore.writeCacheEnabled, currentProjectId = restore.projectId
+                        )
+                    }
+                    openDeferred.await() to scriptDeferred.await()
                 }
-                if (replayOutcome.isFailure) {
+                
+                val sessionId = openResult.getOrNull()
+                if (sessionId == null) {
+                    _uiState.value = ProjectUiState.Error(openResult.exceptionOrNull()?.message ?: "Unknown error")
+                    return@launch
+                }
+
+                val openedSession = R2PipeManager.sessions.value[sessionId]
+                val preparedReplay = preparedResult.getOrNull()
+                if (preparedReplay == null) {
                     openedSession?.let {
                         R2PipeManager.closeSession(it, requireActive = false, discardWriteCache = true)
                     }
-                    R2PipeManager.pendingFilePath = null
-                    R2PipeManager.pendingProjectRestore = null
                     _uiState.value = ProjectUiState.Error(
-                        replayOutcome.exceptionOrNull()?.message ?: "Failed to restore project script"
+                        preparedResult.exceptionOrNull()?.message ?: "Failed to restore project script"
                     )
                     return@launch
                 }
-                val (replayReport, restoredProject) = replayOutcome.getOrThrow()
+
+                val loadScriptResult = R2PipeManager.execute(
+                    sessionId,
+                    ". ${preparedReplay.prepared.file.absolutePath} ; iIj",
+                    markDirty = false
+                )
+                if (loadScriptResult.isFailure) {
+                    // Log warning but continue - script may have partial success
+                    android.util.Log.w("ProjectViewModel", "Script load warning: ${loadScriptResult.exceptionOrNull()?.message}")
+                }
+                val replayReport = preparedReplay.prepared.report
+                val restoredProject = preparedReplay.project
                 
                 // Load Data (Overview only)
                 loadOverview()
@@ -697,10 +722,6 @@ class ProjectViewModel @Inject constructor(
                 (_uiState.value as? ProjectUiState.Success)?.let {
                     _uiState.value = it.copy(cursorAddress = currentOffset)
                 }
-                
-                // Clear pending data
-                R2PipeManager.pendingFilePath = null
-                R2PipeManager.pendingProjectRestore = null
 
                 refreshLegacyScriptAvailability(restore.projectId)
                 if (replayReport.filteredLegacyPatches && openedSession != null) {
@@ -710,22 +731,20 @@ class ProjectViewModel @Inject constructor(
                         sessionToken = openedSession.pipe
                     )
                 }
-            } else {
-                R2PipeManager.pendingFilePath = null
-                R2PipeManager.pendingProjectRestore = null
-                _uiState.value = ProjectUiState.Error(openResult.exceptionOrNull()?.message ?: "Unknown error")
+            } finally {
+                preparedRef.getAndSet(null)?.cleanup()
             }
         }
     }
 
     fun startCustomCommandSession() {
         val rawArgs = R2PipeManager.pendingCustomCommand ?: return
+        R2PipeManager.pendingCustomCommand = null
         viewModelScope.launch {
-            _uiState.value = ProjectUiState.Analyzing
+            _uiState.value = ProjectUiState.Analyzing(isRestoring = false)
             clearLogs()
             val result = R2PipeManager.openRaw(context, rawArgs)
             if (result.isSuccess) {
-                R2PipeManager.pendingCustomCommand = null
                 if (R2PipeManager.isR2FridaSession) {
                     showFridaSession(0L)
                 } else {
@@ -763,7 +782,7 @@ class ProjectViewModel @Inject constructor(
              }
 
              viewModelScope.launch {
-                 _uiState.value = ProjectUiState.Analyzing
+                 _uiState.value = ProjectUiState.Analyzing(isRestoring = false)
                  
                  // Clear logs before starting new session
                  clearLogs()
@@ -771,11 +790,13 @@ class ProjectViewModel @Inject constructor(
                  val flags = if (writable && !writeCacheEnabled) "-w $startupFlags" else startupFlags
                  val openFilePath = if (copyBinary) {
                      runCatching {
-                         ProjectFileUtils.copyFileToProjectBinaries(
-                             context = context,
-                             sourcePath = currentState.filePath,
-                             preferredName = java.io.File(currentState.filePath).name
-                         ).absolutePath
+                         withContext(Dispatchers.IO) {
+                             ProjectFileUtils.copyFileToProjectBinaries(
+                                 context = context,
+                                 sourcePath = currentState.filePath,
+                                 preferredName = java.io.File(currentState.filePath).name
+                             ).absolutePath
+                         }
                      }.getOrElse { error ->
                          R2PipeManager.pendingAutoSaveProject = null
                          _uiState.value = ProjectUiState.Error(
@@ -925,8 +946,8 @@ class ProjectViewModel @Inject constructor(
                     reconnectMessage = context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_success_restored)
                 }
                 savedProject != null -> {
-                    val savedRestoreResult = savedProjectRepository.withTemporaryReplayScript(savedProject.id) { tempScript, report, project ->
-                        R2PipeManager.execute(reopenedSession, ". ${tempScript.absolutePath}").getOrThrow()
+                    val savedRestoreResult = savedProjectRepository.withReplayScript(savedProject.id) { replayScript, report, project ->
+                        R2PipeManager.execute(reopenedSession, ". ${replayScript.absolutePath}").getOrThrow()
                         report to project
                     }
                     if (savedRestoreResult.isSuccess) {
