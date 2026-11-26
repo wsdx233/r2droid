@@ -47,8 +47,16 @@ internal class AiResponsesTurnWire(private val tools: Set<String>) : AiTurnWire 
         val type = agree(body.wireString("type"), eventType, "Responses event type")
             ?: throw AiWireException("Missing Responses event type")
         when (type) {
-            "error", "response.failed", "response.incomplete", "response.cancelled", "response.canceled" ->
+            "error", "response.failed", "response.cancelled", "response.canceled" ->
                 throw AiWireException("Unsuccessful Responses stream: $type")
+            "response.incomplete" -> {
+                // Preserve streamed text when truncated by max_output_tokens, but never execute incomplete tool calls.
+                if (output.values.any { it.call != null }) {
+                    throw AiWireException("Unsuccessful Responses stream: $type")
+                }
+                val reasoning = output.values.mapNotNull { item -> item.reasoning?.takeIf { item.done }?.toString() }
+                return AiTurnEvent.Completed(emptyList(), reasoning.take(MAX_REASONING_ITEMS))
+            }
             "response.output_item.added", "response.output_item.done" -> {
                 val item = body.wireObjectOrNull("item") ?: throw AiWireException("Missing Responses output item")
                 val index = body.wireIndex("output_index") ?: throw AiWireException("Missing Responses output index")

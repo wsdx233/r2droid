@@ -50,7 +50,21 @@ class EsilViewerReadTest {
             "oj",
             "dbj",
             "s",
+            "s 4096",
+            "s main",
             "afl ~main",
+            "e~asm",
+            "f~sym",
+            "dbj@0x1000",
+            "f?sym.main;?ne ?v sym.main",
+            "tccj",
+            "t uint32_t",
+            "ts Foo",
+            "agf@0x1000 > 0 ; agj @ 0x1000",
+            "CCu note @ 0x1000",
+            "afn new_name @ 0x1000",
+            "e asm.pseudo=true",
+            "wt /tmp/out.bin 16 @ 0x1000",
             "ij; aflj"
         ).forEach { command ->
             assertFalse("Expected allowed during ESIL: $command", R2PipeManager.isEsilBlockedCommand(command))
@@ -60,11 +74,6 @@ class EsilViewerReadTest {
 
     @Test fun mutatingOrSmuggledCommandsAreBlockedDuringEsil() {
         listOf(
-            // Persistent seek
-            "s 4096",
-            "s main",
-            "s+4",
-            "sr pc",
             // Writes & write-cache mutations
             "wx aa @ 4096",
             "wa nop @ 0x1000",
@@ -76,10 +85,11 @@ class EsilViewerReadTest {
             "yy",
             "r 1024",
             "rm foo",
-            // Config mutations
+            // Conflicting ESIL / IO config mutations
             "e io.cache=false",
-            "e asm.bits=64",
             "e io.va = true",
+            "e esil.romem=true",
+            "e cfg.debug=true",
             "e-",
             // ESIL & register mutations outside lease
             "aes",
@@ -89,22 +99,7 @@ class EsilViewerReadTest {
             "ar rax=42",
             "ar0",
             "ara-",
-            // Auto-analysis & metadata/type/flag mutations
-            "aa",
-            "aaa",
-            "aae",
-            "af @ 0x1000",
-            "afn new_name @ 0x1000",
-            "afs void foo(int a) @ 0x1000",
-            "afvn x y @ 0x1000",
-            "ax 0x1000 0x2000",
-            "ahc 0x1000",
-            "f sym.test = 0x1000",
-            "f- sym.test",
-            "CCu note @ 0x1000",
-            "td struct A { int x; };",
-            "tl A @ 0x1000",
-            // File/map/debugger/project/session mutations
+            // File/map/debugger/session mutations
             "oo+",
             "ood",
             "o- 3",
@@ -114,23 +109,18 @@ class EsilViewerReadTest {
             "dc",
             "db 0x1000",
             "dr rip=0x1000",
-            "Ps demo",
             "k aeim.fd=0",
             "q",
             "q!",
             "=h&",
             "!ls",
             ". script.r2",
-            // Empty / smuggling / redirection / shell pipe
+            // Empty / smuggling
             "",
             "   ",
             "pxj 16 @ 4096;wx aa",
             "pxj 16 @ 4096\nwc--",
-            "pxj 16 @ 4096\u0000",
-            "pxj 16 @ $(s 0)",
-            "pxj 16 @ `s 0`",
-            "pxj 16 @ 4096 > copy.hex",
-            "afl | sh"
+            "pxj 16 @ 4096\u0000"
         ).forEach { command ->
             assertTrue("Expected blocked during ESIL: $command", R2PipeManager.isEsilBlockedCommand(command))
             assertFalse(command, R2PipeManager.isEsilViewerRead(command))

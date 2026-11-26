@@ -14,21 +14,32 @@ internal suspend fun WriteCacheRepository.exportPatchedCopy(context: Context, ur
         check(expected.canExport) { "No exportable write cache" }
         val target = loadPatchTarget(requireNotNull(session.projectPath), expected.entries, command)
         target.source.inputStream().use { source ->
-            // Opening with "w" or "rwt" would truncate an alias of the original BEFORE we could check it.
-            val document = context.contentResolver.openFileDescriptor(uri, "rw") ?: error("Cannot open the destination document")
-            document.use {
-                val input = Os.fstat(source.fd)
-                val output = Os.fstat(document.fileDescriptor)
-                check(input.st_dev != output.st_dev || input.st_ino != output.st_ino) { "Choose a copy, not the original file" }
-                check(document.statSize == 0L) { "Choose a new, empty destination document" }
-                ParcelFileDescriptor.AutoCloseOutputStream(document).use { stream ->
-                    try {
-                        streamPatchedCopy(source, stream, target.ranges, command)
-                    } catch (e: Exception) {
-                        // The destination was empty. Never leave an apparently valid partial binary on failure.
-                        runCatching { stream.channel.truncate(0) }
-                        throw e
+            val input = Os.fstat(source.fd)
+            // Prefer "rw" so we can verify the destination is not the live source binary before truncating;
+            // fall back to "wt" for SAF providers that only support write-only streams.
+            val rwDocument = runCatching { context.contentResolver.openFileDescriptor(uri, "rw") }.getOrNull()
+            if (rwDocument != null) {
+                rwDocument.use { document ->
+                    val output = Os.fstat(document.fileDescriptor)
+                    check(input.st_dev != output.st_dev || input.st_ino != output.st_ino) {
+                        "Choose a copy, not the original file"
                     }
+                    ParcelFileDescriptor.AutoCloseOutputStream(document).use { stream ->
+                        stream.channel.truncate(0)
+                        try {
+                            streamPatchedCopy(source, stream, target.ranges, command)
+                        } catch (e: Exception) {
+                            runCatching { stream.channel.truncate(0) }
+                            throw e
+                        }
+                    }
+                }
+            } else {
+                val writeOnly = context.contentResolver.openOutputStream(uri, "wt")
+                    ?: context.contentResolver.openOutputStream(uri)
+                    ?: error("Cannot open the destination document")
+                writeOnly.use { stream ->
+                    streamPatchedCopy(source, stream, target.ranges, command)
                 }
             }
         }

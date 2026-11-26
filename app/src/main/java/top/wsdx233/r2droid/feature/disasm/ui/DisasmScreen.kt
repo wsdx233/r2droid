@@ -391,13 +391,13 @@ fun DisassemblyViewer(
                                 },
                                 onModify = edit@{ type ->
                                     showMenu = false
-                                    if (!context.canOpenPatchEditor()) return@edit
                                     val capturedOpcode = instr.opcode
                                     if (type == "comment") {
                                         modifyType = type
                                         modifyInitialValue = null
                                         showModifyDialog = true
                                     } else {
+                                        if (!context.canOpenPatchEditor()) return@edit
                                         coroutineScope.launch {
                                             context.requestByteEditor(onReopen = {
                                                 pendingWriteAction = it

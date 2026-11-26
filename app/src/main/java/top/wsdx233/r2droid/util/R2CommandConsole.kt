@@ -75,8 +75,14 @@ internal class R2CommandConsole(private val logger: R2PipeLogger) : R2PipeLogger
         // A failed r2 command often returns normally and reports its error on fd 2
         // (or in stdout under -1). Do not mark such a transaction successful/dirty.
         fun checkedStdout(): String {
-            val diagnostic = COMMAND_ERROR.find(stderr) ?: COMMAND_ERROR.find(stdout)
-            if (diagnostic != null) error(diagnostic.value.trim().take(500))
+            val stderrMatch = COMMAND_ERROR.find(stderr)
+            if (stderrMatch != null) error(stderrMatch.value.trim().take(500))
+            // Only scan stdout when stderr is empty and stdout is not a JSON payload (e.g. merged -1 mode).
+            val trimmedStdout = stdout.trimStart()
+            if (stderr.isEmpty() && !trimmedStdout.startsWith("{") && !trimmedStdout.startsWith("[")) {
+                val stdoutMatch = COMMAND_ERROR.find(stdout)
+                if (stdoutMatch != null) error(stdoutMatch.value.trim().take(500))
+            }
             return stdout
         }
 

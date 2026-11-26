@@ -447,21 +447,24 @@ class R2DebugCommandRunner @Inject constructor() {
 
     private fun String.throwIfLooksLikeR2Error(command: String) {
         val trimmed = trim()
-        val normalized = trimmed.lowercase(Locale.ROOT)
-        val errorPrefixes = listOf("error:", "unknown command", "invalid command")
-        val errorFragments = listOf(
+        if (trimmed.isEmpty()) return
+        // Never misclassify valid JSON payloads (e.g., stack dumps containing string previews) as command errors.
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) return
+
+        val errorLinePrefixes = listOf(
+            "error:",
+            "unknown command",
+            "invalid command",
             "cannot open",
             "cannot find",
             "permission denied",
             "not in debug mode",
             "command failed"
         )
-        val hasError = errorPrefixes.any { normalized.startsWith(it) } ||
-            errorFragments.any { normalized.contains(it) } ||
-            normalized.lines().any { line ->
-                val l = line.trim()
-                l.startsWith("error:") || l.startsWith("unknown command") || l.startsWith("invalid command")
-            }
+        val hasError = trimmed.lineSequence().any { rawLine ->
+            val line = ANSI_REGEX.replace(rawLine, "").trim().lowercase(Locale.ROOT)
+            errorLinePrefixes.any { prefix -> line.startsWith(prefix) }
+        }
 
         if (hasError) {
             throw IllegalStateException("Command failed [$command]: ${trimmed.take(240)}")

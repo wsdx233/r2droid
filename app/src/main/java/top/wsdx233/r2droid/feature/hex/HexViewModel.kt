@@ -342,6 +342,9 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
         val manager = hexDataManager ?: return
         if (!target.isActive()) return
 
+        val previousState = _inspectorState.value
+        val addressChanged = previousState.address != address
+
         val cached = manager.readCachedBytes(address, HEX_INSPECTOR_MAX_BYTES)
         if (cached != null) {
             inspectorBytesJob?.cancel()
@@ -366,10 +369,9 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
             }
         }
 
-        val current = _inspectorState.value
         val needsDisasm = forceRefresh ||
-            current.address != address ||
-            (current.disasm == null && !current.disasmLoading && current.disasmError == null)
+            addressChanged ||
+            (previousState.disasm == null && !previousState.disasmLoading && previousState.disasmError == null)
         if (!needsDisasm && inspectorDisasmJob?.isActive == true) return
 
         inspectorDisasmJob?.cancel()
@@ -378,7 +380,7 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
                 address = address,
                 disasmLoading = true,
                 disasmError = null,
-                disasm = if (it.address == address && !forceRefresh) it.disasm else null
+                disasm = if (!addressChanged && !forceRefresh) it.disasm else null
             )
         }
         inspectorDisasmJob = viewModelScope.launch {
@@ -669,7 +671,7 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
             } catch (error: Exception) {
                 _exportStatus.value = HexExportStatus.Error(error.message ?: "Export failed")
             } finally {
-                withContext(Dispatchers.IO) {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
                     runCatching { if (tempFile.exists()) tempFile.delete() }
                 }
             }
@@ -688,8 +690,12 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
         viewModelScope.launch {
             if (!target.isActive()) return@launch
             var offset = 0
+            var succeeded = true
             while (offset < totalBytes) {
-                if (!target.isActive()) return@launch
+                if (!target.isActive()) {
+                    succeeded = false
+                    break
+                }
                 val chunkLen = minOf(WRITE_FILL_CHUNK_BYTES, totalBytes - offset)
                 val chunkHex = withContext(Dispatchers.Default) {
                     buildString(chunkLen * 2) {
@@ -704,13 +710,18 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
                 if (!session.writeViewerBytes(ViewerByteEdit.HEX, chunkHex, listOf(start + offset)) ||
                     R2PipeManager.activeSessionPipe !== session.pipe
                 ) {
-                    return@launch
+                    succeeded = false
+                    break
                 }
                 offset += chunkLen
             }
-            hexDataManager?.invalidateRange(start, totalBytes)
-            _dataModifiedEvent.value++
-            _selectionState.value = HexSelectionState()
+            if (offset > 0 && R2PipeManager.activeSessionPipe === session.pipe) {
+                hexDataManager?.invalidateRange(start, offset)
+                _dataModifiedEvent.value++
+            }
+            if (succeeded && R2PipeManager.activeSessionPipe === session.pipe) {
+                _selectionState.value = HexSelectionState()
+            }
         }
     }
 

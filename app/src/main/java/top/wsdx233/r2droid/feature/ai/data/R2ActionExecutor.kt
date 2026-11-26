@@ -123,11 +123,18 @@ class R2ActionExecutor(private val cacheDir: File? = null) {
                         check(isCurrent()) { STALE_TARGET }
                         runBlocking { pinned.execute(command) }.getOrThrow()
                     }
-                    function<String, Any?>("cmdj") { command ->
-                        check(isCurrent()) { STALE_TARGET }
-                        runBlocking { pinned.execute(command) }.getOrThrow()
-                    }
                 }
+                js.evaluate<Unit>(
+                    """
+                    r2.cmdj = function(command) {
+                        var raw = r2.cmd(command);
+                        if (raw === null || raw === undefined) return null;
+                        var trimmed = String(raw).trim();
+                        if (!trimmed) return null;
+                        return JSON.parse(trimmed);
+                    };
+                    """.trimIndent()
+                )
                 val result = js.evaluate<Any?>(code)
                 when {
                     outputLines.isNotEmpty() -> outputLines.joinToString("\n")

@@ -4,7 +4,6 @@ import org.json.JSONObject
 
 internal enum class ViewerByteEdit { HEX, TEXT, ASSEMBLY }
 
-private val assemblyOperand = Regex("[A-Za-z0-9_., \t+*#%:!()\\[\\]{}=-]+")
 private const val CACHE_SETTINGS = "e io.cache; e io.cache.read; e io.cache.write"
 
 internal fun isReadOnlyBinary(core: JSONObject?) = core?.optString("mode")?.let { 'r' in it && 'w' !in it } == true
@@ -24,7 +23,7 @@ internal suspend fun R2PipeManager.R2Session.writeViewerBytes(
             ViewerByteEdit.TEXT -> "w \"$data\""
             ViewerByteEdit.ASSEMBLY -> "wa $data"
         }
-        return addresses.all { R2PipeManager.execute(this, "$command @ $it").isSuccess }
+        return addresses.all { R2PipeManager.execute(this, "$command @ 0x${it.toULong().toString(16)}").isSuccess }
     }
 
     return R2PipeManager.withActiveLocalTransaction(this, "Stage byte edit", markDirty = true) { command ->
@@ -45,12 +44,14 @@ internal suspend fun R2PipeManager.R2Session.writeViewerBytes(
                 "wx ${value.encodeToByteArray().toHexString()}"
             }
             ViewerByteEdit.ASSEMBLY -> {
-                // Pass a single instruction, not r2 command syntax or substitutions.
-                require(value.isNotBlank() && assemblyOperand.matches(value)) { "Expected a single assembly instruction." }
-                "wa $value"
+                val trimmed = value.trim()
+                require(trimmed.isNotEmpty() && trimmed.none { it == '\u0000' || it == '\n' || it == '\r' }) {
+                    "Expected a valid assembly instruction."
+                }
+                "wa $trimmed"
             }
         }
-        addresses.forEach { command("$write @ $it") }
+        addresses.forEach { command("$write @ 0x${it.toULong().toString(16)}") }
     }.isSuccess
 }
 

@@ -646,9 +646,6 @@ object R2PipeManager {
         requiredActiveGeneration: Int? = null,
         run: suspend () -> T
     ): Result<T> {
-        // A writer submitted during teardown must not slip through just because release won
-        // the mutex before it. Recheck inside the lock for acquisitions after submission, too.
-        val leasedOnEntry = session.managedPipe.lease != null
         return session.mutex.withLock {
             withContext(Dispatchers.IO) {
                 if (requiredActiveGeneration != null && !isCurrentConnectedSession(session, requiredActiveGeneration)) {
@@ -659,7 +656,7 @@ object R2PipeManager {
                     check(isRegistered(session) && session.isConnected.get()) { "R2Pipe session is not connected." }
                     if (lease != null) {
                         check(owner === lease) { "ESIL no longer owns this R2Pipe session." }
-                    } else if (owner != null || leasedOnEntry) {
+                    } else if (owner != null) {
                         check(canReadDuringEsil && !isEsilBlockedCommand(cmd)) {
                             "ESIL owns this R2Pipe session. Stop ESIL before running this command."
                         }
@@ -672,7 +669,7 @@ object R2PipeManager {
                     publishActiveStateFrom(session.sessionId)
                     LogManager.log(LogType.COMMAND, cmd)
                     val result = run()
-                    if (markDirty && owner == null && !leasedOnEntry) synchronized(sessionsLock) {
+                    if (markDirty && owner == null) synchronized(sessionsLock) {
                         _sessions.value[session.sessionId]?.takeIf { it.pipe === session.pipe }?.isDirtyAfterSave = true
                     }
                     session.state.value = State.Success(cmd, render(result))
@@ -690,16 +687,16 @@ object R2PipeManager {
     }
 
     /**
-     * Blacklist guard active while ESIL holds a session lease.
+     * Focused guard active while ESIL holds a session lease.
      *
-     * Allows read-only inspection, decompilation, disassembly, symbol/xref queries, and AI analysis
-     * commands, while blocking commands that mutate binary/write-cache state, r2 config, seek,
-     * ESIL/register state, file mappings, or execute shell/script side effects.
+     * Blocks only commands that would directly corrupt the active ESIL VM state, isolated
+     * write-cache layer, register arena, file descriptors, or terminate the r2 process.
+     * Navigation (`s`), graphs (`agf > 0; agj`), comments/flags/types/annotations, and
+     * read-only inspection (including `~`/`@` without spaces) remain available.
      */
     internal fun isEsilBlockedCommand(command: String): Boolean {
         if (command.isBlank()) return true
         if (command.any { it == '\u0000' || it == '\n' || it == '\r' }) return true
-        if (hasUnsafeUnquotedSyntax(command)) return true
 
         val segments = splitUnquotedSemicolons(command)
             .map { it.trim() }
@@ -709,37 +706,6 @@ object R2PipeManager {
     }
 
     internal fun isEsilViewerRead(command: String): Boolean = !isEsilBlockedCommand(command)
-
-    private fun hasUnsafeUnquotedSyntax(command: String): Boolean {
-        var quote: Char? = null
-        var escaped = false
-        for (i in command.indices) {
-            val ch = command[i]
-            if (escaped) {
-                escaped = false
-                continue
-            }
-            if (ch == '\\' && quote != '\'') {
-                escaped = true
-                continue
-            }
-            if (quote != null) {
-                if (ch == quote) quote = null
-                continue
-            }
-            when (ch) {
-                '\'', '"' -> quote = ch
-                '`', '|' -> return true
-                '$' -> if (i + 1 < command.length && command[i + 1] == '(') return true
-                '>' -> {
-                    // Block file redirection (`> file`, `>> file`), while keeping `?v rax>0` usable.
-                    val prev = command.getOrNull(i - 1)
-                    if (prev == null || prev.isWhitespace() || prev == '>') return true
-                }
-            }
-        }
-        return false
-    }
 
     private fun splitUnquotedSemicolons(command: String): List<String> {
         val parts = mutableListOf<String>()
@@ -797,18 +763,19 @@ object R2PipeManager {
             }
             when (ch) {
                 '\'', '"' -> quote = ch
-                '@', '~' -> if (i > 0 && segment[i - 1].isWhitespace()) {
-                    return segment.substring(0, i).trim()
-                }
+                '@', '~' -> if (i > 0) return segment.substring(0, i).trim()
             }
         }
         return segment.trim()
     }
 
+    private val ESIL_PROTECTED_CONFIG_PREFIXES = listOf(
+        "io.cache", "io.va", "esil.", "cfg.debug", "asm.emu", "emu.str"
+    )
+
     private fun isBlockedEsilSegment(segment: String): Boolean {
         val base = stripUnquotedModifiers(segment)
         if (base.isEmpty()) return true
-        // Strip optional numeric repeat prefix (e.g. `2wx 90`, `10aes`).
         val withoutRepeat = base.dropWhile { it.isDigit() }.trimStart()
         if (withoutRepeat.isEmpty()) return true
 
@@ -816,17 +783,16 @@ object R2PipeManager {
         val head = if (splitIdx == -1) withoutRepeat else withoutRepeat.substring(0, splitIdx)
         val args = if (splitIdx == -1) "" else withoutRepeat.substring(splitIdx + 1).trim()
 
-        // Comments are no-ops; block script/macro/shell/server/quit prefixes.
+        // Comments are no-ops; block process quit / shell / server / script commands that can hijack the pipe.
         if (head.startsWith("#!")) return true
         if (head.startsWith("#")) return false
         if (head.startsWith("!") || head.startsWith("=") || head.startsWith(".") || head.startsWith("(")) return true
-        if (head.startsWith("q") || head.startsWith("Q")) return true
+        if (head == "q" || head == "q!" || head.startsWith("Q")) return true
 
-        // Block all binary write & write-cache commands (`w*`), yank-paste (`yy`), and file resize/rm (`r*`).
-        if (head.startsWith("w") || head.startsWith("yy")) return true
-        if (head.startsWith("r")) {
-            return !(head in setOf("r", "r?") && args.isEmpty())
-        }
+        // Block binary & write-cache mutations (`w*` except `wt` export-to-file), yank-paste, and resize/rm.
+        if (head.startsWith("w")) return !head.startsWith("wt")
+        if (head.startsWith("yy")) return true
+        if (head.startsWith("r")) return !(head in setOf("r", "r?") && args.isEmpty())
 
         // Block file/IO/map mutations (`o*`), allowing pure read-only listings.
         if (head.startsWith("o")) {
@@ -846,30 +812,16 @@ object R2PipeManager {
             return !readOnlyReg
         }
 
-        // Block auto-analysis (`aa*`) and mutating `af*` / `ax*` / `ah*` commands.
-        if (head.startsWith("aa")) return true
-        if (head.startsWith("af")) return !isReadOnlyAfCommand(head, args)
-        if (head.startsWith("ax")) {
-            val readOnlyXref = head in setOf("axt", "axtj", "axf", "axfj", "axl", "axj", "axq", "axg", "ax?") ||
-                (head == "ax" && args.isEmpty())
-            return !readOnlyXref
-        }
-        if (head.startsWith("ah")) {
-            val readOnlyHint = head in setOf("ahj", "ah*", "ah?") || (head == "ah" && args.isEmpty())
-            return !readOnlyHint
-        }
-
-        // Block r2 config mutations (`e key=val`, `e-`, `e+`, `e!`, `er`, `eco`), allowing `e` / `e key` / `ej`.
+        // Block only r2 config mutations that conflict with ESIL isolation (`io.cache*`, `io.va`, `esil.*`, `cfg.debug`, `asm.emu`, `emu.str`).
         if (head.startsWith("e")) {
-            val readOnlyEval = head in setOf("ej", "e?", "e*") ||
-                (head == "e" && '=' !in args)
-            return !readOnlyEval
-        }
-
-        // Block persistent seek (`s <addr>`, `s+`, `s-`, `sr`, etc.), allowing current seek query (`s`, `s.`, `sj`).
-        if (head.startsWith("s")) {
-            val readOnlySeek = (head in setOf("s", "s.", "sj", "s?", "sl") && args.isEmpty())
-            return !readOnlySeek
+            if (head == "e-") return true
+            if (head == "e" && '=' in args) {
+                val key = args.substringBefore('=').trim()
+                return ESIL_PROTECTED_CONFIG_PREFIXES.any { prefix ->
+                    key == prefix || key.startsWith(prefix)
+                }
+            }
+            return false
         }
 
         // Block external debugger control (`d*`), allowing read-only inspection (`dbj`, `dmj`, `drj`, `dptj`, `dbtj`).
@@ -882,53 +834,10 @@ object R2PipeManager {
             return !readOnlyDebug
         }
 
-        // Block project save/open/delete (`P*`), allowing listing.
-        if (head.startsWith("P")) {
-            return head !in setOf("Pl", "Pj", "P?")
-        }
-
-        // Block SDB writes (`k key=val`), allowing reads.
-        if (head == "k") return '=' in args
-
-        // Block flag mutations (`f*`), allowing read-only flag & describe queries (`fj`, `fl`, `fd*`, `fsj`).
-        if (head.startsWith("f")) {
-            val readOnlyFlag = head in setOf("fj", "fl", "f?", "fd", "fd.", "fdj", "fdd", "fdw", "fsj") ||
-                (head in setOf("f", "fs") && args.isEmpty())
-            return !readOnlyFlag
-        }
-
-        // Block comment/meta mutations (`C*`), allowing read-only queries (`C,...`, `Cj`, `CC.`, `CCj`, `Csj`, `Cfj`).
-        if (head.startsWith("C")) {
-            val readOnlyMeta = head.startsWith("C,") ||
-                head in setOf("Cj", "CC.", "CCj", "CC*", "Csj", "Cfj", "Clj", "Cdj", "C?", "CC?") ||
-                (head in setOf("C", "CC") && args.isEmpty())
-            return !readOnlyMeta
-        }
-
-        // Block type mutations (`t*`), allowing read-only type inspection (`tj`, `tsj`, `tej`, `tuj`, `ttj`, `tlj`, `tc`, `tp*`).
-        if (head.startsWith("t")) {
-            val readOnlyType = head in setOf("tj", "t?", "tsj", "tej", "tuj", "ttj", "tlj", "tc", "tp", "tpx", "tpf") ||
-                (head in setOf("t", "ts", "te", "tu", "tt", "tl") && args.isEmpty()) ||
-                (head == "tk" && '=' !in args)
-            return !readOnlyType
-        }
-
-        // Block zignature mutations (`z*`), allowing read-only listings.
-        if (head.startsWith("z")) {
-            return head !in setOf("z", "zj", "zl", "z?") || args.isNotEmpty()
-        }
+        // Block SDB writes to ESIL stack key (`k aeim.fd=...`).
+        if (head == "k" && '=' in args && args.substringBefore('=').trim().startsWith("aeim.")) return true
 
         return false
-    }
-
-    private fun isReadOnlyAfCommand(head: String, args: String): Boolean = when {
-        head.startsWith("afl") -> true
-        head.startsWith("afi") -> true
-        head.startsWith("afx") -> true
-        head.startsWith("afg") -> true
-        head in setOf("afb", "afbj", "afvj", "afvl", "afv?", "afcj", "afcl", "afclj", "afsj", "af?", "afn?") -> true
-        head in setOf("afv", "afc", "afs") && args.isEmpty() -> true
-        else -> false
     }
 
     suspend fun execute(cmd: String, markDirty: Boolean = true, includeStderr: Boolean = false): Result<String> {
@@ -993,7 +902,7 @@ object R2PipeManager {
      */
     fun interrupt(): Unit = synchronized(sessionsLock) {
         val session = activeSession() ?: return@synchronized
-        if (session.isConnected.get() && session.managedPipe.lease == null) {
+        if (session.isConnected.get()) {
             session.managedPipe.transport.interrupt()
         }
     }

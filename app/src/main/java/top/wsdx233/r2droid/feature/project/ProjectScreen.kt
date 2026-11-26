@@ -182,12 +182,31 @@ fun ProjectScreen(
         }
     }
 
-    fun requestAction(action: SessionAction, session: R2PipeManager.R2Session) {
+    fun requestAction(action: SessionAction, session: R2PipeManager.R2Session, skipCachePrompt: Boolean = false) {
         val request = CacheDiscardRequest(action, session)
         if (!request.isCurrent()) return
-        // Project “dirty” tracks analysis, not the cache. Do not probe a busy, disconnected,
-        // or ESIL-owned pipe: lack of a readable snapshot is not evidence that it is empty.
-        if (session.writeCacheEnabled) cacheDiscardRequest = request else perform(request)
+        if (!session.writeCacheEnabled || skipCachePrompt) {
+            perform(request, discardWriteCache = session.writeCacheEnabled)
+            return
+        }
+        // Only prompt when the write cache may actually contain pending patches.
+        if (!session.isConnected.get() || session.state.value is R2PipeManager.State.Executing || R2PipeManager.esilOwnsActivePipe) {
+            cacheDiscardRequest = request
+            return
+        }
+        drawerScope.launch {
+            val hasPending = runCatching {
+                val raw = R2PipeManager.execute(session, "wcj", markDirty = false).getOrNull().orEmpty().trim()
+                if (raw.isEmpty() || raw == "{}" || raw == "[]") false
+                else {
+                    val entries = top.wsdx233.r2droid.feature.project.patches.WriteCacheFormat.parseEntries(raw)
+                    entries.any { !it.written }
+                }
+            }.getOrDefault(true)
+            if (!request.isCurrent()) return@launch
+            if (hasPending) cacheDiscardRequest = request
+            else perform(request, discardWriteCache = true)
+        }
     }
 
     fun saveAndExit(session: R2PipeManager.R2Session, projectId: String? = null) {
@@ -202,7 +221,8 @@ fun ProjectScreen(
                 if (R2PipeManager.activeSessionPipe === session.pipe) {
                     if (success) {
                         dismissExit()
-                        requestAction(SessionAction.Exit, session)
+                        // The exit dialog already warned that project save excludes write-cache patches.
+                        requestAction(SessionAction.Exit, session, skipCachePrompt = true)
                     } else {
                         exitSaveError = (viewModel.saveProjectState.value as? SaveProjectState.Error)?.message
                     }
@@ -411,7 +431,7 @@ fun ProjectScreen(
                         }
                         TextButton(onClick = {
                             dismissExit()
-                            requestAction(SessionAction.Exit, session)
+                            requestAction(SessionAction.Exit, session, skipCachePrompt = true)
                         }) {
                             Text(stringResource(R.string.project_exit_discard))
                         }

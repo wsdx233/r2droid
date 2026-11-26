@@ -112,7 +112,7 @@ class AiWireTest {
     }
 
     @Test
-    fun `Responses completed-only snapshot yields calls but cannot reuse a historical call ID`() = runBlocking {
+    fun `Responses completed-only snapshot yields calls and deduplicates reused historical call IDs`() = runBlocking {
         LocalServer().use { server ->
             val snapshot = response("response.completed", """ "response":{"status":"completed","output":[
                 {"id":"fc_final","type":"function_call","call_id":"call_final","name":"lookup","arguments":"{}"}]} """)
@@ -124,10 +124,8 @@ class AiWireTest {
             assertEquals("call_final", call.id)
             val history = listOf(user, ChatMessage(role = ChatRole.Assistant, content = "",
                 toolCalls = listOf(call.copy(status = ToolCallStatus.Succeeded, output = "Done"))))
-            val seen = mutableListOf<AiTurnEvent>()
-            val error = runCatching { turn(provider, history).toList(seen) }.exceptionOrNull()
-            assertTrue(error is AiWireException)
-            assertTrue(seen.isEmpty())
+            val second = turn(provider, history).toList().single() as AiTurnEvent.Completed
+            assertEquals("call_final_2", second.calls.single().id)
         }
     }
 
@@ -260,17 +258,27 @@ class AiWireTest {
     }
 
     @Test
-    fun `successful HTTP streams do not classify length finishes or failed partial turns as input rejections`() = runBlocking {
+    fun `successful HTTP streams preserve text on length truncation and fail cleanly on stream errors`() = runBlocking {
         val chatDelta = frame("""{"choices":[{"index":0,"delta":{"content":"Partial"}}]}""")
         val responseDelta = response("response.output_text.delta", """"output_index":0,"item_id":"m1","content_index":0,"delta":"Partial"""")
-        val cases = listOf(
+        val truncatedCases = listOf(
             false to (chatDelta + frame("""{"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}""") + done),
-            false to (chatDelta + frame("""{"error":{"code":"context_length_exceeded"}}""")),
-            true to (responseDelta + response("response.failed", """"response":{"status":"failed","error":{"code":"context_length_exceeded"}}""")),
             true to (responseDelta + response("response.incomplete", """"response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}"""))
         )
+        val errorCases = listOf(
+            false to (chatDelta + frame("""{"error":{"code":"context_length_exceeded"}}""")),
+            true to (responseDelta + response("response.failed", """"response":{"status":"failed","error":{"code":"context_length_exceeded"}}"""))
+        )
         LocalServer().use { server ->
-            for ((responses, wire) in cases) {
+            for ((responses, wire) in truncatedCases) {
+                server.enqueue(wire)
+                val received = turn(server.provider(responses)).toList()
+                assertEquals(listOf(AiTurnEvent.Text("Partial")), received.filterIsInstance<AiTurnEvent.Text>())
+                assertTrue(received.last() is AiTurnEvent.Completed)
+                assertEquals(1, server.requests.size)
+                server.requests.remove()
+            }
+            for ((responses, wire) in errorCases) {
                 server.enqueue(wire)
                 val received = mutableListOf<AiTurnEvent>()
                 val error = runCatching { turn(server.provider(responses)).toList(received) }.exceptionOrNull()

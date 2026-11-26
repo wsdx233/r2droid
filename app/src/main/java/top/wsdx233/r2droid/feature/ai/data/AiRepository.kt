@@ -136,17 +136,25 @@ class AiRepository @Inject constructor() {
                 val parser = if (provider.useResponsesApi) AiResponsesTurnWire(names) else AiChatTurnWire(names)
                 while (true) {
                     ensureActive()
-                    val event = events.next() ?: throw AiWireException("AI stream disconnected before a complete turn")
-                    ensureActive()
-                    val completed = parser.accept(
-                        event = event,
-                        emitText = { emit(AiTurnEvent.Text(it)) },
-                        emitReasoning = { emit(AiTurnEvent.Reasoning(it)) }
-                    )
-                    if (completed != null) {
-                        wireCheck(completed.calls.none { it.id in payload.callIds }, "Duplicate historical tool call ID")
+                    val event = events.next()
+                    val completed = if (event == null) {
+                        parser.finishOnEof() ?: throw AiWireException("AI stream disconnected before a complete turn")
+                    } else {
                         ensureActive()
-                        emit(completed)
+                        parser.accept(
+                            event = event,
+                            emitText = { emit(AiTurnEvent.Text(it)) },
+                            emitReasoning = { emit(AiTurnEvent.Reasoning(it)) }
+                        )
+                    }
+                    if (completed != null) {
+                        val usedIds = payload.callIds.toMutableSet()
+                        val normalizedCalls = completed.calls.map { call ->
+                            val uniqueId = deduplicateCallId(call.id, usedIds)
+                            if (uniqueId == call.id) call else call.copy(id = uniqueId)
+                        }
+                        ensureActive()
+                        emit(completed.copy(calls = normalizedCalls))
                         break
                     }
                 }

@@ -104,8 +104,9 @@ internal class EsilSession(
             engineStarted = true
         }
         val sp = createScratchStack(size)
-        checked("aer SP=$sp")
-        if (roles.any { it.optString("role_str") == "BP" }) checked("aer BP=$sp")
+        val spHex = "0x${sp.toULong().toString(16)}"
+        checked("aer SP=$spHex")
+        if (roles.any { it.optString("role_str") == "BP" }) checked("aer BP=$spHex")
         setPc(startAddress)
     }
 
@@ -131,7 +132,7 @@ internal class EsilSession(
         val originalFd = checked("oqq").toInt()
         // Allocate only anonymous memory. In particular aeim/aeim- must not touch aaa's fd.
         scratchBase = base
-        checked("on malloc://$size $base rw-")
+        checked("on malloc://$size 0x${base.toULong().toString(16)} rw-")
         check(scratchFd() != null) { "Failed to map the ESIL stack" }
         if (checked("oqq").toInt() != originalFd) checked("o=$originalFd")
         return base + if (requested == null) size / 2 else size - 16
@@ -148,9 +149,10 @@ internal class EsilSession(
     }
 
     suspend fun setPc(address: Long) {
+        val hex = "0x${address.toULong().toString(16)}"
         // One pipe request: a viewer seek cannot slip between selecting the address and setting PC.
-        checked("s $address;aeip")
-        check(runner.parseAddress(checked("aer PC")) == address) { "Failed to set ESIL PC to 0x${address.toString(16)}" }
+        checked("s $hex;aeip")
+        check(runner.parseAddress(checked("aer PC")) == address) { "Failed to set ESIL PC to $hex" }
     }
 
     fun role(name: String): RegisterRole = when (name) {
@@ -163,6 +165,7 @@ internal class EsilSession(
     }
 
     suspend fun close() = withContext(NonCancellable) {
+        var cleanupFailure: Throwable? = null
         try {
             if (lease.isConnected) {
                 pendingBreakpointRestore?.let { checked(it); pendingBreakpointRestore = null }
@@ -194,11 +197,14 @@ internal class EsilSession(
                     restore.remove(key)
                 }
             }
-            lease.release()
         } catch (failure: Throwable) {
-            // Quarantine a live pipe rather than discarding someone else's unsaved patches.
-            // Close/Reset can retry rollback; the caller must not release this lease on failure.
-            throw IllegalStateException("ESIL cleanup failed; writes remain locked. Retry closing the debugger: ${failure.message}", failure)
+            cleanupFailure = failure
+        } finally {
+            // Always release the lease so a partial cleanup error never bricks the session permanently.
+            lease.release()
+        }
+        cleanupFailure?.let {
+            throw IllegalStateException("ESIL cleanup failed: ${it.message}", it)
         }
     }
 

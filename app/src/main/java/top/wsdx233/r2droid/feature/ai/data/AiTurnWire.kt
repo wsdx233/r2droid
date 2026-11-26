@@ -58,6 +58,9 @@ internal interface AiTurnWire {
         emitText: suspend (String) -> Unit,
         emitReasoning: suspend (String) -> Unit = {}
     ): AiTurnEvent.Completed?
+
+    /** Called if the HTTP stream ends cleanly without an explicit terminal marker (e.g. missing `[DONE]`). */
+    fun finishOnEof(): AiTurnEvent.Completed? = null
 }
 
 internal class AiChatTurnWire(private val tools: Set<String>) : AiTurnWire {
@@ -70,34 +73,45 @@ internal class AiChatTurnWire(private val tools: Set<String>) : AiTurnWire {
     private val calls = sortedMapOf<Int, Call>()
     private var finish: String? = null
 
+    private fun finalizeTurn(): AiTurnEvent.Completed {
+        val reason = finish ?: throw AiWireException("Chat stream ended without a finish reason")
+        if (calls.isEmpty()) {
+            return when (reason) {
+                "stop", "length", "content_filter" -> AiTurnEvent.Completed(emptyList())
+                else -> throw AiWireException("Unsuccessful or inconsistent Chat finish reason: $reason")
+            }
+        }
+        // Reject truncated tool calls (finish_reason == "length") so we never execute half-streamed arguments.
+        if (reason != "tool_calls" && reason != "stop" && reason != "function_call") {
+            throw AiWireException("Unsuccessful or inconsistent Chat finish reason: $reason")
+        }
+        val result = calls.entries.mapIndexed { index, (actualIndex, call) ->
+            wireCheck(index == actualIndex, "Missing tool call index")
+            completedCall(call.id, call.name, call.arguments.toString(), tools)
+        }
+        return AiTurnEvent.Completed(requireUniqueCalls(result))
+    }
+
+    override fun finishOnEof(): AiTurnEvent.Completed? {
+        // Complete text turns cleanly if the provider sent finish_reason but omitted `[DONE]`.
+        if (finish != null && calls.isEmpty()) return finalizeTurn()
+        return null
+    }
+
     override suspend fun accept(
         event: AiSseEvent,
         emitText: suspend (String) -> Unit,
         emitReasoning: suspend (String) -> Unit
     ): AiTurnEvent.Completed? {
         if (event.type == "error") throw AiWireException("Chat stream reported an error")
-        if (event.data == "[DONE]") {
-            val reason = finish ?: throw AiWireException("Chat stream ended without a finish reason")
-            return when {
-                reason == "stop" && calls.isEmpty() -> AiTurnEvent.Completed(emptyList())
-                reason == "tool_calls" && calls.isNotEmpty() -> {
-                    val result = calls.entries.mapIndexed { index, (actualIndex, call) ->
-                        wireCheck(index == actualIndex, "Missing tool call index")
-                        completedCall(call.id, call.name, call.arguments.toString(), tools)
-                    }
-                    AiTurnEvent.Completed(requireUniqueCalls(result))
-                }
-                else -> throw AiWireException("Unsuccessful or inconsistent Chat finish reason: $reason")
-            }
-        }
+        if (event.data == "[DONE]") return finalizeTurn()
         if (event.data.isBlank()) return null
         val body = parseWireObject(event.data, "Chat event")
         if (body["error"].let { it != null && it != JsonNull }) throw AiWireException("Chat stream reported an error")
-        val choices = body.wireArray("choices") ?: throw AiWireException("Missing Chat choices")
+        val choices = body.wireArray("choices") ?: return null
         if (choices.isEmpty()) return null // Optional usage chunk, even after finish_reason.
-        wireCheck(choices.size == 1 && finish == null, "Unexpected Chat choice after finish or multiple choices")
-        val choice = choices.single().wireObject("Chat choice")
-        wireCheck((choice.wireIndex("index") ?: 0) == 0, "Unexpected Chat choice index")
+        if (finish != null) return null // Tolerate trailing usage/metadata chunks after finish_reason.
+        val choice = choices.first().wireObject("Chat choice")
         val delta = choice.wireObjectOrNull("delta")
         if (delta != null) {
             wireCheck(delta["function_call"] == null || delta["function_call"] == JsonNull, "Legacy function_call is not supported")
@@ -107,12 +121,12 @@ internal class AiChatTurnWire(private val tools: Set<String>) : AiTurnWire {
                 val index = tool.wireIndex("index") ?: throw AiWireException("Missing tool call index")
                 wireCheck(seen.add(index), "Repeated tool call index in Chat chunk")
                 wireCheck(tools.isNotEmpty(), "Unexpected tool call in a text-only turn")
-                val type = tool.wireString("type")
+                val type = tool.wireString("type")?.takeIf(String::isNotEmpty)
                 wireCheck(type == null || type == "function", "Unsupported Chat tool type")
                 val call = calls.getOrPut(index) { Call() }
-                call.id = agree(call.id, tool.wireString("id"), "tool call ID")
+                call.id = agree(call.id, tool.wireString("id")?.takeIf(String::isNotEmpty), "tool call ID")
                 tool.wireObjectOrNull("function")?.let { function ->
-                    call.name = agree(call.name, function.wireString("name"), "tool name")
+                    call.name = agree(call.name, function.wireString("name")?.takeIf(String::isNotEmpty), "tool name")
                     function.wireString("arguments")?.let(call.arguments::append)
                 }
             }
@@ -122,7 +136,7 @@ internal class AiChatTurnWire(private val tools: Set<String>) : AiTurnWire {
             reasoning?.takeIf(String::isNotEmpty)?.let { emitReasoning(it) }
             delta.wireString("content")?.takeIf(String::isNotEmpty)?.let { emitText(it) }
         }
-        finish = choice.wireString("finish_reason")
+        choice.wireString("finish_reason")?.takeIf(String::isNotEmpty)?.let { finish = it }
         return null
     }
 }
@@ -188,6 +202,17 @@ internal fun completedCall(id: String?, name: String?, arguments: String?, tools
     wireCheck(name in tools, "Tool call names an unadvertised function")
     validateToolArguments(arguments)
     return AiToolCall(id = id, name = name, arguments = arguments)
+}
+
+internal fun deduplicateCallId(rawId: String, usedIds: MutableSet<String>): String {
+    val base = rawId.trim().ifEmpty { "call" }
+    if (usedIds.add(base)) return base
+    var suffix = 2
+    while (true) {
+        val candidate = "${base}_$suffix"
+        if (usedIds.add(candidate)) return candidate
+        suffix++
+    }
 }
 
 internal fun requireUniqueCalls(calls: List<AiToolCall>): List<AiToolCall> {

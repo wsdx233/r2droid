@@ -154,10 +154,26 @@ class DebuggerRepository @Inject constructor(
                 esilBackend.runToCursor(address)
             } else runCatching {
                 val pipe = R2PipeManager.activeSessionPipe
-                target.setBreakpoint(DebugBreakpoint(address = address, temporary = true)).getOrThrow()
+                val existing = target.listBreakpoints().getOrDefault(emptyList()).firstOrNull { it.address == address }
+                val addedTemp = if (existing == null) {
+                    target.setBreakpoint(DebugBreakpoint(address = address, temporary = true)).getOrThrow()
+                    true
+                } else {
+                    if (!existing.enabled) target.setBreakpointEnabled(address, true)
+                    false
+                }
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
                 val result = target.continueRun()
-                val removed = pipe === R2PipeManager.activeSessionPipe && target.removeBreakpoint(address).isSuccess
+                val removed = if (pipe === R2PipeManager.activeSessionPipe) {
+                    when {
+                        addedTemp -> target.removeBreakpoint(address).isSuccess
+                        existing != null && !existing.enabled -> {
+                            target.setBreakpointEnabled(address, false)
+                            false
+                        }
+                        else -> false
+                    }
+                } else false
                 val snapshot = result.getOrThrow()
                 if (removed) snapshot.copy(breakpoints = snapshot.breakpoints.filterNot { it.address == address })
                 else snapshot
@@ -175,7 +191,7 @@ class DebuggerRepository @Inject constructor(
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
                 target.writeRegister(pcName, address).getOrThrow()
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
-                runner.executeForBackend(backend, "s $address").getOrThrow()
+                runner.executeForBackend(backend, "s 0x${address.toULong().toString(16)}").getOrThrow()
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
                 target.refresh().getOrThrow()
             }

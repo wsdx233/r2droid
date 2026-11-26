@@ -108,6 +108,9 @@ class R2DebugCommandRunnerTest {
     @Test
     fun validateCommandOutput_acceptsNormalOutput() {
         runner.validateCommandOutput("cmd", "0x1000\n")
+        // Stack/JSON outputs containing error-like binary strings must not trigger false positives.
+        runner.validateCommandOutput("pxr", "0x7fffffffe008 0x604000 ascii \"Permission denied\"\n")
+        runner.validateCommandOutput("pxrj", """[{"addr":"0x7fff","string":"Cannot open file"}]""")
     }
 
     @Test

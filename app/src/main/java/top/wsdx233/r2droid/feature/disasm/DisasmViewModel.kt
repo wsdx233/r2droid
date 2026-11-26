@@ -639,8 +639,11 @@ class DisasmViewModel @Inject constructor(
     private fun parseDebugLong(raw: String): Long? {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return null
-        return trimmed.removePrefix("0x").removePrefix("0X").toLongOrNull(16)
-            ?: trimmed.toLongOrNull()
+        return if (trimmed.startsWith("0x", ignoreCase = true)) {
+            trimmed.drop(2).toULongOrNull(16)?.toLong()
+        } else {
+            trimmed.toLongOrNull() ?: trimmed.toULongOrNull(16)?.toLong()
+        }
     }
 
     private fun buildDebugSessionConfig(): Result<DebugSessionConfig> = runCatching {
@@ -1307,8 +1310,8 @@ class DisasmViewModel @Inject constructor(
 
     fun writeComment(addr: Long, comment: String) {
         viewModelScope.launch {
-            val escaped = comment.replace("\"", "\\\"")
-            top.wsdx233.r2droid.util.R2PipeManager.execute("CCu \"$escaped\" @ $addr")
+            val sanitized = comment.replace("\r", " ").replace("\n", " ").replace("\"", "\\\"")
+            top.wsdx233.r2droid.util.R2PipeManager.execute("CCu \"$sanitized\" @ 0x${addr.toULong().toString(16)}")
             resetAndScrollTo(addr)
             _dataModifiedEvent.value = System.currentTimeMillis()
         }

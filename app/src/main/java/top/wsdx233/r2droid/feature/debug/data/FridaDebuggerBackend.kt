@@ -23,12 +23,11 @@ class FridaDebuggerBackend @Inject constructor(
         val canReadRegisters = runner.executeFrida("drj").isSuccess
         val canListBreakpoints = runner.executeFrida("dbj").isSuccess
         val canReadMaps = runner.executeFrida("dmj").isSuccess
-        val canContinue = runner.executeFrida("dc").isSuccess
         DebugCapabilities(
             canStepInto = false,
             canStepOver = false,
             canStepOut = false,
-            canContinue = canContinue,
+            canContinue = canReadRegisters,
             canPause = true,
             canEditRegisters = false,
             canReadMemory = canReadMaps,
@@ -82,8 +81,7 @@ class FridaDebuggerBackend @Inject constructor(
 
     override suspend fun setBreakpoint(breakpoint: DebugBreakpoint): Result<DebugBreakpoint> = runCatching {
         requireFridaSession().getOrThrow()
-        val address = "0x${breakpoint.address.toString(16)}"
-        runner.executeFrida("db $address").getOrThrow()
+        runner.executeFrida("db ${formatHexAddress(breakpoint.address)}").getOrThrow()
         breakpoint
     }
 

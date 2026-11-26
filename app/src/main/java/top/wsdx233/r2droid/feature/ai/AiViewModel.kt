@@ -206,9 +206,9 @@ class AiViewModel @Inject constructor(
                     currentCoroutineContext().ensureActive()
                     check(bound?.isCurrent() != false) { TARGET_CHANGED }
                     val end = checkNotNull(completed) { "Incomplete model response. No tool was run." }
-                    val calls = end.calls
-                    check(calls.all { it.id.isNotBlank() && seen.add(it.id) }) {
-                        "Invalid or repeated tool call ID. No tool from this response was run."
+                    val calls = end.calls.map { call ->
+                        val uniqueId = deduplicateCallId(call.id, seen)
+                        if (uniqueId == call.id) call else call.copy(id = uniqueId)
                     }
                     check(calls.isEmpty() || tools.isNotEmpty()) { "Unexpected tool request in a text-only conversation" }
                     check(calls.isNotEmpty() || draft.text.isNotBlank() || draft.reasoning.isNotBlank()) { "AI returned an empty response" }

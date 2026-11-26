@@ -38,11 +38,11 @@ internal object AiRequestWire {
                     // Never put a dangling assistant tool call on the wire, including on text-only retry.
                     val calls = message.toolCalls.takeIf { calls ->
                         tools.isNotEmpty() && calls.all { it.status.isTerminal }
-                    }.orEmpty()
-                    calls.forEach { call ->
-                        require(call.id.isNotBlank() && callIds.add(call.id)) { "Duplicate or empty historical call ID" }
+                    }.orEmpty().map { call ->
                         require(call.name.isNotBlank()) { "Empty historical tool name" }
                         validateToolArguments(call.arguments)
+                        val normalizedId = deduplicateCallId(call.id, callIds)
+                        if (normalizedId == call.id) call else call.copy(id = normalizedId)
                     }
                     if (responses) addResponsesAssistant(history, message.content, calls)
                     else addChatAssistant(history, message.content, calls)
