@@ -1,5 +1,8 @@
 package top.wsdx233.r2droid.feature.project
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -52,6 +55,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,10 +101,35 @@ fun ProjectScreen(
     val viewModel: ProjectViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val logs by viewModel.logs.collectAsState()
+    val legacyRestoreNotice by viewModel.legacyRestoreNotice.collectAsState()
+    val exportLegacyScriptState by viewModel.exportLegacyScriptState.collectAsState()
+    var pendingLegacyExportProjectId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val legacyScriptExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val projectId = pendingLegacyExportProjectId
+        pendingLegacyExportProjectId = null
+        uri?.let { viewModel.exportLegacyProjectScript(it, projectId) }
+    }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    androidx.compose.runtime.LaunchedEffect(exportLegacyScriptState) {
+        when (val state = exportLegacyScriptState) {
+            is ExportBinaryState.Success -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_SHORT).show()
+                viewModel.resetExportLegacyScriptState()
+            }
+            is ExportBinaryState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_SHORT).show()
+                viewModel.resetExportLegacyScriptState()
+            }
+            else -> Unit
+        }
+    }
     val configuration = LocalConfiguration.current
     val sessions by R2PipeManager.sessions.collectAsState()
     val activeSessionId by R2PipeManager.activeSessionId.collectAsState()
@@ -484,6 +513,31 @@ fun ProjectScreen(
 
     toolResultDialog?.let { result ->
         ToolResultDialog(result = result, onDismiss = { toolResultDialog = null })
+    }
+
+    legacyRestoreNotice?.takeIf { it.sessionToken === activeSession?.pipe }?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissLegacyRestoreNotice() },
+            title = { Text(stringResource(R.string.project_legacy_restore_title)) },
+            text = { Text(stringResource(R.string.project_legacy_restore_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingLegacyExportProjectId = notice.projectId
+                        viewModel.dismissLegacyRestoreNotice()
+                        val stem = notice.projectName.ifBlank { notice.projectId }.take(120)
+                        legacyScriptExportLauncher.launch("$stem.legacy.r2")
+                    }
+                ) {
+                    Text(stringResource(R.string.project_legacy_export_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissLegacyRestoreNotice() }) {
+                    Text(stringResource(R.string.project_legacy_restore_dismiss))
+                }
+            }
+        )
     }
 }
 

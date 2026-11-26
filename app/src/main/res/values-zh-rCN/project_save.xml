@@ -6,4 +6,14 @@
     <string name="project_save_separate_success">已另存为独立项目。当前会话未切换。请在「已保存的项目」中打开新项目。</string>
     <string name="project_save_separate_cached_success">已另存为独立项目。当前会话未切换，待处理的补丁仍留在当前会话中。</string>
     <string name="project_save_cached_success">已保存分析结果。待处理的补丁未保存，仍留在当前会话中。</string>
+    <string name="project_legacy_restore_title">旧版项目已恢复</string>
+    <string name="project_legacy_restore_patches_skipped">分析已恢复，旧补丁未应用。</string>
+    <string name="project_legacy_restore_message">分析已恢复，旧补丁未应用。原脚本已完整保留，您可以立即导出原脚本，或稍后在项目设置中导出。</string>
+    <string name="project_legacy_export_action">导出原脚本</string>
+    <string name="project_legacy_restore_dismiss">知道了</string>
+    <string name="proj_export_legacy_script_title">导出旧版原始脚本</string>
+    <string name="proj_export_legacy_script_desc">逐字节导出升级前保留的原始 project.r2 脚本（包含未应用的旧补丁）</string>
+    <string name="project_legacy_export_success">已导出旧版原始脚本</string>
+    <string name="project_legacy_export_unavailable">当前项目没有可导出的旧版原始脚本</string>
+    <string name="project_legacy_export_error">导出旧版原始脚本失败</string>
 </resources>

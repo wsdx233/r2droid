@@ -16,6 +16,8 @@ import top.wsdx233.r2droid.util.ProjectFileUtils
 import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.BufferedReader
 import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.io.Writer
 import java.util.UUID
 
@@ -35,6 +37,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         private const val TAG = "SavedProjectRepo"
         private const val PROJECTS_DIR = "projects"
         private const val SCRIPT_FILENAME = "project.r2"
+        internal const val LEGACY_SCRIPT_BACKUP_FILENAME = "project.legacy.r2"
+        private const val RESTORE_TEMP_DIR = "r2-restore"
         private const val METADATA_FILENAME = "project.json"
         private const val INDEX_FILENAME = "index.json"
         // Home and Project may each have a repository instance; serialize index mutations.
@@ -186,8 +190,11 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
                     check(session.currentProjectId == projectId && project.binaryPath == binaryPath) {
                         "Current file doesn't match project binary"
                     }
+                    val scriptFile = File(project.scriptPath)
                     R2PipeManager.exportProjectReplay(session) { replay, fd, formats ->
-                        writeAtomically(File(project.scriptPath)) { writeProjectReplay(replay.bufferedReader(), it, fd, formats) }
+                        updateProjectScriptWithLegacyBackup(scriptFile) { target ->
+                            writeAtomically(target) { writeProjectReplay(replay.bufferedReader(), it, fd, formats) }
+                        }
                         val updated = project.copy(
                             lastModified = System.currentTimeMillis(),
                             writeCacheEnabled = session.writeCacheEnabled
@@ -260,8 +267,8 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
         getAllProjects().find { it.id == projectId }
     }
 
-    /** Remove obsolete descriptor commands before handing an older project to a replay caller. */
-    suspend fun prepareProjectForRestore(projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
+    /** Validate a saved project script without modifying the stored project.r2 or index. */
+    suspend fun validateProjectForRestore(projectId: String): Result<SavedProject> = withContext(Dispatchers.IO) {
         projectFilesMutex.withLock {
             try {
                 val root = projectsDir
@@ -269,19 +276,89 @@ class SavedProjectRepository @Inject constructor(@ApplicationContext private val
                     ?: error("Project not found: $projectId")
                 val script = File(project.scriptPath)
                 script.bufferedReader().use { reader ->
-                    val header = reader.readLine()
-                    check(header?.startsWith(PS_HEADER) == true) { "Unsupported project replay script" }
-                    if (reader.readLine() != DESCRIPTOR_NEUTRAL) {
-                        // Open the input independently before AtomicFile replaces the old script.
-                        script.bufferedReader().use { original ->
-                            writeAtomically(script) { writeProjectReplay(original, it) }
-                        }
-                    }
+                    writeProjectReplay(reader, NullWriter)
                 }
                 Result.success(project)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e(TAG, "Failed to prepare project replay", e)
+                Log.e(TAG, "Failed to validate project replay", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * Generate a temporary filtered replay script from the original project.r2 without mutating
+     * the stored project archive, run [block], and delete the temporary file afterwards.
+     */
+    internal suspend fun <T> withTemporaryReplayScript(
+        projectId: String,
+        block: suspend (tempScript: File, report: ProjectReplayReport, project: SavedProject) -> T
+    ): Result<T> = withContext(Dispatchers.IO) {
+        val (project, prepared) = projectFilesMutex.withLock {
+            try {
+                val root = projectsDir
+                val found = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
+                    ?: error("Project not found: $projectId")
+                val script = File(found.scriptPath)
+                val tempDir = File(context.cacheDir, RESTORE_TEMP_DIR)
+                found to createTemporaryReplayScript(script, tempDir)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "Failed to prepare temporary project replay", e)
+                return@withContext Result.failure(e)
+            }
+        }
+        try {
+            Result.success(block(prepared.file, prepared.report, project))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Failed to replay project script", e)
+            Result.failure(e)
+        } finally {
+            runCatching { prepared.file.delete() }
+        }
+    }
+
+    /** Returns true if an original legacy project script (either untouched or backed up) is available. */
+    suspend fun hasOriginalLegacyScript(projectId: String): Boolean = withContext(Dispatchers.IO) {
+        projectFilesMutex.withLock {
+            try {
+                val root = projectsDir
+                val project = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
+                    ?: return@withLock false
+                resolveOriginalLegacyScript(File(project.scriptPath)) != null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "Failed to inspect legacy project script", e)
+                false
+            }
+        }
+    }
+
+    /** Export the untouched original legacy project script byte-for-byte without modifying storage. */
+    suspend fun exportOriginalLegacyScript(
+        projectId: String,
+        openOutput: () -> OutputStream?
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        projectFilesMutex.withLock {
+            try {
+                val root = projectsDir
+                val project = readIndex(root).find { it.id == projectId }?.let { resolveScriptPath(root, it) }
+                    ?: error("Project not found: $projectId")
+                val source = resolveOriginalLegacyScript(File(project.scriptPath))
+                    ?: error("Original legacy script is not available for this project")
+                val output = openOutput() ?: error("Unable to open destination file")
+                output.use { out ->
+                    source.inputStream().use { input ->
+                        input.copyTo(out)
+                    }
+                    out.flush()
+                }
+                Result.success(Unit)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "Failed to export original legacy script", e)
                 Result.failure(e)
             }
         }
@@ -396,7 +473,131 @@ private val REPLAY_HOOK = Regex(
     "^['\"]?e\\s+(?:cmd\\.(?!(?:depth|repeat|hitinfo|undo)\\s*=)[^\\s=]+|cfg\\.debug)\\s*=.*$"
 )
 
-internal fun writeProjectReplay(reader: BufferedReader, writer: Writer, sourceFd: Int? = null, formats: String = "") {
+internal data class ProjectReplayReport(
+    val isLegacyScript: Boolean,
+    val filteredLegacyPatches: Boolean,
+    val filteredLegacyCacheOptions: Boolean
+)
+
+internal data class PreparedReplayScript(
+    val file: File,
+    val report: ProjectReplayReport
+)
+
+private object NullWriter : Writer() {
+    override fun write(cbuf: CharArray, off: Int, len: Int) = Unit
+    override fun flush() = Unit
+    override fun close() = Unit
+}
+
+internal fun legacyScriptBackupFile(scriptFile: File): File {
+    val parent = checkNotNull(scriptFile.absoluteFile.parentFile) {
+        "Project script has no parent directory: ${scriptFile.absolutePath}"
+    }
+    return File(parent, SavedProjectRepository.LEGACY_SCRIPT_BACKUP_FILENAME)
+}
+
+internal fun isLegacyProjectScript(scriptFile: File): Boolean {
+    if (!scriptFile.isFile || !scriptFile.canRead()) return false
+    return scriptFile.bufferedReader().use { reader ->
+        val header = reader.readLine()
+        header?.startsWith(PS_HEADER) == true && reader.readLine()?.trim() != DESCRIPTOR_NEUTRAL
+    }
+}
+
+internal fun resolveOriginalLegacyScript(scriptFile: File): File? {
+    val backup = legacyScriptBackupFile(scriptFile)
+    if (backup.isFile && backup.canRead()) return backup
+    if (isLegacyProjectScript(scriptFile)) return scriptFile
+    return null
+}
+
+/**
+ * Copy an unmigrated legacy project script byte-for-byte into [legacyScriptBackupFile] before the
+ * first explicit overwrite. Fails without touching [scriptFile] if backup cannot be verified.
+ */
+internal fun backupLegacyScriptBeforeOverwrite(scriptFile: File): File? {
+    if (!scriptFile.exists()) return null
+    require(scriptFile.isFile && scriptFile.canRead()) {
+        "Cannot inspect existing project script before update: ${scriptFile.absolutePath}"
+    }
+    if (!isLegacyProjectScript(scriptFile)) return null
+    val backup = legacyScriptBackupFile(scriptFile)
+    val expectedBytes = scriptFile.length()
+    if (backup.exists()) {
+        check(backup.isFile && backup.canRead() && backup.length() == expectedBytes) {
+            "Existing legacy script backup does not match the original script: ${backup.absolutePath}"
+        }
+        return backup
+    }
+    val parent = checkNotNull(backup.absoluteFile.parentFile) {
+        "Legacy script backup has no parent directory: ${backup.absolutePath}"
+    }
+    check(parent.exists() || parent.mkdirs()) {
+        "Could not create directory for legacy script backup: ${parent.absolutePath}"
+    }
+    val temp = File(parent, ".${backup.name}.${UUID.randomUUID()}.tmp")
+    try {
+        var copied = 0L
+        scriptFile.inputStream().use { input ->
+            FileOutputStream(temp).use { output ->
+                copied = input.copyTo(output)
+                output.flush()
+                output.fd.sync()
+            }
+        }
+        check(copied == expectedBytes && temp.length() == expectedBytes) {
+            "Incomplete legacy script backup ($copied of $expectedBytes bytes)."
+        }
+        check(temp.renameTo(backup)) {
+            "Could not commit legacy script backup to ${backup.absolutePath}"
+        }
+        check(backup.isFile && backup.length() == expectedBytes) {
+            "Could not verify legacy script backup at ${backup.absolutePath}"
+        }
+        return backup
+    } catch (e: Exception) {
+        runCatching { temp.delete() }
+        throw e
+    }
+}
+
+internal fun updateProjectScriptWithLegacyBackup(
+    scriptFile: File,
+    writeNewScript: (File) -> Unit
+): File? {
+    val backup = backupLegacyScriptBeforeOverwrite(scriptFile)
+    writeNewScript(scriptFile)
+    return backup
+}
+
+internal fun createTemporaryReplayScript(sourceScript: File, tempDir: File): PreparedReplayScript {
+    require(sourceScript.isFile && sourceScript.canRead()) {
+        "Project script is not readable: ${sourceScript.absolutePath}"
+    }
+    check(tempDir.exists() || tempDir.mkdirs()) {
+        "Could not create temporary replay directory: ${tempDir.absolutePath}"
+    }
+    val tempFile = File(tempDir, "restore-${UUID.randomUUID()}.r2")
+    try {
+        val report = sourceScript.bufferedReader().use { reader ->
+            tempFile.bufferedWriter().use { writer ->
+                writeProjectReplay(reader, writer)
+            }
+        }
+        return PreparedReplayScript(tempFile, report)
+    } catch (e: Exception) {
+        runCatching { tempFile.delete() }
+        throw e
+    }
+}
+
+internal fun writeProjectReplay(
+    reader: BufferedReader,
+    writer: Writer,
+    sourceFd: Int? = null,
+    formats: String = ""
+): ProjectReplayReport {
     val header = reader.readLine()
     check(header?.startsWith(PS_HEADER) == true) { "Failed to save analysis script" }
     writer.appendLine(header)
@@ -415,13 +616,32 @@ internal fun writeProjectReplay(reader: BufferedReader, writer: Writer, sourceFd
         maps.clear()
     }
 
+    var firstBodyLine = true
+    var isLegacyScript = true
+    var filteredLegacyPatches = false
+    var filteredLegacyCacheOptions = false
     var beforeAnalysis = true
     reader.lineSequence().forEach { line ->
         val command = line.trim()
-        if (command == DESCRIPTOR_NEUTRAL) return@forEach
+        if (firstBodyLine) {
+            firstBodyLine = false
+            if (command == DESCRIPTOR_NEUTRAL) {
+                isLegacyScript = false
+                return@forEach
+            }
+        } else if (command == DESCRIPTOR_NEUTRAL) {
+            return@forEach
+        }
         // PS includes a wc* dump even outside supported write cache mode. Neither cache
         // settings nor cached bytes should be replayed onto a file; the mode is in metadata.
-        if (command.startsWith("wx ") || CACHE_OPTION.matches(command)) return@forEach
+        if (CACHE_PATCH_COMMAND.matches(command)) {
+            filteredLegacyPatches = true
+            return@forEach
+        }
+        if (CACHE_OPTION.matches(command)) {
+            filteredLegacyCacheOptions = true
+            return@forEach
+        }
         if (command == "# functions") {
             writeMaps(sourceFd)
             beforeAnalysis = false
@@ -448,6 +668,12 @@ internal fun writeProjectReplay(reader: BufferedReader, writer: Writer, sourceFd
         writer.appendLine(line)
     }
     writeMaps(sourceFd)
+    return ProjectReplayReport(
+        isLegacyScript = isLegacyScript,
+        filteredLegacyPatches = filteredLegacyPatches,
+        filteredLegacyCacheOptions = filteredLegacyCacheOptions
+    )
 }
 
+private val CACHE_PATCH_COMMAND = Regex("^['\"]?wx\\s+.*$")
 private val CACHE_OPTION = Regex("^['\"]?e\\s+io\\.cache(?:\\.[a-z]+)?\\s*=.*$")

@@ -4,6 +4,10 @@ import org.json.JSONArray
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.AssumptionViolatedException
 import org.junit.Rule
@@ -226,5 +230,188 @@ class SavedProjectScriptTest {
             s 0x00400000
         """.trimIndent() + "\n"
         assertEquals(expected, replay(script, sourceFd = 3))
+    }
+
+    @Test
+    fun `temporary replay leaves legacy script untouched and reports filtered patches`() {
+        val projectDir = temp.newFolder("legacy-project")
+        val tempDir = temp.newFolder("restore-temp")
+        val originalText = listOf(
+            "# r2 rdb project file",
+            "# eval",
+            "'e io.cache = true",
+            "'e io.cache.read = true",
+            "'e io.cache.write = true",
+            "o \"/old/target\" 0x00400000 rw-",
+            "o=3",
+            "omu 3 0x00400000 0x10 0x0 r-x",
+            "# functions",
+            "af+ 0x00400000 entry0",
+            "wx 9090 @ 0x00400000 # replaces: cccc",
+            "# seek",
+            "s 0x00400000"
+        ).joinToString("\r\n") + "\r\n"
+        val script = File(projectDir, "project.r2").apply { writeBytes(originalText.toByteArray(Charsets.UTF_8)) }
+        val originalBytes = script.readBytes()
+
+        val prepared = createTemporaryReplayScript(script, tempDir)
+        try {
+            assertNotEquals(script.canonicalFile, prepared.file.canonicalFile)
+            assertEquals(tempDir.canonicalFile, prepared.file.parentFile?.canonicalFile)
+            assertTrue(prepared.report.isLegacyScript)
+            assertTrue(prepared.report.filteredLegacyPatches)
+            assertTrue(prepared.report.filteredLegacyCacheOptions)
+            val replayedText = prepared.file.readText()
+            assertTrue(replayedText.contains("af+ 0x00400000 entry0"))
+            assertTrue(replayedText.contains("omu . 0x00400000 0x10 0x0 r-x"))
+            assertFalse(replayedText.contains("wx 9090"))
+            assertFalse(replayedText.contains("io.cache"))
+        } finally {
+            assertTrue(prepared.file.delete())
+        }
+
+        // Original archive script must remain byte-for-byte intact and resolvable for export.
+        assertArrayEquals(originalBytes, script.readBytes())
+        assertFalse(legacyScriptBackupFile(script).exists())
+        assertEquals(script.canonicalFile, resolveOriginalLegacyScript(script)?.canonicalFile)
+    }
+
+    @Test
+    fun `normalized script is not treated as legacy and does not trigger legacy backup`() {
+        val projectDir = temp.newFolder("modern-project")
+        val tempDir = temp.newFolder("modern-temp")
+        val normalized = replay(
+            """
+            # r2 rdb project file
+            # eval
+            'e asm.bits = 64
+            # functions
+            af+ 0x40 entry0
+            # seek
+            s 0x40
+            """.trimIndent()
+        )
+        val script = File(projectDir, "project.r2").apply { writeText(normalized) }
+
+        val prepared = createTemporaryReplayScript(script, tempDir)
+        try {
+            assertFalse(prepared.report.isLegacyScript)
+            assertFalse(prepared.report.filteredLegacyPatches)
+            assertFalse(prepared.report.filteredLegacyCacheOptions)
+        } finally {
+            prepared.file.delete()
+        }
+
+        assertNull(resolveOriginalLegacyScript(script))
+        val backup = updateProjectScriptWithLegacyBackup(script) { it.writeText(normalized) }
+        assertNull(backup)
+        assertFalse(legacyScriptBackupFile(script).exists())
+    }
+
+    @Test
+    fun `first explicit update backs up legacy script byte-for-byte and preserves it across later updates`() {
+        val projectDir = temp.newFolder("legacy-update")
+        val originalBytes = (
+            "# r2 rdb project file\r\n" +
+                "# eval\r\n" +
+                "'e io.cache = true\r\n" +
+                "# functions\r\n" +
+                "af+ 0x40 entry0\r\n" +
+                "wx deadbeef @ 0x40 # replaces: 01020304\r\n" +
+                "# seek\r\n" +
+                "s 0x40\r\n"
+            ).toByteArray(Charsets.UTF_8)
+        val script = File(projectDir, "project.r2").apply { writeBytes(originalBytes) }
+        val updatedV1 = replay("# r2 rdb project file\n# functions\naf+ 0x40 entry_v1\n")
+        val updatedV2 = replay("# r2 rdb project file\n# functions\naf+ 0x40 entry_v2\n")
+
+        val backup = updateProjectScriptWithLegacyBackup(script) { it.writeText(updatedV1) }
+        assertNotNull(backup)
+        assertEquals(legacyScriptBackupFile(script).canonicalFile, backup!!.canonicalFile)
+        assertArrayEquals(originalBytes, backup.readBytes())
+        assertEquals(updatedV1, script.readText())
+        assertEquals(backup.canonicalFile, resolveOriginalLegacyScript(script)?.canonicalFile)
+
+        // Subsequent explicit update must never overwrite the original legacy backup.
+        val secondBackup = updateProjectScriptWithLegacyBackup(script) { it.writeText(updatedV2) }
+        assertNull(secondBackup)
+        assertEquals(updatedV2, script.readText())
+        assertArrayEquals(originalBytes, backup.readBytes())
+        assertEquals(backup.canonicalFile, resolveOriginalLegacyScript(script)?.canonicalFile)
+    }
+
+    @Test
+    fun `legacy backup failure aborts overwrite and keeps original script untouched`() {
+        val projectDir = temp.newFolder("legacy-backup-fail")
+        val originalBytes = (
+            "# r2 rdb project file\n" +
+                "# functions\n" +
+                "wx 9090 @ 0x40\n"
+            ).toByteArray(Charsets.UTF_8)
+        val script = File(projectDir, "project.r2").apply { writeBytes(originalBytes) }
+        // Block the backup path with a directory so backup verification fails.
+        assertTrue(legacyScriptBackupFile(script).mkdir())
+
+        var overwriteCalled = false
+        assertThrows(IllegalStateException::class.java) {
+            updateProjectScriptWithLegacyBackup(script) {
+                overwriteCalled = true
+                it.writeText("should never overwrite")
+            }
+        }
+        assertFalse(overwriteCalled)
+        assertArrayEquals(originalBytes, script.readBytes())
+    }
+
+    @Test
+    fun `native legacy restore replays analysis while preserving binary and original script across first update`() {
+        val projectDir = temp.newFolder("legacy-native")
+        val tempDir = temp.newFolder("legacy-native-temp")
+        val binary = File(projectDir, "sample.bin").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val script = File(projectDir, "project.r2")
+
+        val v031Session = try {
+            HostR2Pipe.open(binary.absolutePath, extraArgs = listOf("-N", "-n", "-e", "io.cache=true"))
+        } catch (e: IOException) {
+            throw AssumptionViolatedException("Host radare2 unavailable", e)
+        }
+        try {
+            v031Session.cmd("f legacy.analysis 1 @ 0x2")
+            v031Session.cmd("wx 59 @ 0x1")
+            // Simulate v0.3.1 raw PS save: pending cached byte lives only in project.r2.
+            val rawPs = v031Session.cmd("PS /dev/stdout")
+            script.writeText(rawPs)
+        } finally {
+            v031Session.quit()
+        }
+
+        val originalScriptBytes = script.readBytes()
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4), binary.readBytes())
+        assertTrue(String(originalScriptBytes, Charsets.UTF_8).contains("wx "))
+
+        val restored = HostR2Pipe.open(binary.absolutePath, extraArgs = listOf("-N", "-n"))
+        try {
+            val prepared = createTemporaryReplayScript(script, tempDir)
+            try {
+                assertTrue(prepared.report.isLegacyScript)
+                assertTrue(prepared.report.filteredLegacyPatches)
+                restored.cmd(". ${prepared.file.absolutePath}")
+            } finally {
+                assertTrue(prepared.file.delete())
+            }
+            assertTrue(restored.cmd("fj").contains("legacy.analysis"))
+            assertEquals("01020304", restored.cmd("p8 4 @ 0").trim())
+            assertArrayEquals(byteArrayOf(1, 2, 3, 4), binary.readBytes())
+            assertArrayEquals(originalScriptBytes, script.readBytes())
+
+            // Simulate first explicit project update after restore.
+            val freshReplay = replay(restored.cmd("PS /dev/stdout"))
+            val backup = updateProjectScriptWithLegacyBackup(script) { it.writeText(freshReplay) }
+            assertNotNull(backup)
+            assertArrayEquals(originalScriptBytes, resolveOriginalLegacyScript(script)?.readBytes())
+            assertFalse(script.readText().contains("wx "))
+        } finally {
+            restored.quit()
+        }
     }
 }

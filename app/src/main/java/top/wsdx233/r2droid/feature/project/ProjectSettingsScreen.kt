@@ -71,6 +71,8 @@ fun ProjectSettingsScreen(
     val scope = rememberCoroutineScope()
     val saveState by viewModel.saveProjectState.collectAsState()
     val exportBinaryState by viewModel.exportBinaryState.collectAsState()
+    val exportLegacyScriptState by viewModel.exportLegacyScriptState.collectAsState()
+    val hasLegacyScript by viewModel.hasLegacyScript.collectAsState()
     val reconnectState by viewModel.reconnectState.collectAsState()
     val staticProjectLoadState by r2fridaViewModel.staticProjectLoadState.collectAsState()
     val fridaMappings by r2fridaViewModel.mappings.collectAsState()
@@ -89,6 +91,12 @@ fun ProjectSettingsScreen(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         uri?.let { viewModel.onEvent(ProjectEvent.ExportBinaryCopy(it)) }
+    }
+
+    val legacyScriptExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        uri?.let { viewModel.onEvent(ProjectEvent.ExportLegacyScript(it)) }
     }
 
     if (showExportReport) {
@@ -129,8 +137,10 @@ fun ProjectSettingsScreen(
     }
 
     // Initialize repository
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    val currentProjectId = R2PipeManager.currentProjectId
+    androidx.compose.runtime.LaunchedEffect(currentProjectId) {
         viewModel.initializeSavedProjectRepository(context)
+        viewModel.refreshLegacyScriptAvailability(currentProjectId)
     }
     
     // Handle save state changes
@@ -341,6 +351,23 @@ fun ProjectSettingsScreen(
                     binaryExportLauncher.launch(name)
                 }
             )
+
+            if (hasLegacyScript && currentProjectId != null) {
+                ProjectActionCard(
+                    title = stringResource(R.string.proj_export_legacy_script_title),
+                    description = stringResource(R.string.proj_export_legacy_script_desc),
+                    icon = Icons.Default.FileOpen,
+                    loading = exportLegacyScriptState is ExportBinaryState.Exporting,
+                    enabled = exportLegacyScriptState !is ExportBinaryState.Exporting,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    onClick = {
+                        val name = currentBinaryPath?.let { java.io.File(it).name.ifBlank { currentProjectId } }
+                            ?: currentProjectId
+                        legacyScriptExportLauncher.launch("${name.take(120)}.legacy.r2")
+                    }
+                )
+            }
         } else {
             Text(
                 text = stringResource(R.string.frida_load_static_project_title),

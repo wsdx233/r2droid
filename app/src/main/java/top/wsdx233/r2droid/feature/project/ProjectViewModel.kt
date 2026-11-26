@@ -88,6 +88,7 @@ sealed interface ProjectEvent {
     ) : ProjectEvent
     data class UpdateProject(val projectId: String) : ProjectEvent
     data class ExportBinaryCopy(val uri: android.net.Uri) : ProjectEvent
+    data class ExportLegacyScript(val uri: android.net.Uri, val projectId: String? = null) : ProjectEvent
     object ResetSaveState : ProjectEvent
     object ResetReconnectState : ProjectEvent
     object ClearFunctionsCache : ProjectEvent
@@ -144,6 +145,12 @@ sealed class ReconnectState {
     data class Success(val message: String) : ReconnectState()
     data class Error(val message: String) : ReconnectState()
 }
+
+data class LegacyRestoreNotice(
+    val projectId: String,
+    val projectName: String,
+    val sessionToken: R2PipeSession
+)
 
 /**
  * Debug wrapper: logs every load() call from the Paging library
@@ -221,6 +228,15 @@ class ProjectViewModel @Inject constructor(
 
     private val _exportBinaryState = MutableStateFlow<ExportBinaryState>(ExportBinaryState.Idle)
     val exportBinaryState: StateFlow<ExportBinaryState> = _exportBinaryState.asStateFlow()
+
+    private val _exportLegacyScriptState = MutableStateFlow<ExportBinaryState>(ExportBinaryState.Idle)
+    val exportLegacyScriptState: StateFlow<ExportBinaryState> = _exportLegacyScriptState.asStateFlow()
+
+    private val _hasLegacyScript = MutableStateFlow(false)
+    val hasLegacyScript: StateFlow<Boolean> = _hasLegacyScript.asStateFlow()
+
+    private val _legacyRestoreNotice = MutableStateFlow<LegacyRestoreNotice?>(null)
+    val legacyRestoreNotice: StateFlow<LegacyRestoreNotice?> = _legacyRestoreNotice.asStateFlow()
 
     private val _reconnectState = MutableStateFlow<ReconnectState>(ReconnectState.Idle)
     val reconnectState: StateFlow<ReconnectState> = _reconnectState.asStateFlow()
@@ -430,6 +446,7 @@ class ProjectViewModel @Inject constructor(
             is ProjectEvent.SaveProject -> saveProject(event.name, event.analysisLevel, event.copyBinary)
             is ProjectEvent.UpdateProject -> updateProject(event.projectId)
             is ProjectEvent.ExportBinaryCopy -> exportBinaryCopy(event.uri)
+            is ProjectEvent.ExportLegacyScript -> exportLegacyProjectScript(event.uri, event.projectId)
             is ProjectEvent.ResetSaveState -> resetSaveState()
             is ProjectEvent.ResetReconnectState -> resetReconnectState()
             is ProjectEvent.ClearFunctionsCache -> clearFunctionsCache()
@@ -569,6 +586,11 @@ class ProjectViewModel @Inject constructor(
 
         _uiState.value = ProjectUiState.Loading
         _saveProjectState.value = SaveProjectState.Idle
+        _hasLegacyScript.value = false
+        if (_legacyRestoreNotice.value?.sessionToken !== token) {
+            _legacyRestoreNotice.value = null
+        }
+        refreshLegacyScriptAvailability(R2PipeManager.currentProjectId)
         return true
     }
 
@@ -615,7 +637,7 @@ class ProjectViewModel @Inject constructor(
     /**
      * Start a restore session for a saved project.
      * Called from LaunchedEffect when restoring.
-     * Opens the binary file first, then loads the script using `. script_path` command.
+     * Opens the binary file first, then replays a temporary filtered script without modifying the stored project.r2.
      */
     fun startRestoreSession() {
         val path = R2PipeManager.pendingFilePath ?: return
@@ -633,12 +655,31 @@ class ProjectViewModel @Inject constructor(
             
             val sessionId = openResult.getOrNull()
             if (sessionId != null) {
-                val loadScriptResult = R2PipeManager.execute(sessionId, ". ${restore.scriptPath} ; iIj")
-                
-                if (loadScriptResult.isFailure) {
-                    // Log warning but continue - script may have partial success
-                    android.util.Log.w("ProjectViewModel", "Script load warning: ${loadScriptResult.exceptionOrNull()?.message}")
+                val openedSession = R2PipeManager.sessions.value[sessionId]
+                val replayOutcome = savedProjectRepository.withTemporaryReplayScript(restore.projectId) { tempScript, report, project ->
+                    val loadScriptResult = R2PipeManager.execute(
+                        sessionId,
+                        ". ${tempScript.absolutePath} ; iIj",
+                        markDirty = false
+                    )
+                    if (loadScriptResult.isFailure) {
+                        // Log warning but continue - script may have partial success
+                        android.util.Log.w("ProjectViewModel", "Script load warning: ${loadScriptResult.exceptionOrNull()?.message}")
+                    }
+                    report to project
                 }
+                if (replayOutcome.isFailure) {
+                    openedSession?.let {
+                        R2PipeManager.closeSession(it, requireActive = false, discardWriteCache = true)
+                    }
+                    R2PipeManager.pendingFilePath = null
+                    R2PipeManager.pendingProjectRestore = null
+                    _uiState.value = ProjectUiState.Error(
+                        replayOutcome.exceptionOrNull()?.message ?: "Failed to restore project script"
+                    )
+                    return@launch
+                }
+                val (replayReport, restoredProject) = replayOutcome.getOrThrow()
                 
                 // Load Data (Overview only)
                 loadOverview()
@@ -660,7 +701,18 @@ class ProjectViewModel @Inject constructor(
                 // Clear pending data
                 R2PipeManager.pendingFilePath = null
                 R2PipeManager.pendingProjectRestore = null
+
+                refreshLegacyScriptAvailability(restore.projectId)
+                if (replayReport.filteredLegacyPatches && openedSession != null) {
+                    _legacyRestoreNotice.value = LegacyRestoreNotice(
+                        projectId = restoredProject.id,
+                        projectName = restoredProject.name,
+                        sessionToken = openedSession.pipe
+                    )
+                }
             } else {
+                R2PipeManager.pendingFilePath = null
+                R2PipeManager.pendingProjectRestore = null
                 _uiState.value = ProjectUiState.Error(openResult.exceptionOrNull()?.message ?: "Unknown error")
             }
         }
@@ -860,6 +912,7 @@ class ProjectViewModel @Inject constructor(
             var reconnectMessage = context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_success_reopened)
             var restoredProjectId: String? = null
             var restoredDirty = false
+            var legacyRestoredProject: SavedProject? = null
 
             val liveRestoreResult = reconnectSnapshot?.let { file ->
                 R2PipeManager.execute(reopenedSession, ". ${file.absolutePath}")
@@ -872,12 +925,14 @@ class ProjectViewModel @Inject constructor(
                     reconnectMessage = context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_success_restored)
                 }
                 savedProject != null -> {
-                    val savedRestoreResult = savedProjectRepository.prepareProjectForRestore(savedProject.id).fold(
-                        onSuccess = { R2PipeManager.execute(reopenedSession, ". ${it.scriptPath}") },
-                        onFailure = { Result.failure(it) }
-                    )
+                    val savedRestoreResult = savedProjectRepository.withTemporaryReplayScript(savedProject.id) { tempScript, report, project ->
+                        R2PipeManager.execute(reopenedSession, ". ${tempScript.absolutePath}").getOrThrow()
+                        report to project
+                    }
                     if (savedRestoreResult.isSuccess) {
+                        val (report, project) = savedRestoreResult.getOrThrow()
                         restoredProjectId = savedProject.id
+                        if (report.filteredLegacyPatches) legacyRestoredProject = project
                         reconnectMessage = context.getString(top.wsdx233.r2droid.R.string.proj_reconnect_success_saved_project)
                     } else {
                         reconnectMessage = context.getString(
@@ -946,9 +1001,18 @@ class ProjectViewModel @Inject constructor(
             }
             requestScrollToSelection()
 
+            legacyRestoredProject?.let { project ->
+                reconnectMessage = "$reconnectMessage\n${context.getString(top.wsdx233.r2droid.R.string.project_legacy_restore_patches_skipped)}"
+                _legacyRestoreNotice.value = LegacyRestoreNotice(
+                    projectId = project.id,
+                    projectName = project.name,
+                    sessionToken = sessionToken
+                )
+            }
             if (previousSession.writeCacheEnabled) {
                 reconnectMessage = "$reconnectMessage\n${context.getString(top.wsdx233.r2droid.R.string.write_cache_reconnect_not_restored)}"
             }
+            refreshLegacyScriptAvailability(restoredProjectId)
             _reconnectState.value = ReconnectState.Success(reconnectMessage)
         }
     }
@@ -1503,6 +1567,7 @@ class ProjectViewModel @Inject constructor(
             }
 
             if (result.isSuccess) {
+                refreshLegacyScriptAvailability(projectId)
                 val message = if (session.writeCacheEnabled) {
                     top.wsdx233.r2droid.R.string.project_save_cached_success
                 } else {
@@ -1531,6 +1596,56 @@ class ProjectViewModel @Inject constructor(
 
     fun resetExportBinaryState() {
         _exportBinaryState.value = ExportBinaryState.Idle
+    }
+
+    fun resetExportLegacyScriptState() {
+        _exportLegacyScriptState.value = ExportBinaryState.Idle
+    }
+
+    fun dismissLegacyRestoreNotice() {
+        _legacyRestoreNotice.value = null
+    }
+
+    fun refreshLegacyScriptAvailability(projectId: String? = R2PipeManager.currentProjectId) {
+        val targetId = projectId
+        if (targetId.isNullOrBlank()) {
+            _hasLegacyScript.value = false
+            return
+        }
+        val expectedPipe = R2PipeManager.activeSessionPipe
+        viewModelScope.launch {
+            val available = savedProjectRepository.hasOriginalLegacyScript(targetId)
+            if (R2PipeManager.activeSessionPipe === expectedPipe && R2PipeManager.currentProjectId == targetId) {
+                _hasLegacyScript.value = available
+            }
+        }
+    }
+
+    fun exportLegacyProjectScript(uri: android.net.Uri, projectId: String? = R2PipeManager.currentProjectId) {
+        val targetId = projectId ?: R2PipeManager.currentProjectId
+        if (targetId.isNullOrBlank()) {
+            _exportLegacyScriptState.value = ExportBinaryState.Error(
+                context.getString(top.wsdx233.r2droid.R.string.project_legacy_export_unavailable)
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            _exportLegacyScriptState.value = ExportBinaryState.Exporting
+            val result = savedProjectRepository.exportOriginalLegacyScript(targetId) {
+                context.contentResolver.openOutputStream(uri)
+            }
+            _exportLegacyScriptState.value = if (result.isSuccess) {
+                ExportBinaryState.Success(
+                    context.getString(top.wsdx233.r2droid.R.string.project_legacy_export_success)
+                )
+            } else {
+                ExportBinaryState.Error(
+                    result.exceptionOrNull()?.message
+                        ?: context.getString(top.wsdx233.r2droid.R.string.project_legacy_export_error)
+                )
+            }
+        }
     }
 
     fun exportBinaryCopy(uri: android.net.Uri) {

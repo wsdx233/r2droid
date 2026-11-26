@@ -6,4 +6,14 @@
     <string name="project_save_separate_success">Проект сохранён отдельно. Текущий сеанс не переключился. Откройте новый проект в разделе «Сохранённые проекты».</string>
     <string name="project_save_separate_cached_success">Проект сохранён отдельно. Текущий сеанс не переключился, ожидающие патчи остались в нём.</string>
     <string name="project_save_cached_success">Анализ сохранён. Ожидающие патчи не сохранены и остаются в текущем сеансе.</string>
+    <string name="project_legacy_restore_title">Устаревший проект восстановлен</string>
+    <string name="project_legacy_restore_patches_skipped">Анализ восстановлен; старые патчи не применены.</string>
+    <string name="project_legacy_restore_message">Анализ восстановлен; старые патчи не применены. Исходный скрипт сохранён без изменений — вы можете экспортировать его сейчас или позже в настройках проекта.</string>
+    <string name="project_legacy_export_action">Экспортировать исходный скрипт</string>
+    <string name="project_legacy_restore_dismiss">Понятно</string>
+    <string name="proj_export_legacy_script_title">Экспортировать исходный старый скрипт</string>
+    <string name="proj_export_legacy_script_desc">Побитово экспортировать сохранённый до обновления скрипт project.r2, включая неприменённые патчи</string>
+    <string name="project_legacy_export_success">Исходный скрипт экспортирован</string>
+    <string name="project_legacy_export_unavailable">Исходный скрипт недоступен для этого проекта</string>
+    <string name="project_legacy_export_error">Не удалось экспортировать исходный скрипт</string>
 </resources>

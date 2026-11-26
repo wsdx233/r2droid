@@ -120,7 +120,7 @@ class HomeViewModel : ViewModel() {
                     return@launch
                 }
 
-                val prepared = checkNotNull(repository).prepareProjectForRestore(project.id).getOrThrow()
+                val prepared = checkNotNull(repository).validateProjectForRestore(project.id).getOrThrow()
                 // Set pending file path and restore script path
                 R2PipeManager.pendingFilePath = prepared.binaryPath
                 R2PipeManager.pendingProjectRestore =

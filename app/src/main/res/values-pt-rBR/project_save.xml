@@ -6,4 +6,14 @@
     <string name="project_save_separate_success">Salvo separadamente. A sessão atual não mudou. Abra o novo projeto em Projetos salvos.</string>
     <string name="project_save_separate_cached_success">Salvo separadamente. A sessão atual não mudou e as alterações pendentes continuam nela.</string>
     <string name="project_save_cached_success">Análise salva. As alterações pendentes não foram salvas e continuam nesta sessão.</string>
+    <string name="project_legacy_restore_title">Projeto legado restaurado</string>
+    <string name="project_legacy_restore_patches_skipped">Análise restaurada; patches legados não foram aplicados.</string>
+    <string name="project_legacy_restore_message">Análise restaurada; patches legados não foram aplicados. O script original foi preservado intacto — você pode exportá-lo agora ou depois nas Configurações do Projeto.</string>
+    <string name="project_legacy_export_action">Exportar script original</string>
+    <string name="project_legacy_restore_dismiss">Entendi</string>
+    <string name="proj_export_legacy_script_title">Exportar script legado original</string>
+    <string name="proj_export_legacy_script_desc">Exportar byte a byte o script project.r2 preservado antes da atualização, incluindo patches legados não aplicados</string>
+    <string name="project_legacy_export_success">Script legado original exportado</string>
+    <string name="project_legacy_export_unavailable">O script legado original não está disponível para este projeto</string>
+    <string name="project_legacy_export_error">Falha ao exportar o script legado original</string>
 </resources>

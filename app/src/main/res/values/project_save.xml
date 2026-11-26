@@ -6,4 +6,14 @@
     <string name="project_save_separate_success">Saved separately. The current session did not switch. Open the new project from Saved Projects.</string>
     <string name="project_save_separate_cached_success">Saved separately. The current session did not switch, and pending patches stay here.</string>
     <string name="project_save_cached_success">Analysis saved. Pending patches were not saved and stay in this session.</string>
+    <string name="project_legacy_restore_title">Legacy project restored</string>
+    <string name="project_legacy_restore_patches_skipped">Analysis restored; legacy patches were not applied.</string>
+    <string name="project_legacy_restore_message">Analysis restored; legacy patches were not applied. The original script has been preserved intact so you can export it now or later from Project Settings.</string>
+    <string name="project_legacy_export_action">Export original script</string>
+    <string name="project_legacy_restore_dismiss">OK</string>
+    <string name="proj_export_legacy_script_title">Export Original Legacy Script</string>
+    <string name="proj_export_legacy_script_desc">Export the preserved pre-upgrade project.r2 script byte-for-byte, including any unapplied legacy patches</string>
+    <string name="project_legacy_export_success">Original legacy script exported</string>
+    <string name="project_legacy_export_unavailable">Original legacy script is not available for this project</string>
+    <string name="project_legacy_export_error">Failed to export original legacy script</string>
 </resources>
