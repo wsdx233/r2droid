@@ -15,6 +15,13 @@ data class FunctionEntity(
     val signature: String
 )
 
+data class FunctionOverviewRow(
+    val addr: Long,
+    val size: Long,
+    val name: String,
+    val nbbs: Int
+)
+
 @Dao
 interface FunctionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -25,6 +32,9 @@ interface FunctionDao {
 
     @Query("SELECT * FROM functions WHERE name LIKE '%' || :query || '%' ORDER BY addr ASC")
     fun search(query: String): PagingSource<Int, FunctionEntity>
+
+    @Query("SELECT addr, size, name, nbbs FROM functions ORDER BY addr ASC")
+    suspend fun getOverviewRows(): List<FunctionOverviewRow>
 
     @Query("DELETE FROM functions")
     suspend fun clearAll()

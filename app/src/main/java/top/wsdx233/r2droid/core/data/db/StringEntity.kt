@@ -14,6 +14,11 @@ data class StringEntity(
     val section: String
 )
 
+data class StringOverviewRow(
+    val vAddr: Long,
+    val length: Int
+)
+
 @Dao
 interface StringDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -24,6 +29,9 @@ interface StringDao {
 
     @Query("SELECT * FROM strings WHERE string LIKE '%' || :query || '%' ORDER BY vAddr ASC")
     fun searchStrings(query: String): PagingSource<Int, StringEntity>
+
+    @Query("SELECT vAddr, LENGTH(string) AS length FROM strings ORDER BY vAddr ASC")
+    suspend fun getOverviewRows(): List<StringOverviewRow>
 
     @Query("DELETE FROM strings")
     suspend fun clearAll()

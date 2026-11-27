@@ -230,6 +230,8 @@ class DisasmViewModel @Inject constructor(
     @Volatile private var sessionManager: DisasmDataManager? = null
     @Volatile private var managerSession: R2PipeSession? = null
     @Volatile private var annotations = DisasmAnnotations.Empty
+    private val _annotationMarkers = MutableStateFlow<List<Long>>(emptyList())
+    val annotationMarkers: StateFlow<List<Long>> = _annotationMarkers.asStateFlow()
     val disasmDataManager: DisasmDataManager?
         get() = sessionManager?.takeIf { managerSession === R2PipeManager.activeSessionPipe }
 
@@ -546,6 +548,7 @@ class DisasmViewModel @Inject constructor(
         _disasmDataManagerState.value = null
         _disasmCacheVersion.value = 0
         annotations = DisasmAnnotations.Empty
+        _annotationMarkers.value = emptyList()
         _scrollTarget.value = null
         _multiSelectState.value = MultiSelectState()
         managerSession = null
@@ -1239,7 +1242,8 @@ class DisasmViewModel @Inject constructor(
         val manager = DisasmDataManager(
             layout.startAddress, layout.endAddress,
             { offset, count -> disasmRepository.getDisassembly(active, offset, count, annotations) },
-            addressOverview = layout.overview
+            addressOverview = layout.overview,
+            byteProfile = layout.byteProfile
         )
         manager.onChunkLoaded = {
             if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
@@ -1250,6 +1254,7 @@ class DisasmViewModel @Inject constructor(
             val snapshot = disasmRepository.loadAnnotations(active)
             if (disasmDataManager !== manager) return@launch
             annotations = snapshot
+            _annotationMarkers.value = snapshot.markerAddresses()
             manager.resetAndLoadAround(currentOffset)
             if (disasmDataManager === manager) _disasmCacheVersion.update { it + 1 }
         }
@@ -1332,6 +1337,7 @@ class DisasmViewModel @Inject constructor(
             val snapshot = disasmRepository.loadAnnotations(active)
             if (disasmDataManager !== manager) return@launch
             annotations = snapshot
+            _annotationMarkers.value = snapshot.markerAddresses()
             resetAndScrollTo(currentAddr)
         }
     }

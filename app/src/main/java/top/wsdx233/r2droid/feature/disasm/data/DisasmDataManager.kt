@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.core.data.model.AddressOverview
+import top.wsdx233.r2droid.core.data.model.BinaryByteProfile
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
 
 /** Instructions and jump decorations are published together, never from different revisions. */
@@ -23,14 +24,22 @@ class DisasmDataManager internal constructor(
     private val endAddress: Long,
     private val fetchInstructions: suspend (Long, Int) -> Result<List<DisasmInstruction>>,
     private val workerDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    val addressOverview: AddressOverview = AddressOverview.Empty
+    val addressOverview: AddressOverview = AddressOverview.Empty,
+    val byteProfile: BinaryByteProfile = BinaryByteProfile.Empty
 ) {
     constructor(
         startAddress: Long,
         endAddress: Long,
         repository: DisasmRepository,
-        addressOverview: AddressOverview = AddressOverview.Empty
-    ) : this(startAddress, endAddress, repository::getDisassembly, addressOverview = addressOverview)
+        addressOverview: AddressOverview = AddressOverview.Empty,
+        byteProfile: BinaryByteProfile = BinaryByteProfile.Empty
+    ) : this(
+        startAddress,
+        endAddress,
+        repository::getDisassembly,
+        addressOverview = addressOverview,
+        byteProfile = byteProfile
+    )
 
     companion object {
         const val INSTRUCTIONS_PER_CHUNK = 100

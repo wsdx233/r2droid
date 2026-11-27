@@ -39,7 +39,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.model.AddressOverview
-import top.wsdx233.r2droid.core.data.model.RegionKind
+import top.wsdx233.r2droid.core.data.model.AddressStructureOverlay
+import top.wsdx233.r2droid.core.data.model.BinaryByteProfile
+import top.wsdx233.r2droid.core.data.model.OverviewMarkerKind
+import top.wsdx233.r2droid.core.data.model.OverviewRasterizer
 import kotlin.math.roundToInt
 
 /**
@@ -228,6 +231,8 @@ fun AutoHideAddressScrollbar(
     onDragStateChange: (Boolean) -> Unit = {},
     isSeeking: Boolean = false,
     overview: AddressOverview = AddressOverview.Empty,
+    byteProfile: BinaryByteProfile = BinaryByteProfile.Empty,
+    structureOverlay: AddressStructureOverlay = AddressStructureOverlay.Empty,
     onDragThumbCenter: ((Float) -> Unit)? = null
 ) {
     if (totalItems <= 0 || viewEndAddress <= viewStartAddress) return
@@ -269,39 +274,119 @@ fun AutoHideAddressScrollbar(
             .toFloat().coerceIn(0f, 1f)
     }
 
-    // Keep the cache modifier stable across preview/list recompositions. Only overview, range,
-    // size or density changes should rebuild the strip geometry, never a moving thumb.
-    val strip = remember(overview, viewStartAddress, viewEndAddress, thumbWidth, thumbHeight) {
+    // Keep the cache modifier stable across preview/list recompositions. Only overview, byte/semantic
+    // structure, range, size or density changes should rebuild the strip geometry, never a moving thumb.
+    val strip = remember(overview, byteProfile, structureOverlay, viewStartAddress, viewEndAddress, thumbWidth, thumbHeight) {
         Modifier.drawWithCache {
             val thumbPx = thumbHeight.toPx().coerceAtMost(size.height)
             val travel = size.height - thumbPx
             val thumbWidthPx = thumbWidth.toPx().coerceAtMost(size.width)
-            val stripWidth = minOf(5.dp.toPx(), thumbWidthPx)
-            if (overview == AddressOverview.Empty || travel <= 0f || stripWidth <= 0f) {
+            val stripWidth = minOf(6.dp.toPx(), thumbWidthPx)
+            val rows = travel.roundToInt().coerceAtLeast(1)
+            val raster = if (travel <= 0f || stripWidth <= 0f) {
+                top.wsdx233.r2droid.core.data.model.DetailedOverviewRaster.Empty
+            } else {
+                OverviewRasterizer.rasterize(
+                    overview = overview,
+                    start = viewStartAddress,
+                    endExclusive = viewEndAddress,
+                    rows = rows,
+                    byteProfile = byteProfile,
+                    overlay = structureOverlay
+                )
+            }
+            if (raster.isEmpty) {
                 return@drawWithCache onDrawBehind { }
             }
 
-            val bandsByKind = Array(RegionKind.entries.size) { Path() }
-            val dividers = Path()
-            val rows = travel.roundToInt().coerceAtLeast(1)
             val left = size.width - (thumbWidthPx + stripWidth) / 2f
             val right = left + stripWidth
             // The first/last raster boundaries are the centers of the thumb at either end.
             fun rowY(row: Int) = thumbPx / 2f + (row.toFloat() / rows) * travel
-            for (band in overview.rasterize(viewStartAddress, viewEndAddress, rows)) {
-                val top = rowY(band.firstRow)
-                val bottom = rowY(band.endRow)
-                bandsByKind[band.kind.ordinal].addRect(Rect(left, top, right, bottom))
-                if (band.separatorBefore) {
-                    dividers.addRect(Rect(left, top, right, minOf(top + 1f, bottom)))
+
+            class StripRun(val barLeft: Float, val top: Float, val bottom: Float, val color: Color)
+            val runs = ArrayList<StripRun>(minOf(rows, 512))
+            val mappedRail = Path()
+            val dividers = Path()
+
+            var railStart = -1
+            var runStart = -1
+            var runColor = 0
+            var runWidthPx = -1
+
+            fun flushRun(endRow: Int) {
+                if (runStart >= 0 && runColor != 0) {
+                    val barLeft = (right - runWidthPx).coerceAtLeast(left)
+                    runs.add(StripRun(barLeft, rowY(runStart), rowY(endRow), Color(runColor)))
+                }
+                runStart = -1
+                runColor = 0
+                runWidthPx = -1
+            }
+
+            for (r in 0 until rows) {
+                val c = raster.colors[r]
+                if (c != 0) {
+                    if (railStart < 0) railStart = r
+                    val wPx = (stripWidth * raster.widthFactors[r]).roundToInt().coerceIn(1, stripWidth.roundToInt().coerceAtLeast(1))
+                    if (c != runColor || wPx != runWidthPx) {
+                        flushRun(r)
+                        runStart = r
+                        runColor = c
+                        runWidthPx = wPx
+                    }
+                } else {
+                    flushRun(r)
+                    if (railStart >= 0) {
+                        mappedRail.addRect(Rect(left, rowY(railStart), right, rowY(r)))
+                        railStart = -1
+                    }
+                }
+                if (raster.separators[r]) {
+                    val y = rowY(r)
+                    dividers.addRect(Rect(left, y, right, minOf(y + 1f, rowY(r + 1))))
                 }
             }
+            flushRun(rows)
+            if (railStart >= 0) {
+                mappedRail.addRect(Rect(left, rowY(railStart), right, rowY(rows)))
+            }
+
+            val tickLeft = (left - 2.5.dp.toPx()).coerceAtLeast(0f)
+            val tickWidths = right - tickLeft
+            val markerHeightSmall = 1.5.dp.toPx()
+            val markerHeightMed = 2.dp.toPx()
+            val markerHeightLarge = 2.5.dp.toPx()
+
             onDrawBehind {
-                for (kind in RegionKind.entries) {
-                    val path = bandsByKind[kind.ordinal]
-                    if (!path.isEmpty) drawPath(path, BinaryPermissionColors[kind])
+                if (!mappedRail.isEmpty) {
+                    drawPath(mappedRail, Color.Black.copy(alpha = 0.16f))
                 }
-                if (!dividers.isEmpty) drawPath(dividers, Color.Black.copy(alpha = 0.52f))
+                for (run in runs) {
+                    drawRect(
+                        color = run.color,
+                        topLeft = Offset(run.barLeft, run.top),
+                        size = Size(right - run.barLeft, (run.bottom - run.top).coerceAtLeast(1f))
+                    )
+                }
+                if (!dividers.isEmpty) {
+                    drawPath(dividers, Color.Black.copy(alpha = 0.48f))
+                }
+                for (marker in raster.markers) {
+                    val y = rowY(marker.row)
+                    val (color, h) = when (marker.kind) {
+                        OverviewMarkerKind.PC -> Color(0xFF22C55E) to markerHeightLarge
+                        OverviewMarkerKind.BREAKPOINT -> Color(0xFFEF4444) to markerHeightMed
+                        OverviewMarkerKind.ENTRY -> Color(0xFF38BDF8) to markerHeightMed
+                        OverviewMarkerKind.ANNOTATION -> Color(0xFFC084FC) to markerHeightSmall
+                        OverviewMarkerKind.CURSOR -> Color.White.copy(alpha = 0.9f) to markerHeightSmall
+                    }
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(tickLeft, y - h / 2f),
+                        size = Size(tickWidths, h)
+                    )
+                }
             }
         }
     }

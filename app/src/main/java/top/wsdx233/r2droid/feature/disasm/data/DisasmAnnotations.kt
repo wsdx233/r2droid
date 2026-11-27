@@ -26,6 +26,14 @@ internal class DisasmAnnotations private constructor(
         return (addr - (addr - start) % ROW_BYTES.toULong()).toLong()
     }
 
+    fun markerAddresses(): List<Long> {
+        if (pointers.isEmpty() && definitions.isEmpty()) return emptyList()
+        val out = ArrayList<Long>(pointers.size + definitions.size)
+        out.addAll(pointers.keys)
+        for (key in definitions.keys) out.add(key.toLong())
+        return out
+    }
+
     suspend fun render(rows: List<DisasmInstruction>, readHex: suspend (Long, Int) -> String): List<DisasmInstruction> {
         if (rows.isEmpty() || (pointers.isEmpty() && definitions.isEmpty())) return rows
         val first = rows.first().addr.toULong()

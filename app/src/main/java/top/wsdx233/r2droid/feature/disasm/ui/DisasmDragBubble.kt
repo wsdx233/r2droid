@@ -36,13 +36,16 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
+import top.wsdx233.r2droid.core.data.model.AddressStructureOverlay
+import top.wsdx233.r2droid.core.data.model.DetailedOverviewRaster
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
-import top.wsdx233.r2droid.core.data.model.OverviewBand
+import top.wsdx233.r2droid.core.data.model.OverviewMarkerKind
 import top.wsdx233.r2droid.core.data.model.formatCompactAddress
-import top.wsdx233.r2droid.core.ui.components.BinaryPermissionColors
 import top.wsdx233.r2droid.feature.disasm.DisasmScrollbarPreview
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 internal val DisasmThumbWidth = 8.dp
@@ -58,28 +61,43 @@ internal fun DisasmDragBubble(
     previewState: StateFlow<DisasmScrollbarPreview?>,
     manager: DisasmDataManager,
     instructions: List<DisasmInstruction>,
-    bands: List<OverviewBand>,
+    raster: DetailedOverviewRaster,
+    structureOverlay: AddressStructureOverlay,
     thumbCenter: FloatState
 ) {
     val preview by previewState.collectAsState()
     val address = preview?.address ?: return
     val region = manager.addressOverview.regionAt(address)
+    val fn = structureOverlay.functionAt(address)
     val instruction = instructions.getOrNull(DisasmDataManager.coveredIndex(instructions, address))
     val op = instruction?.run { opcode.ifBlank { disasm } }.orEmpty()
-    val detail = if (region == null || region.name.isBlank()) op.ifBlank { "—" } else buildString {
-        append(region.name).append("+0x").append(formatCompactAddress(address - region.start))
-        if (op.isNotBlank()) append(" · ").append(op)
+    val detail = buildString {
+        if (fn != null && fn.name.isNotBlank()) {
+            append(fn.name)
+            val fnOffset = address - fn.start
+            if (fnOffset > 0L) append("+0x").append(formatCompactAddress(fnOffset))
+            if (op.isNotBlank()) {
+                append(" · ").append(op)
+            } else if (region != null && region.name.isNotBlank()) {
+                append(" · ").append(region.name)
+            }
+        } else if (region != null && region.name.isNotBlank()) {
+            append(region.name).append("+0x").append(formatCompactAddress(address - region.start))
+            if (op.isNotBlank()) append(" · ").append(op)
+        } else {
+            append(op.ifBlank { "—" })
+        }
     }
     val range = (manager.viewEndAddress - 1 - manager.viewStartAddress).coerceAtLeast(1)
     val centerRow = ((address - manager.viewStartAddress).toDouble() / range * PREVIEW_ROWS).toFloat()
     Layout(modifier = Modifier.fillMaxSize(), content = {
         Row(
-            Modifier.testTag("disasm_drag_bubble").widthIn(min = 112.dp, max = 252.dp)
+            Modifier.testTag("disasm_drag_bubble").widthIn(min = 112.dp, max = 264.dp)
                 .background(BubbleBlue, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp)
                 .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
         ) {
-            RegionPreview(bands, centerRow)
+            RegionPreview(raster, centerRow)
             Column {
                 Text("0x${formatCompactAddress(address)}", color = Color.White, fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp, maxLines = 1, softWrap = false)
@@ -108,20 +126,48 @@ internal fun DisasmDragBubble(
 
 /** The text sets the row height; the preview takes that same dimension on both axes. */
 @Composable
-private fun RegionPreview(bands: List<OverviewBand>, centerRow: Float) {
+private fun RegionPreview(raster: DetailedOverviewRaster, centerRow: Float) {
     Canvas(Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true)
         .clip(PreviewShape).background(PreviewBackground)) {
-        val top = centerRow - PREVIEW_WINDOW / 2
-        val scale = size.height / PREVIEW_WINDOW
-        // Find the first intersecting band, not the first band in the binary.
-        var index = bands.binarySearch { it.endRow.compareTo(top.toInt()) }
-        index = if (index < 0) -index - 1 else index + 1
-        while (index < bands.size) {
-            val band = bands[index++]
-            if (band.firstRow >= top + PREVIEW_WINDOW) break
-            val y = (band.firstRow - top) * scale
-            drawRect(BinaryPermissionColors[band.kind], Offset(0f, y), Size(size.width, (band.endRow - band.firstRow) * scale))
-            if (band.separatorBefore) drawLine(PreviewBackground, Offset(0f, y), Offset(size.width, y))
+        if (!raster.isEmpty) {
+            val top = centerRow - PREVIEW_WINDOW / 2f
+            val bottom = top + PREVIEW_WINDOW
+            val scale = size.height / PREVIEW_WINDOW
+            val firstRow = floor(top).toInt().coerceAtLeast(0)
+            val lastRow = ceil(bottom).toInt().coerceAtMost(raster.rows)
+            val rowHeight = scale.coerceAtLeast(1f)
+            val railPad = size.width * 0.12f
+            val maxBarWidth = size.width - railPad
+
+            for (r in firstRow until lastRow) {
+                val c = raster.colors[r]
+                val y = (r - top) * scale
+                if (c != 0) {
+                    val barW = (maxBarWidth * raster.widthFactors[r]).coerceAtLeast(2f)
+                    drawRect(
+                        color = Color(c),
+                        topLeft = Offset(size.width - barW, y),
+                        size = Size(barW, rowHeight + 0.5f)
+                    )
+                }
+                if (raster.separators[r]) {
+                    drawLine(PreviewBackground, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                }
+            }
+
+            val markerStroke = 1.5.dp.toPx()
+            for (marker in raster.markers) {
+                if (marker.row < firstRow || marker.row >= lastRow) continue
+                val y = (marker.row - top + 0.5f) * scale
+                val color = when (marker.kind) {
+                    OverviewMarkerKind.PC -> Color(0xFF22C55E)
+                    OverviewMarkerKind.BREAKPOINT -> Color(0xFFEF4444)
+                    OverviewMarkerKind.ENTRY -> Color(0xFF38BDF8)
+                    OverviewMarkerKind.ANNOTATION -> Color(0xFFC084FC)
+                    OverviewMarkerKind.CURSOR -> Color.White.copy(alpha = 0.85f)
+                }
+                drawLine(color, Offset(0f, y), Offset(size.width, y), strokeWidth = markerStroke)
+            }
         }
         drawLine(Color.White, Offset(0f, center.y), Offset(size.width, center.y), 1.dp.toPx())
     }

@@ -89,7 +89,11 @@ import top.wsdx233.r2droid.util.R2PipeManager
  * - Custom fast scrollbar for quick navigation
  * - Placeholder shown for unloaded regions
  */
+import top.wsdx233.r2droid.core.data.model.AddressStructureOverlay
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
+import top.wsdx233.r2droid.core.data.model.OverviewMarker
+import top.wsdx233.r2droid.core.data.model.OverviewMarkerKind
+import top.wsdx233.r2droid.core.data.model.OverviewRasterizer
 import top.wsdx233.r2droid.core.data.model.formatCompactAddress
 import top.wsdx233.r2droid.feature.annotations.AnnotationAction
 import top.wsdx233.r2droid.feature.disasm.data.DisasmDataManager
@@ -104,13 +108,15 @@ fun DisassemblyViewer(
     scrollToSelectionTrigger: kotlinx.coroutines.flow.StateFlow<Int>,
     onInstructionClick: (Long) -> Unit,
     onAnnotate: (AnnotationAction, Long) -> Unit,
-    onNavigateToR2Frida: (() -> Unit)? = null
+    onNavigateToR2Frida: (() -> Unit)? = null,
+    structureOverlay: AddressStructureOverlay = AddressStructureOverlay.Empty
 ) {
     val managerState by viewModel.disasmDataManagerState.collectAsState()
     val disasmDataManager = managerState
     val cacheVersion by viewModel.disasmCacheVersion.collectAsState()
     val multiSelectState by viewModel.multiSelectState.collectAsState()
     val breakpoints by viewModel.breakpoints.collectAsState()
+    val annotationMarkers by viewModel.annotationMarkers.collectAsState()
     val debugBreakpoints by viewModel.debugBreakpoints.collectAsState()
     val pcAddress by viewModel.pcAddress.collectAsState()
     val debugStatus by viewModel.debugStatus.collectAsState()
@@ -473,6 +479,15 @@ fun DisassemblyViewer(
             onDismiss = viewModel::dismissScrollbarPreview
         )
 
+        val enrichedOverlay = remember(structureOverlay, pcAddress, breakpoints, annotationMarkers, cursorAddress) {
+            val extra = ArrayList<OverviewMarker>(breakpoints.size + annotationMarkers.size + 2)
+            extra.add(OverviewMarker(cursorAddress, OverviewMarkerKind.CURSOR))
+            for (addr in annotationMarkers) extra.add(OverviewMarker(addr, OverviewMarkerKind.ANNOTATION))
+            for (addr in breakpoints) extra.add(OverviewMarker(addr, OverviewMarkerKind.BREAKPOINT))
+            pcAddress?.let { extra.add(OverviewMarker(it, OverviewMarkerKind.PC)) }
+            structureOverlay.withAdditionalMarkers(extra)
+        }
+
         // Measure the docked debug panel and footer; the scrollbar gets the remaining upper height.
         Column(Modifier.matchParentSize()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = AbsoluteAlignment.CenterRight) {
@@ -487,7 +502,8 @@ fun DisassemblyViewer(
                     onDragStateChange = {
                         isScrollbarDragging = it
                         viewModel.onScrollbarDragStateChange(it)
-                    }
+                    },
+                    structureOverlay = enrichedOverlay
                 )
             }
 
@@ -1021,14 +1037,22 @@ internal fun DisasmAddressScrollbar(
     onCommit: (Long) -> Unit,
     isSeeking: Boolean,
     onDragStateChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    structureOverlay: AddressStructureOverlay = AddressStructureOverlay.Empty
 ) {
     val currentInstructions by rememberUpdatedState(instructions)
     var dragging by remember(manager) { mutableStateOf(false) }
     val thumbCenter = remember(manager) { mutableFloatStateOf(0f) }
-    val previewBands = remember(manager) {
+    val previewRaster = remember(manager, structureOverlay) {
         lazy(LazyThreadSafetyMode.NONE) {
-            manager.addressOverview.rasterize(manager.viewStartAddress, manager.viewEndAddress, PREVIEW_ROWS)
+            OverviewRasterizer.rasterize(
+                overview = manager.addressOverview,
+                start = manager.viewStartAddress,
+                endExclusive = manager.viewEndAddress,
+                rows = PREVIEW_ROWS,
+                byteProfile = manager.byteProfile,
+                overlay = structureOverlay
+            )
         }
     }
     // This is only bookkeeping for pointer callbacks, not observable UI state.
@@ -1045,7 +1069,7 @@ internal fun DisasmAddressScrollbar(
         }
     }
     if (dragging) {
-        DisasmDragBubble(previewState, manager, instructions, previewBands.value, thumbCenter)
+        DisasmDragBubble(previewState, manager, instructions, previewRaster.value, structureOverlay, thumbCenter)
     }
     AutoHideAddressScrollbar(
         listState = listState,
@@ -1058,6 +1082,8 @@ internal fun DisasmAddressScrollbar(
         isSeeking = isSeeking,
         thumbWidth = DisasmThumbWidth,
         overview = manager.addressOverview,
+        byteProfile = manager.byteProfile,
+        structureOverlay = structureOverlay,
         onDragThumbCenter = { thumbCenter.floatValue = it },
         onScrollToAddress = { address ->
             onPreview(address)

@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.core.data.model.ArchInfo
 import top.wsdx233.r2droid.core.data.model.BinInfo
+import top.wsdx233.r2droid.core.data.model.BinaryByteSampler
 import top.wsdx233.r2droid.core.data.model.BlockStatsData
 import top.wsdx233.r2droid.core.data.model.DecompilationData
 import top.wsdx233.r2droid.core.data.model.DisasmInstruction
@@ -38,6 +39,7 @@ import top.wsdx233.r2droid.feature.ai.data.AiSettingsManager
 import top.wsdx233.r2droid.feature.ai.data.ChatMessage
 import top.wsdx233.r2droid.feature.ai.data.ChatRole
 import top.wsdx233.r2droid.util.R2PipeManager
+import java.io.File
 import java.util.Locale
 import javax.inject.Inject
 
@@ -54,7 +56,16 @@ class ProjectRepository @Inject constructor(
         return try {
             val baseInfo = BinInfo.fromJson(executeRequiredJsonObject("ij"))
 
-            val entropyData = executeOptionalJsonObject("p=ej 64")?.let(EntropyData::fromJson)
+            val r2Entropy = executeOptionalJsonObject("p=ej 64")
+                ?.let(EntropyData::fromJson)
+                ?.takeIf { it.entropy.isNotEmpty() }
+            val entropyData = r2Entropy ?: BinaryByteSampler.computeEntropyData(
+                sequenceOf(baseInfo.file, R2PipeManager.currentFilePath)
+                    .filterNotNull()
+                    .filter { it.isNotBlank() }
+                    .map(::File)
+                    .firstOrNull { it.isFile }
+            )
             val blockStats = executeOptionalJsonObject("p-j 64 @ 0")?.let(BlockStatsData::fromJson)
             val hashes = executeOptionalJsonObject("itj")?.let(HashInfo::fromJson)
             val mainAddr = executeOptionalJsonObject("iMj")?.let(MainAddressInfo::fromJson)

@@ -499,6 +499,42 @@ class ProjectViewModel @Inject constructor(
             if (current != null) {
                 _uiState.value = current.copy(functions = null)
             }
+            refreshDisasmStructureOverlay()
+        }
+    }
+
+    private val _disasmStructureOverlay = MutableStateFlow(AddressStructureOverlay.Empty)
+    val disasmStructureOverlay: StateFlow<AddressStructureOverlay> = _disasmStructureOverlay.asStateFlow()
+    private var structureOverlayJob: Job? = null
+    private var autoFunctionsJob: Job? = null
+
+    private fun refreshDisasmStructureOverlay() {
+        val state = _uiState.value as? ProjectUiState.Success ?: return
+        val token = state.sessionToken
+        val bin = state.binInfo
+        val includeFunctions = state.functions != null
+        val includeStrings = state.strings != null
+        structureOverlayJob?.cancel()
+        structureOverlayJob = viewModelScope.launch(Dispatchers.IO) {
+            val markers = ArrayList<OverviewMarker>()
+            bin?.entryPoints?.forEach { entry ->
+                if (entry.vAddr >= 0) markers.add(OverviewMarker(entry.vAddr, OverviewMarkerKind.ENTRY))
+            }
+            bin?.mainAddr?.let { main ->
+                if (main.vaddr > 0) markers.add(OverviewMarker(main.vaddr, OverviewMarkerKind.ENTRY))
+            }
+            val functions = if (includeFunctions) {
+                runCatching { functionDao.getOverviewRows() }.getOrDefault(emptyList())
+                    .mapNotNull { FunctionSpan.from(it.addr, it.size, it.name, it.nbbs) }
+            } else emptyList()
+            val strings = if (includeStrings) {
+                runCatching { stringDao.getOverviewRows() }.getOrDefault(emptyList())
+                    .mapNotNull { StringSpan.from(it.vAddr, it.length) }
+            } else emptyList()
+            val overlay = AddressStructureOverlay.of(functions, strings, markers)
+            if (token === R2PipeManager.activeSessionPipe) {
+                _disasmStructureOverlay.value = overlay
+            }
         }
     }
 
@@ -1048,6 +1084,7 @@ class ProjectViewModel @Inject constructor(
         val sessionToken = R2PipeManager.activeSessionPipe ?: return
         val selection = R2PipeManager.sessionId
         observedSessionToken = sessionToken
+        _disasmStructureOverlay.value = AddressStructureOverlay.Empty
         viewModelScope.launch {
             val binInfoResult = repository.getOverview()
             if (sessionToken !== R2PipeManager.activeSessionPipe || selection != R2PipeManager.sessionId) return@launch
@@ -1088,14 +1125,35 @@ class ProjectViewModel @Inject constructor(
                         val virtual = DisasmAddressLayout.parseIoVa(
                             R2PipeManager.execute(session, "e io.va", markDirty = false).getOrNull()
                         )
-                        DisasmAddressLayout.forFile(
-                            sections, virtual, fileLength(session.projectPath, bin),
-                            bin?.binType.equals("elf", ignoreCase = true) ||
-                                bin?.binaryClass?.startsWith("ELF", ignoreCase = true) == true
+                        val isElf = bin?.binType.equals("elf", ignoreCase = true) ||
+                            bin?.binaryClass?.startsWith("ELF", ignoreCase = true) == true
+                        val localFile = resolveLocalFile(session.projectPath, bin)
+                        val baseLayout = DisasmAddressLayout.forFile(
+                            sections, virtual, localFile?.length() ?: fileLength(session.projectPath, bin),
+                            isElf
                         )
+                        val byteProfile = withContext(Dispatchers.IO) {
+                            BinaryByteSampler.sampleForLayout(
+                                file = localFile,
+                                sections = sections,
+                                virtualAddressing = virtual,
+                                startAddress = baseLayout.startAddress,
+                                endAddress = baseLayout.endAddress,
+                                isElf = isElf
+                            ) ?: BinaryByteProfile.Empty
+                        }
+                        baseLayout.withByteProfile(byteProfile)
                     }
                     val layout = capture.await()
                     updateSessionState(session.pipe) { it.copy(disasmLayout = layout) }
+                    refreshDisasmStructureOverlay()
+                    if ((_uiState.value as? ProjectUiState.Success)?.functions == null) {
+                        autoFunctionsJob?.cancel()
+                        autoFunctionsJob = viewModelScope.launch {
+                            kotlinx.coroutines.delay(350)
+                            if (session.pipe === R2PipeManager.activeSessionPipe) loadFunctions()
+                        }
+                    }
                     // An existing live session reuses its layout; only the shared Room table may need syncing.
                     if (!started) syncSections(session, captureSnapshot = false, forceRefresh = forceRefresh)
                 }
@@ -1133,6 +1191,7 @@ class ProjectViewModel @Inject constructor(
         val session = R2PipeManager.activeSession() ?: return
         val token = session.pipe
         observedSessionToken = token
+        _disasmStructureOverlay.value = AddressStructureOverlay.Empty
         _uiState.value = ProjectUiState.Success(cursorAddress = cursor, sessionToken = token)
         val (capture) = session.disasmLayout.acquire(session.jobScope) {
             val mappings = R2FridaRepository().getMappingsForSession(session).getOrDefault(emptyList())
@@ -1144,11 +1203,13 @@ class ProjectViewModel @Inject constructor(
         }
     }
 
+    private fun resolveLocalFile(path: String?, bin: BinInfo?): File? = runCatching {
+        sequenceOf(bin?.file, path).filterNotNull().filter { it.isNotBlank() }
+            .map(::File).firstOrNull { it.isFile }
+    }.getOrNull()
+
     private fun fileLength(path: String?, bin: BinInfo?): Long? {
-        val file = runCatching {
-            sequenceOf(bin?.file, path).filterNotNull().filter { it.isNotBlank() }
-                .map(::File).firstOrNull { it.isFile }?.length()
-        }.getOrNull()
+        val file = resolveLocalFile(path, bin)?.length()
         return file ?: bin?.size?.takeIf { it in 1 until Long.MAX_VALUE }
     }
 
@@ -1227,6 +1288,7 @@ class ProjectViewModel @Inject constructor(
             if (currentState is ProjectUiState.Success) {
                 // 标记 strings 已加载（用空列表占位，实际数据从 Paging 读取）
                 _uiState.value = currentState.copy(strings = emptyList())
+                refreshDisasmStructureOverlay()
             }
         }
     }
@@ -1242,6 +1304,7 @@ class ProjectViewModel @Inject constructor(
             val currentState = _uiState.value
             if (currentState is ProjectUiState.Success) {
                 _uiState.value = currentState.copy(functions = emptyList())
+                refreshDisasmStructureOverlay()
             }
         }
     }

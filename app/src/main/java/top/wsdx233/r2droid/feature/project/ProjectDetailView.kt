@@ -36,6 +36,7 @@ fun ProjectDetailView(
 
     val hexDataManager = hexViewModel.hexDataManagerState.collectAsState().value
     val disasmDataManager by disasmViewModel.disasmDataManagerState.collectAsState()
+    val disasmStructureOverlay by viewModel.disasmStructureOverlay.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(tabIndex) {
         when (tabIndex) {
@@ -99,7 +100,8 @@ fun ProjectDetailView(
                     scrollToSelectionTrigger = viewModel.scrollToSelectionTrigger,
                     onInstructionClick = { addr -> viewModel.onEvent(ProjectEvent.UpdateCursor(addr)) },
                     onAnnotate = onAnnotate,
-                    onNavigateToR2Frida = onNavigateToR2Frida
+                    onNavigateToR2Frida = onNavigateToR2Frida,
+                    structureOverlay = disasmStructureOverlay
                 )
             }
         }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import top.wsdx233.r2droid.core.data.model.AddressOverview
 import top.wsdx233.r2droid.core.data.model.AddressRegion
+import top.wsdx233.r2droid.core.data.model.BinaryByteProfile
 import top.wsdx233.r2droid.core.data.model.Section
 import top.wsdx233.r2droid.feature.r2frida.data.FridaMapping
 
@@ -12,8 +13,10 @@ import top.wsdx233.r2droid.feature.r2frida.data.FridaMapping
 data class DisasmAddressLayout private constructor(
     val startAddress: Long,
     val endAddress: Long,
-    val overview: AddressOverview
+    val overview: AddressOverview,
+    val byteProfile: BinaryByteProfile = BinaryByteProfile.Empty
 ) {
+    fun withByteProfile(profile: BinaryByteProfile): DisasmAddressLayout = copy(byteProfile = profile)
     companion object {
         private const val EMPTY_RANGE = 1024L * 1024
         private const val ELF_ALLOC = 2L
