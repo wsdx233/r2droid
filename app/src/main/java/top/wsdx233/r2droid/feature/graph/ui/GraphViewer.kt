@@ -236,6 +236,16 @@ private fun routeEdgesStrictly(
     }
 
     val targetEntryCount = mutableMapOf<Int, Int>()
+    val maxLayerIndex = maxLayer.coerceAtLeast(0)
+    val layerMinX = FloatArray(maxLayerIndex + 1) { Float.POSITIVE_INFINITY }
+    val layerMaxX = FloatArray(maxLayerIndex + 1) { Float.NEGATIVE_INFINITY }
+    for (n in nodes) {
+        if (n.layer in 0..maxLayerIndex) {
+            if (n.x < layerMinX[n.layer]) layerMinX[n.layer] = n.x
+            val right = n.x + n.width
+            if (right > layerMaxX[n.layer]) layerMaxX[n.layer] = right
+        }
+    }
 
     for (task in tasks) {
         val src = task.src
@@ -279,12 +289,21 @@ private fun routeEdgesStrictly(
             }
             pts.add(Offset(endX, endY))
         } else {
-            val minLayer = minOf(src.layer, tgt.layer)
-            val maxLayer = maxOf(src.layer, tgt.layer)
-            val nodesInPath = nodes.filter { it.layer in minLayer..maxLayer }
+            val minLayer = minOf(src.layer, tgt.layer).coerceAtLeast(0)
+            val maxLayer = maxOf(src.layer, tgt.layer).coerceAtMost(maxLayerIndex)
+            var minX = Float.POSITIVE_INFINITY
+            var maxX = Float.NEGATIVE_INFINITY
+            for (l in minLayer..maxLayer) {
+                if (layerMinX[l] < minX) minX = layerMinX[l]
+                if (layerMaxX[l] > maxX) maxX = layerMaxX[l]
+            }
+            if (!minX.isFinite() || !maxX.isFinite()) {
+                minX = minOf(src.x, tgt.x)
+                maxX = maxOf(src.x + src.width, tgt.x + tgt.width)
+            }
 
-            val pathLeft = nodesInPath.minOf { it.x } - TRACK_SPACING * 2
-            val pathRight = nodesInPath.maxOf { it.x + it.width } + TRACK_SPACING * 2
+            val pathLeft = minX - TRACK_SPACING * 2
+            val pathRight = maxX + TRACK_SPACING * 2
 
             val isLeftBound = src.centerX < (pathLeft + pathRight) / 2
             val sideX = if (isLeftBound) pathLeft + leftOuterTracks.allocate() else pathRight + rightOuterTracks.allocate()
@@ -371,37 +390,78 @@ fun layoutGraph(data: GraphData, graphType: GraphType): GraphLayoutResult {
     val backEdges = mutableSetOf<Pair<Int, Int>>()
     val visited = mutableSetOf<Int>()
     val onStack = mutableSetOf<Int>()
-    fun dfs(u: Int) {
-        visited.add(u); onStack.add(u)
-        for (v in successors[u].orEmpty()) {
-            if (v in onStack) backEdges.add(u to v)
-            else if (v !in visited) dfs(v)
+    fun dfsIterative(start: Int) {
+        val stack = ArrayDeque<Pair<Int, Int>>()
+        visited.add(start)
+        onStack.add(start)
+        stack.addLast(start to 0)
+        while (stack.isNotEmpty()) {
+            val (u, nextIdx) = stack.removeLast()
+            val outs = successors[u].orEmpty()
+            if (nextIdx < outs.size) {
+                stack.addLast(u to (nextIdx + 1))
+                val v = outs[nextIdx]
+                if (v in onStack) {
+                    backEdges.add(u to v)
+                } else if (v !in visited) {
+                    visited.add(v)
+                    onStack.add(v)
+                    stack.addLast(v to 0)
+                }
+            } else {
+                onStack.remove(u)
+            }
         }
-        onStack.remove(u)
     }
     val roots = allIds.filter { predecessors[it]!!.isEmpty() }
-    (roots.ifEmpty { listOf(data.nodes.first().id) }).forEach { if (it !in visited) dfs(it) }
-    allIds.forEach { if (it !in visited) dfs(it) }
+    (roots.ifEmpty { listOf(data.nodes.first().id) }).forEach { if (it !in visited) dfsIterative(it) }
+    allIds.forEach { if (it !in visited) dfsIterative(it) }
 
     val dagPred = mutableMapOf<Int, MutableList<Int>>()
-    allIds.forEach { dagPred[it] = mutableListOf() }
+    val dagSucc = mutableMapOf<Int, MutableList<Int>>()
+    val inDegree = mutableMapOf<Int, Int>()
+    allIds.forEach {
+        dagPred[it] = mutableListOf()
+        dagSucc[it] = mutableListOf()
+        inDegree[it] = 0
+    }
     data.nodes.forEach { n ->
         n.outNodes.filter { it in allIds }.forEach { t ->
-            if ((n.id to t) !in backEdges) dagPred[t]!!.add(n.id)
+            if ((n.id to t) !in backEdges) {
+                dagPred[t]!!.add(n.id)
+                dagSucc[n.id]!!.add(t)
+                inDegree[t] = (inDegree[t] ?: 0) + 1
+            }
         }
     }
 
+    // Iterative topological longest-path layering (immune to StackOverflowError on deep graphs)
     val layer = mutableMapOf<Int, Int>()
-    fun longestPath(u: Int): Int {
-        layer[u]?.let { return it }
-        val preds = dagPred[u].orEmpty()
-        val l = if (preds.isEmpty()) 0 else preds.maxOf { longestPath(it) } + 1
-        layer[u] = l
-        return l
+    val queue = ArrayDeque<Int>()
+    allIds.forEach { id ->
+        if ((inDegree[id] ?: 0) == 0) {
+            layer[id] = 0
+            queue.addLast(id)
+        }
     }
-    allIds.forEach { longestPath(it) }
+    while (queue.isNotEmpty()) {
+        val u = queue.removeFirst()
+        val uLayer = layer[u] ?: 0
+        for (v in dagSucc[u].orEmpty()) {
+            val candidate = uLayer + 1
+            if (candidate > (layer[v] ?: 0)) {
+                layer[v] = candidate
+            }
+            val rem = (inDegree[v] ?: 1) - 1
+            inDegree[v] = rem
+            if (rem == 0) queue.addLast(v)
+        }
+    }
+    allIds.forEach { id -> if (id !in layer) layer[id] = 0 }
+
     val maxLayer = layer.values.maxOrNull() ?: 0
-    val layerNodes = Array(maxLayer + 1) { l -> allIds.filter { layer[it] == l }.toMutableList() }
+    val layerNodes = Array(maxLayer + 1) { mutableListOf<Int>() }
+    allIds.forEach { id -> layerNodes[layer[id]!!].add(id) }
 
     for (l in 1..maxLayer) {
         val posInPrev = mutableMapOf<Int, Int>()
@@ -469,6 +529,21 @@ fun layoutGraph(data: GraphData, graphType: GraphType): GraphLayoutResult {
             }
             sorted.sortBy { nodeX[it]!! }
             iterations++
+        }
+        // Final guaranteed non-overlapping sweep if wide layers exceeded iteration cap
+        if (hasOverlap && sorted.size > 1) {
+            val origCenter = (nodeX[sorted.first()]!! + (nodeX[sorted.last()]!! + nodeW[sorted.last()]!!)) / 2f
+            for (i in 1 until sorted.size) {
+                val leftId = sorted[i - 1]
+                val rightId = sorted[i]
+                val minRightX = nodeX[leftId]!! + nodeW[leftId]!! + NODE_GAP_X
+                if (nodeX[rightId]!! < minRightX) {
+                    nodeX[rightId] = minRightX
+                }
+            }
+            val newCenter = (nodeX[sorted.first()]!! + (nodeX[sorted.last()]!! + nodeW[sorted.last()]!!)) / 2f
+            val shift = origCenter - newCenter
+            for (id in sorted) nodeX[id] = nodeX[id]!! + shift
         }
     }
 
@@ -776,8 +851,12 @@ fun GraphViewer(
                         )
                     }
                     if (bitmap != null) {
-                        val title = GraphExporter.getSanitizedGraphTitle(graphData)
-                        val result = GraphExporter.shareGraph(context, bitmap, title)
+                        val result = try {
+                            val title = GraphExporter.getSanitizedGraphTitle(graphData)
+                            GraphExporter.shareGraph(context, bitmap, title)
+                        } finally {
+                            if (!bitmap.isRecycled) bitmap.recycle()
+                        }
                         if (result.isFailure) {
                             Toast.makeText(
                                 context,
@@ -809,8 +888,12 @@ fun GraphViewer(
                         )
                     }
                     if (bitmap != null) {
-                        val title = GraphExporter.getSanitizedGraphTitle(graphData)
-                        val result = GraphExporter.saveGraphToGallery(context, bitmap, title)
+                        val result = try {
+                            val title = GraphExporter.getSanitizedGraphTitle(graphData)
+                            GraphExporter.saveGraphToGallery(context, bitmap, title)
+                        } finally {
+                            if (!bitmap.isRecycled) bitmap.recycle()
+                        }
                         if (result.isSuccess) {
                             Toast.makeText(context, R.string.graph_saved_to_gallery, Toast.LENGTH_SHORT).show()
                         } else {
@@ -1141,7 +1224,7 @@ internal fun DrawScope.drawNode(
             }
 
             val addrWidth = addrPaint.measureText(addrText)
-            val disasmX = ln.x + NODE_PADDING + addrWidth + ADDR_DISASM_GAP * density
+            val disasmX = ln.x + NODE_PADDING + addrWidth + ADDR_DISASM_GAP
 
             canvas.drawText(instr.disasm, disasmX, lineY, instrPaint)
         }

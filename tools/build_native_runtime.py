@@ -28,9 +28,45 @@ def log(message: str) -> None:
     print(f"[native] {message}", flush=True)
 
 
+_SENSITIVE_ENV_PREFIXES = (
+    "GITHUB_",
+    "KEYSTORE_",
+    "KEY_",
+    "ACTIONS_",
+    "RUNNER_",
+    "AWS_",
+    "AZURE_",
+    "GCP_",
+    "NPM_",
+    "PYPI_",
+)
+_SENSITIVE_ENV_KEYS = frozenset({
+    "GH_TOKEN",
+    "TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "SIGNING_KEY",
+    "ANDROID_KEYSTORE_PASSWORD",
+    "ANDROID_KEY_PASSWORD",
+})
+
+
+def _sanitized_host_env() -> dict[str, str]:
+    """Return host env without CI/signing secrets so upstream build scripts cannot read them."""
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _SENSITIVE_ENV_KEYS
+        and not key.startswith(_SENSITIVE_ENV_PREFIXES)
+        and "SECRET" not in key
+        and "PASSWORD" not in key
+        and "TOKEN" not in key
+    }
+
+
 def run(args: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     log(shlex.join(map(str, args)))
-    subprocess.run(args, cwd=cwd, env=os.environ | (env or {}), check=True)
+    subprocess.run(args, cwd=cwd, env=_sanitized_host_env() | (env or {}), check=True)
 
 
 def sha256(path: Path) -> str:

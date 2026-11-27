@@ -48,7 +48,7 @@ fun FunctionXrefsDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "${stringResource(R.string.func_xrefs_title)} @ 0x${targetAddress.toString(16).uppercase()}",
+                text = "${stringResource(R.string.func_xrefs_title)} @ 0x${targetAddress.toULong().toString(16).uppercase()}",
                 style = MaterialTheme.typography.titleMedium
             )
         },
@@ -97,8 +97,8 @@ private fun FunctionXrefsContent(
     targetAddress: Long,
     onJump: (Long) -> Unit
 ) {
-    // Separate into calls FROM this function and calls TO this function
-    val callsFrom = xrefs.filter { it.from == targetAddress }
+    // Separate into references FROM inside this function vs references TO this function's entry
+    val callsFrom = xrefs.filter { it.to != targetAddress }
     val callsTo = xrefs.filter { it.to == targetAddress }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -218,7 +218,7 @@ private fun FunctionXrefItem(
 
             // From address
             Text(
-                text = "0x${xref.from.toString(16).uppercase()}",
+                text = "0x${xref.from.toULong().toString(16).uppercase()}",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 color = if (xref.from == targetAddress)
@@ -234,7 +234,7 @@ private fun FunctionXrefItem(
 
             // To address
             Text(
-                text = "0x${xref.to.toString(16).uppercase()}",
+                text = "0x${xref.to.toULong().toString(16).uppercase()}",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 color = if (xref.to == targetAddress)

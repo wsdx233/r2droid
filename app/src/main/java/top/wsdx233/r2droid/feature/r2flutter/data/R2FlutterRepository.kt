@@ -50,10 +50,15 @@ class R2FlutterRepository {
         R2PipeManager.execute("r2flutter -C", markDirty = true)
 
     suspend fun setMapFile(path: String): Result<String> {
-        require(path.isNotBlank() && '\n' !in path && '\r' !in path && ';' !in path) {
+        val trimmed = path.trim()
+        require(
+            trimmed.isNotEmpty() &&
+                !top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(trimmed) &&
+                trimmed.none { it == '>' || it == '<' || it == '@' || it == '$' || it == '\'' || it == '"' }
+        ) {
             "Invalid obfuscation map path"
         }
-        return R2PipeManager.execute("e r2flutter.mapfile=$path", markDirty = false)
+        return R2PipeManager.execute("e r2flutter.mapfile=$trimmed", markDirty = false)
     }
 
     suspend fun setNamePool(enabled: Boolean): Result<String> =
@@ -81,32 +86,50 @@ class R2FlutterRepository {
     companion object {
         internal fun extractJsonPayload(raw: String): String {
             val text = raw.trim()
-            val start = text.indexOfFirst { it == '{' || it == '[' }
-            require(start >= 0) { "r2flutter did not return JSON output" }
-            val opening = text[start]
-            val closing = if (opening == '{') '}' else ']'
-            var depth = 0
-            var inString = false
-            var escaped = false
-            for (index in start until text.length) {
-                val char = text[index]
-                if (inString) {
-                    when {
-                        escaped -> escaped = false
-                        char == '\\' -> escaped = true
-                        char == '"' -> inString = false
+            var searchIndex = 0
+            while (searchIndex < text.length) {
+                val start = text.indexOfAny(charArrayOf('{', '['), searchIndex)
+                if (start < 0) break
+                val opening = text[start]
+                val closing = if (opening == '{') '}' else ']'
+                var depth = 0
+                var inString = false
+                var escaped = false
+                var candidateEnd = -1
+                for (index in start until text.length) {
+                    val char = text[index]
+                    if (inString) {
+                        when {
+                            escaped -> escaped = false
+                            char == '\\' -> escaped = true
+                            char == '"' -> inString = false
+                        }
+                        continue
                     }
-                    continue
-                }
-                when (char) {
-                    '"' -> inString = true
-                    opening -> depth++
-                    closing -> {
-                        depth--
-                        if (depth == 0) return text.substring(start, index + 1)
+                    when (char) {
+                        '"' -> inString = true
+                        opening -> depth++
+                        closing -> {
+                            depth--
+                            if (depth == 0) {
+                                candidateEnd = index
+                                break
+                            }
+                        }
                     }
                 }
+                if (candidateEnd > start) {
+                    val candidate = text.substring(start, candidateEnd + 1)
+                    // Skip non-JSON log prefixes such as `[r2flutter]` or `[WARN]`.
+                    val valid = runCatching {
+                        if (opening == '{') JSONObject(candidate) else JSONArray(candidate)
+                        true
+                    }.getOrDefault(false)
+                    if (valid) return candidate
+                }
+                searchIndex = start + 1
             }
+            require(text.indexOfAny(charArrayOf('{', '[')) >= 0) { "r2flutter did not return JSON output" }
             error("Incomplete JSON output from r2flutter")
         }
 

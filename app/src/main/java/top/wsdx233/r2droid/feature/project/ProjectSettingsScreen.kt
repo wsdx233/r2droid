@@ -103,10 +103,16 @@ fun ProjectSettingsScreen(
         ExportReportScreen(onDismiss = { showExportReport = false })
     }
     if (showAnalysis) {
-        AnalysisBottomSheet(onDismiss = { showAnalysis = false })
+        AnalysisBottomSheet(
+            onDismiss = { showAnalysis = false },
+            onAnalysisComplete = { viewModel.onEvent(ProjectEvent.RefreshAllViews) }
+        )
     }
     if (showSwitchArch) {
-        SwitchArchBottomSheet(onDismiss = { showSwitchArch = false })
+        SwitchArchBottomSheet(
+            onDismiss = { showSwitchArch = false },
+            onArchSwitched = { viewModel.onEvent(ProjectEvent.RefreshAllViews) }
+        )
     }
 
     if (showLoadStaticProjectDialog) {

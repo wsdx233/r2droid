@@ -70,8 +70,8 @@ data class DisasmAddressLayout private constructor(
             val overview = AddressOverview.of(mappings.mapNotNull { mapping ->
                 val base = mapping.base.trim()
                 val address = if (base.startsWith("0x", ignoreCase = true)) {
-                    base.drop(2).toLongOrNull(16)
-                } else base.toLongOrNull()
+                    base.drop(2).toULongOrNull(16)?.toLong()
+                } else base.toULongOrNull()?.toLong() ?: base.toLongOrNull()
                 AddressRegion.fromSize(address ?: return@mapNotNull null, mapping.size, mapping.filePath.orEmpty(), mapping.protection)
             })
             return fromOverview(overview, fileLength)

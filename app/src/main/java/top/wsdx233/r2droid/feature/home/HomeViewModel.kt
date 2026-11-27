@@ -213,16 +213,17 @@ class HomeViewModel : ViewModel() {
      * Delete a saved project
      */
     fun onDeleteProject(context: Context, project: SavedProject) {
+        val appContext = context.applicationContext
         viewModelScope.launch {
             try {
                 checkNotNull(repository).deleteProject(project.id).getOrThrow()
                 loadSavedProjects() // Refresh list
                 _uiEvent.send(HomeUiEvent.ShowMessage(
-                    context.getString(R.string.home_project_deleted)
+                    appContext.getString(R.string.home_project_deleted)
                 ))
             } catch (e: Exception) {
                 _uiEvent.send(HomeUiEvent.ShowError(
-                    e.message ?: context.getString(R.string.home_error_unknown)
+                    e.message ?: appContext.getString(R.string.home_error_unknown)
                 ))
             }
         }
@@ -247,30 +248,28 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun copyContentUriToCache(context: Context, uri: Uri): String? {
+        var targetFile: File? = null
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            // Use timestamp to ensure unique path, forcing R2 to treat it as a new file
-            // Also try to preserve extension if possible (though R2 detects by magic bytes usually)
-            val fileName = "r2_target_${System.currentTimeMillis()}" 
-            
+            // Use timestamp + random suffix to ensure unique path, forcing R2 to treat it as a new file
+            val fileName = "r2_target_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
+
             // Use custom project home if set, otherwise cache dir
             val baseDir = SettingsManager.projectHome?.let { File(it) }
-                ?.takeIf { it.exists() && it.isDirectory && it.canWrite() } 
+                ?.takeIf { it.exists() && it.isDirectory && it.canWrite() }
                 ?: context.cacheDir
-                
+
             val file = File(baseDir, fileName)
-            
-            // Cleanup old temp files to save space? (Optional)
-            // context.cacheDir.listFiles()?.forEach { if (it.name.startsWith("r2_target")) it.delete() }
-            
-            val outputStream = FileOutputStream(file)
+            targetFile = file
+
             inputStream.use { input ->
-                outputStream.use { output ->
+                FileOutputStream(file).use { output ->
                     input.copyTo(output)
                 }
             }
             file.absolutePath
         } catch (e: Exception) {
+            targetFile?.let { runCatching { it.delete() } }
             e.printStackTrace()
             null
         }

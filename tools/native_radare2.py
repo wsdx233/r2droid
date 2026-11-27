@@ -97,6 +97,7 @@ def _prepare_compatibility_tools(work: Path, env: Mapping[str, str]) -> Path:
 
 def _safe_extract(archive: Path, destination: Path) -> None:
     """Extract a build-produced tarball while retaining symlinks safely."""
+    destination = destination.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, mode="r:*") as tar:
         members = tar.getmembers()
@@ -104,10 +105,19 @@ def _safe_extract(archive: Path, destination: Path) -> None:
             name = Path(member.name)
             if not member.name or name.is_absolute() or ".." in name.parts:
                 raise RuntimeError(f"unsafe radare2 archive member: {member.name!r}")
+            if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+                raise RuntimeError(f"unsafe radare2 special archive member: {member.name!r}")
+            member_dest = (destination / name).resolve()
+            if member_dest != destination and destination not in member_dest.parents:
+                raise RuntimeError(f"radare2 archive member escapes destination: {member.name!r}")
             if member.issym() or member.islnk():
                 target = Path(member.linkname)
-                if target.is_absolute() or ".." in target.parts:
+                if not member.linkname or target.is_absolute() or ".." in target.parts:
                     raise RuntimeError(f"unsafe radare2 archive link: {member.name!r}")
+                link_base = member_dest.parent if member.issym() else destination
+                resolved_target = (link_base / target).resolve()
+                if resolved_target != destination and destination not in resolved_target.parents:
+                    raise RuntimeError(f"radare2 archive link escapes destination: {member.name!r}")
         # All names and link targets have been checked above.  extractall is
         # used rather than copyfile so mode bits and symlinks survive intact.
         tar.extractall(destination)
@@ -175,6 +185,8 @@ def _build_radare2(
         script.write_text(script_text.replace("${MAKE} mrproper", "${MAKE} clean", 1), encoding="utf-8")
     # NDK suppresses android-build.sh's android-shell re-exec.  Keep both names
     # because different locked radare2 revisions inspect different variables.
+    job_count = max(1, jobs)
+    existing_makeflags = build_env.get("MAKEFLAGS", "").strip()
     build_env.update(
         {
             "NDK": str(ndk),
@@ -184,6 +196,8 @@ def _build_radare2(
             "ANDROID_API": "24",
             "API": "24",
             "STATIC_BUILD": "0",
+            "NPROC": str(job_count),
+            "MAKEFLAGS": f"{existing_makeflags} -j{job_count}".strip(),
         }
     )
 
@@ -368,6 +382,8 @@ def _build_host_sleighc(source: Path, work: Path, native: Path, jobs: int, run: 
     """Build the host generator with ghidra-native's own source lists and patches."""
     ghidra = source / "subprojects" / "ghidra-native"
     build = work / "host-tools" / "ghidra-native"
+    if build.exists():
+        shutil.rmtree(build)
     build.parent.mkdir(parents=True, exist_ok=True)
     _run(run, ["meson", "setup", str(build), str(ghidra), "--native-file", str(native), "-Dbuildtype=release"], work, {})
     _run(run, ["meson", "compile", "-C", str(build), "-j", str(max(1, jobs)), "sleighc"], work, {})
@@ -618,7 +634,19 @@ def _copy_libz_if_needed(runtime: Path, plugins: Path, ndk: Path, output: Path) 
     if not (_needs_library(runtime, b"libz.so.1") or _needs_library(plugins, b"libz.so.1")):
         return
     candidates = list(runtime.rglob("libz.so.1")) + list(plugins.rglob("libz.so.1"))
-    candidates.extend(ndk.rglob("libz.so.1"))
+    arm64_sysroot = (
+        ndk
+        / "toolchains"
+        / "llvm"
+        / "prebuilt"
+        / "linux-x86_64"
+        / "sysroot"
+        / "usr"
+        / "lib"
+        / "aarch64-linux-android"
+    )
+    if arm64_sysroot.is_dir():
+        candidates.extend(arm64_sysroot.rglob("libz.so.1"))
     source = next((path for path in candidates if path.is_file()), None)
     if source is None:
         raise RuntimeError("runtime links libz.so.1 but no ARM64 libz.so.1 is available")

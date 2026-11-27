@@ -59,6 +59,8 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     private fun executeSearch(
         query: String,
         searchType: SearchType,
@@ -66,10 +68,16 @@ class SearchViewModel @Inject constructor(
     ) {
         if (query.isBlank() && searchType != SearchType.CUSTOM) return
 
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Searching
 
-            val cmd = buildCommand(query, searchType, customFlags)
+            val cmd = try {
+                buildCommand(query, searchType, customFlags)
+            } catch (e: IllegalArgumentException) {
+                _uiState.value = SearchUiState.Error(e.message ?: "Invalid search query")
+                return@launch
+            }
 
             val result = repository.search(cmd)
             if (result.isSuccess) {
@@ -92,10 +100,18 @@ class SearchViewModel @Inject constructor(
             return query
         }
 
-        // r2 format: /<typeSuffix><customFlags>j <query>
-        val sb = StringBuilder("/")
+        require(query.none { it == '\n' || it == '\r' || it == '\u0000' }) {
+            "Search query cannot contain newline or NUL characters"
+        }
+        val cleanFlags = customFlags.trim()
+        require(top.wsdx233.r2droid.util.R2Sanitizer.isSafeSearchFlags(cleanFlags)) {
+            "Invalid search flags"
+        }
+
+        // Prefix with `'` so radare2 treats `;`, `|`, `` ` ``, `>`, `$()` in the query literally.
+        val sb = StringBuilder("'/")
         sb.append(searchType.typeSuffix)
-        if (customFlags.isNotBlank()) sb.append(customFlags.trim())
+        if (cleanFlags.isNotEmpty()) sb.append(cleanFlags)
         sb.append("j ")
         sb.append(query)
 

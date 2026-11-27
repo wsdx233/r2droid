@@ -2,11 +2,14 @@ package top.wsdx233.r2droid.core.ui.components
 
 /** Address ranges are end-exclusive, just like the mapped sections backing the viewer. */
 internal fun scrollbarAddressAtRatio(start: Long, end: Long, ratio: Float): Long {
-    if (end <= start) return start
-    val last = end - 1
+    val uStart = start.toULong()
+    val uEnd = end.toULong()
+    if (uEnd <= uStart) return start
+    val span = uEnd - 1UL - uStart
     val clamped = if (ratio.isNaN()) 0.0 else ratio.toDouble().coerceIn(0.0, 1.0)
-    // Subtract before converting to Double to preserve small ranges at high addresses.
-    return start + ((last - start).toDouble() * clamped).toLong().coerceIn(0, last - start)
+    // Subtract in unsigned space before converting to Double to preserve small ranges at high 64-bit addresses.
+    val offset = if (clamped >= 1.0) span else (span.toDouble() * clamped).toULong().coerceAtMost(span)
+    return (uStart + offset).toLong()
 }
 
 internal fun scrollbarRatioAtPosition(y: Float, trackHeight: Float, thumbHeight: Float, grabOffset: Float): Float {

@@ -13,6 +13,8 @@ import java.io.IOException
 
 internal const val MAX_REASONING_ITEMS = 32
 internal const val MAX_REASONING_ITEM_LENGTH = 128 * 1024
+internal const val MAX_SSE_EVENT_CHARS = 4 * 1024 * 1024
+internal const val MAX_TOOL_ARGUMENTS_CHARS = 1024 * 1024
 
 internal class AiWireException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -42,6 +44,8 @@ internal class AiSseReader(private val reader: BufferedReader) {
             val value = if (colon == -1) "" else line.substring(colon + 1).removePrefix(" ")
             when (field) {
                 "data" -> {
+                    val extra = value.length + if (hasData) 1 else 0
+                    wireCheck(extra <= MAX_SSE_EVENT_CHARS - data.length, "SSE event frame exceeded size limit")
                     if (hasData) data.append('\n')
                     data.append(value)
                     hasData = true
@@ -127,7 +131,10 @@ internal class AiChatTurnWire(private val tools: Set<String>) : AiTurnWire {
                 call.id = agree(call.id, tool.wireString("id")?.takeIf(String::isNotEmpty), "tool call ID")
                 tool.wireObjectOrNull("function")?.let { function ->
                     call.name = agree(call.name, function.wireString("name")?.takeIf(String::isNotEmpty), "tool name")
-                    function.wireString("arguments")?.let(call.arguments::append)
+                    function.wireString("arguments")?.let { chunk ->
+                        wireCheck(chunk.length <= MAX_TOOL_ARGUMENTS_CHARS - call.arguments.length, "Tool call arguments exceeded size limit")
+                        call.arguments.append(chunk)
+                    }
                 }
             }
             val reasoning = delta.wireStringOrNull("reasoning_content")

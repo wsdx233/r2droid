@@ -34,6 +34,7 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -83,10 +84,33 @@ fun AutoHideScrollbar(
     if (totalItems <= 0) return
     
     val coroutineScope = rememberCoroutineScope()
+    val currentListState by rememberUpdatedState(listState)
+    val currentTotalItems by rememberUpdatedState(totalItems)
+    val currentAlwaysShow by rememberUpdatedState(alwaysShow)
+    val currentHideDelayMs by rememberUpdatedState(hideDelayMs)
+    val currentOnScrollToIndex by rememberUpdatedState(onScrollToIndex)
     var isVisible by remember { mutableStateOf(alwaysShow) }
     var isDragging by remember { mutableStateOf(false) }
     var isPressing by remember { mutableStateOf(false) }
-    
+    var hideJob by remember { mutableStateOf<Job?>(null) }
+
+    fun cancelHideTimer() {
+        hideJob?.cancel()
+        hideJob = null
+    }
+
+    fun scheduleHideTimer() {
+        cancelHideTimer()
+        if (!currentAlwaysShow) {
+            hideJob = coroutineScope.launch {
+                delay(currentHideDelayMs)
+                if (!isDragging) {
+                    isVisible = false
+                }
+            }
+        }
+    }
+
     // Animate alpha for smooth fade in/out
     val alpha = animateFloatAsState(
         targetValue = if (alwaysShow || isVisible || isDragging) 1f else 0f,
@@ -102,14 +126,13 @@ fun AutoHideScrollbar(
     }
     
     // Monitor scroll state changes (only if not alwaysShow)
-    LaunchedEffect(listState, alwaysShow) {
+    LaunchedEffect(listState, alwaysShow, hideDelayMs) {
         if (!alwaysShow) {
             snapshotFlow { 
                 listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset 
             }.collectLatest { (_, _) ->
-                // Show scrollbar on any scroll change
+                cancelHideTimer()
                 isVisible = true
-                // Hide after delay (only if not currently dragging)
                 delay(hideDelayMs)
                 if (!isDragging) {
                     isVisible = false
@@ -123,9 +146,10 @@ fun AutoHideScrollbar(
             .fillMaxHeight()
             .width(trackWidth)
             .graphicsLayer { this.alpha = alpha.value }
-            .pointerInput(totalItems) {
+            .pointerInput(thumbHeight) {
                 detectVerticalDragGestures(
                     onDragStart = {
+                        cancelHideTimer()
                         isDragging = true
                         isPressing = true
                         isVisible = true
@@ -133,65 +157,49 @@ fun AutoHideScrollbar(
                     onDragEnd = {
                         isDragging = false
                         isPressing = false
-                        // Start hide timer (only if not alwaysShow)
-                        if (!alwaysShow) {
-                            coroutineScope.launch {
-                                delay(hideDelayMs)
-                                if (!isDragging) {
-                                    isVisible = false
-                                }
-                            }
-                        }
+                        scheduleHideTimer()
                     },
                     onDragCancel = {
                         isDragging = false
                         isPressing = false
-                        if (!alwaysShow) {
-                            coroutineScope.launch {
-                                delay(hideDelayMs)
-                                if (!isDragging) {
-                                    isVisible = false
-                                }
-                            }
-                        }
+                        scheduleHideTimer()
                     },
                     onVerticalDrag = { change, _ ->
-                        val height = size.height
-                        val newY = (change.position.y / height).coerceIn(0f, 1f)
-                        val targetIndex = (newY * totalItems).toInt().coerceIn(0, maxOf(0, totalItems - 1))
+                        val height = size.height.toFloat()
+                        val thumbPx = thumbHeight.toPx().coerceAtMost(height)
+                        val ratio = scrollbarRatioAtPosition(change.position.y, height, thumbPx, thumbPx / 2f)
+                        val items = currentTotalItems
+                        val scrollable = (items - currentListState.layoutInfo.visibleItemsInfo.size).coerceAtLeast(1)
+                        val targetIndex = (ratio * scrollable).roundToInt().coerceIn(0, maxOf(0, items - 1))
                         coroutineScope.launch {
-                            listState.scrollToItem(targetIndex)
+                            currentListState.scrollToItem(targetIndex)
                         }
-                        onScrollToIndex(targetIndex)
+                        currentOnScrollToIndex(targetIndex)
                     }
                 )
             }
-            .pointerInput(totalItems) {
+            .pointerInput(thumbHeight) {
                 detectTapGestures(
                     onTap = { offset ->
+                        cancelHideTimer()
                         isPressing = true
                         isVisible = true
-                        val height = size.height
-                        val newY = (offset.y / height).coerceIn(0f, 1f)
-                        val targetIndex = (newY * totalItems).toInt().coerceIn(0, maxOf(0, totalItems - 1))
+                        val height = size.height.toFloat()
+                        val thumbPx = thumbHeight.toPx().coerceAtMost(height)
+                        val ratio = scrollbarRatioAtPosition(offset.y, height, thumbPx, thumbPx / 2f)
+                        val items = currentTotalItems
+                        val scrollable = (items - currentListState.layoutInfo.visibleItemsInfo.size).coerceAtLeast(1)
+                        val targetIndex = (ratio * scrollable).roundToInt().coerceIn(0, maxOf(0, items - 1))
                         coroutineScope.launch {
-                            listState.scrollToItem(targetIndex)
+                            currentListState.scrollToItem(targetIndex)
                         }
-                        onScrollToIndex(targetIndex)
+                        currentOnScrollToIndex(targetIndex)
                         // Reset pressing state after a short delay
                         coroutineScope.launch {
                             kotlinx.coroutines.delay(100)
                             isPressing = false
                         }
-                        // Start hide timer (only if not alwaysShow)
-                        if (!alwaysShow) {
-                            coroutineScope.launch {
-                                delay(hideDelayMs)
-                                if (!isDragging) {
-                                    isVisible = false
-                                }
-                            }
-                        }
+                        scheduleHideTimer()
                     }
                 )
             }
@@ -235,7 +243,7 @@ fun AutoHideAddressScrollbar(
     structureOverlay: AddressStructureOverlay = AddressStructureOverlay.Empty,
     onDragThumbCenter: ((Float) -> Unit)? = null
 ) {
-    if (totalItems <= 0 || viewEndAddress <= viewStartAddress) return
+    if (totalItems <= 0 || viewEndAddress.toULong() <= viewStartAddress.toULong()) return
 
     val preview by rememberUpdatedState(onScrollToAddress)
     val reportCenter by rememberUpdatedState(onDragThumbCenter)
@@ -269,9 +277,11 @@ fun AutoHideAddressScrollbar(
     }
 
     fun addressRatio(): Float {
-        val range = (viewEndAddress - 1 - viewStartAddress).coerceAtLeast(1)
-        return ((address().coerceIn(viewStartAddress, viewEndAddress - 1) - viewStartAddress).toDouble() / range)
-            .toFloat().coerceIn(0f, 1f)
+        val uStart = viewStartAddress.toULong()
+        val uEnd = viewEndAddress.toULong()
+        val range = (uEnd - 1UL - uStart).coerceAtLeast(1UL).toDouble()
+        val uAddr = address().toULong().coerceIn(uStart, uEnd - 1UL)
+        return ((uAddr - uStart).toDouble() / range).toFloat().coerceIn(0f, 1f)
     }
 
     // Keep the cache modifier stable across preview/list recompositions. Only overview, byte/semantic
@@ -299,7 +309,11 @@ fun AutoHideAddressScrollbar(
                 return@drawWithCache onDrawBehind { }
             }
 
-            val left = size.width - (thumbWidthPx + stripWidth) / 2f
+            val left = if (layoutDirection == LayoutDirection.Ltr) {
+                size.width - (thumbWidthPx + stripWidth) / 2f
+            } else {
+                (thumbWidthPx - stripWidth) / 2f
+            }
             val right = left + stripWidth
             // The first/last raster boundaries are the centers of the thumb at either end.
             fun rowY(row: Int) = thumbPx / 2f + (row.toFloat() / rows) * travel
@@ -436,10 +450,11 @@ fun AutoHideAddressScrollbar(
         val height = thumbHeight.toPx().coerceAtMost(size.height)
         val width = thumbWidth.toPx().coerceAtMost(size.width)
         val ratio = dragThumbRatio ?: addressRatio()
+        val x = if (layoutDirection == LayoutDirection.Ltr) size.width - width else 0f
         // The contrasting wings stay visible at either side of the permission strip.
         drawRect(
             color = thumbColor,
-            topLeft = Offset(size.width - width, ratio * (size.height - height)),
+            topLeft = Offset(x, ratio * (size.height - height)),
             size = Size(width, height),
             alpha = if (isDragging || seeking) 0.52f else 0.44f
         )

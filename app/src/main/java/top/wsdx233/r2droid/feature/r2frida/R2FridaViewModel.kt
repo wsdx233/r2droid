@@ -139,8 +139,8 @@ class R2FridaViewModel @Inject constructor(
     // --- Monitor ---
     private val _monitors = MutableStateFlow<List<MonitorInstance>>(emptyList())
     val monitors: StateFlow<List<MonitorInstance>> = _monitors.asStateFlow()
-    private val monitorJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
-    private val monitorFiles = mutableMapOf<String, java.io.File>()
+    private val monitorJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val monitorFiles = ConcurrentHashMap<String, java.io.File>()
 
     /** Pre-fill address for the monitor input field, consumed once by the UI. */
     private val _monitorPrefillAddress = MutableStateFlow<String?>(null)
@@ -175,35 +175,68 @@ class R2FridaViewModel @Inject constructor(
         _currentScriptName.value = null
     }
 
+    private fun resolveSafeScriptFile(name: String, ensureJsExt: Boolean): File? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed.contains('/') || trimmed.contains('\\') ||
+            trimmed.contains("..") || trimmed.contains('\u0000')
+        ) {
+            return null
+        }
+        val finalName = if (ensureJsExt && !trimmed.endsWith(".js")) "$trimmed.js" else trimmed
+        val dir = getScriptsDir()
+        val file = File(dir, finalName)
+        return runCatching {
+            val baseCanonical = dir.canonicalPath
+            val fileCanonical = file.canonicalPath
+            if (fileCanonical.startsWith("$baseCanonical${File.separator}")) file else null
+        }.getOrNull()
+    }
+
     fun saveScript(name: String, content: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val file = File(getScriptsDir(), if (name.endsWith(".js")) name else "$name.js")
-            file.writeText(content)
-            _currentScriptName.value = file.name
-            _scriptContent.value = content
-            refreshScriptFiles()
+            val file = resolveSafeScriptFile(name, ensureJsExt = true)
+            if (file == null) {
+                LogManager.log(LogType.ERROR, "Invalid Frida script name: $name")
+                return@launch
+            }
+            runCatching {
+                file.writeText(content)
+                _currentScriptName.value = file.name
+                _scriptContent.value = content
+                refreshScriptFiles()
+            }.onFailure { e ->
+                LogManager.log(LogType.ERROR, "Failed to save script: ${e.message}")
+            }
         }
     }
 
     fun openScript(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val file = File(getScriptsDir(), name)
-            if (file.exists()) {
-                val content = file.readText()
-                _scriptContent.value = content
-                _currentScriptName.value = name
+            val file = resolveSafeScriptFile(name, ensureJsExt = false) ?: return@launch
+            runCatching {
+                if (file.isFile) {
+                    val content = file.readText()
+                    _scriptContent.value = content
+                    _currentScriptName.value = file.name
+                }
+            }.onFailure { e ->
+                LogManager.log(LogType.ERROR, "Failed to open script: ${e.message}")
             }
         }
     }
 
     fun deleteScript(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val file = File(getScriptsDir(), name)
-            file.delete()
-            if (_currentScriptName.value == name) {
-                _currentScriptName.value = null
+            val file = resolveSafeScriptFile(name, ensureJsExt = false) ?: return@launch
+            runCatching {
+                file.delete()
+                if (_currentScriptName.value == file.name) {
+                    _currentScriptName.value = null
+                }
+                refreshScriptFiles()
+            }.onFailure { e ->
+                LogManager.log(LogType.ERROR, "Failed to delete script: ${e.message}")
             }
-            refreshScriptFiles()
         }
     }
 
@@ -270,7 +303,11 @@ class R2FridaViewModel @Inject constructor(
     fun loadOverview() {
         if (!hasR2FridaSession()) return
         viewModelScope.launch {
-            repo.getOverview().onSuccess { _overview.value = it }
+            repo.getOverview()
+                .onSuccess { _overview.value = it }
+                .onFailure { e ->
+                    Log.w(TAG, "Failed to load r2frida overview: ${e.message}")
+                }
         }
     }
 
@@ -357,6 +394,8 @@ class R2FridaViewModel @Inject constructor(
         _customFunctions.value = null
         _rawCustomFunctions.value = null
         _searchResults.value = null
+        exportDemangleCache.clear()
+        functionDemangleCache.clear()
     }
 
     private fun getPublicExchangeDir(): String {
@@ -408,6 +447,9 @@ class R2FridaViewModel @Inject constructor(
             .getOrElse { original }
             .ifBlank { original }
 
+        if (cache.size >= 10_000) {
+            cache.clear()
+        }
         cache[original] = demangled
         return demangled
     }
@@ -447,9 +489,10 @@ class R2FridaViewModel @Inject constructor(
             // Split by semicolon for union search
             val values = input.split(";").map { it.trim() }.filter { it.isNotEmpty() }
             val protection = buildProtectionString()
+            val regionsJson = buildSelectedRegionsJson()
             repo.searchMemory(
                 context.cacheDir.absolutePath, getPublicExchangeDir(),
-                typeStr, values, compareStr, rangeMin, rangeMax, protection, "[]",
+                typeStr, values, compareStr, rangeMin, rangeMax, protection, regionsJson,
                 _maxResults.value,
                 getSearchTimeoutMs()
             ).onSuccess {
@@ -460,6 +503,36 @@ class R2FridaViewModel @Inject constructor(
             }
             _isSearching.value = false
         }
+    }
+
+    private suspend fun buildSelectedRegionsJson(): String {
+        val selected = _selectedRegions.value
+        if (selected.isEmpty() || MemoryRegion.ALL in selected) return "[]"
+        val mappings = _mappings.value ?: repo.getMappings().getOrNull()?.also { _mappings.value = it } ?: return "[]"
+        val arr = org.json.JSONArray()
+        for (m in mappings) {
+            val path = m.filePath.orEmpty()
+            val prot = m.protection
+            val matches = selected.any { region ->
+                when (region) {
+                    MemoryRegion.ALL -> true
+                    MemoryRegion.JAVA_HEAP -> prot.contains('w') && (path.contains("dalvik", true) || path.contains("art", true))
+                    MemoryRegion.C_ALLOC -> prot.contains('w') && (path.contains("scudo", true) || path.contains("malloc", true) || path.contains("libc_malloc", true) || path.contains("heap", true))
+                    MemoryRegion.C_BSS -> prot.contains('w') && path.contains("bss", true)
+                    MemoryRegion.C_DATA -> prot.contains('w') && path.startsWith("/") && !path.contains("dalvik", true)
+                    MemoryRegion.STACK -> prot.contains('w') && path.contains("stack", true)
+                    MemoryRegion.CODE_APP -> prot.contains('x') && (path.contains("/data/app/", true) || path.contains("/data/data/", true))
+                    MemoryRegion.CODE_SYS -> prot.contains('x') && (path.startsWith("/system/") || path.startsWith("/apex/") || path.startsWith("/vendor/"))
+                    MemoryRegion.VIDEO -> prot.contains('w') && (path.contains("kgsl", true) || path.contains("dmabuf", true) || path.contains("gralloc", true))
+                    MemoryRegion.BAD -> prot.contains('w') && prot.contains('x')
+                    MemoryRegion.OTHER -> path.isBlank()
+                }
+            }
+            if (matches && m.size > 0L) {
+                arr.put(org.json.JSONObject().put("base", m.base).put("size", m.size))
+            }
+        }
+        return arr.toString()
     }
 
     /**
@@ -555,10 +628,25 @@ class R2FridaViewModel @Inject constructor(
         } else {
             current[address] = value
         }
-        _frozenAddresses.value = current
-        if (current.isNotEmpty() && freezeJob == null) {
+        applyFrozenMap(current)
+    }
+
+    /** Explicitly enable/update or disable freeze for an address. */
+    fun setFreeze(address: String, value: String, enabled: Boolean) {
+        val current = _frozenAddresses.value.toMutableMap()
+        if (enabled) {
+            current[address] = value
+        } else {
+            current.remove(address)
+        }
+        applyFrozenMap(current)
+    }
+
+    private fun applyFrozenMap(updated: Map<String, String>) {
+        _frozenAddresses.value = updated
+        if (updated.isNotEmpty() && freezeJob?.isActive != true) {
             startFreezeLoop()
-        } else if (current.isEmpty()) {
+        } else if (updated.isEmpty()) {
             freezeJob?.cancel()
             freezeJob = null
         }
@@ -572,14 +660,28 @@ class R2FridaViewModel @Inject constructor(
 
     private fun startFreezeLoop() {
         if (!hasR2FridaSession()) return
+        freezeJob?.cancel()
         freezeJob = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
+                if (!R2PipeManager.isR2FridaSession) break
                 val frozen = _frozenAddresses.value
                 if (frozen.isEmpty()) break
-                for ((addr, value) in frozen) {
-                    writeValue(addr, value)
+                val typeStr = when (_searchValueType.value) {
+                    SearchValueType.BYTE -> "u8"
+                    SearchValueType.SHORT -> "u16"
+                    SearchValueType.DWORD -> "u32"
+                    SearchValueType.QWORD -> "u64"
+                    SearchValueType.FLOAT -> "float"
+                    SearchValueType.DOUBLE -> "double"
+                    SearchValueType.UTF8 -> "utf8"
+                    SearchValueType.UTF16 -> "utf16"
+                    SearchValueType.HEX -> "u32"
                 }
-                kotlinx.coroutines.delay(100)
+                for ((addr, value) in frozen) {
+                    if (!R2PipeManager.isR2FridaSession) break
+                    repo.writeMemoryValue(context.cacheDir.absolutePath, addr, typeStr, value)
+                }
+                kotlinx.coroutines.delay(150)
             }
         }
     }
@@ -713,16 +815,27 @@ class R2FridaViewModel @Inject constructor(
     }
 
     fun stopMonitor(monitorId: String) {
-        if (!hasR2FridaSession()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _monitors.value = _monitors.value.map {
-                if (it.id == monitorId) it.copy(isActive = false) else it
-            }
-            try { repo.stopMonitor(monitorId) } catch (_: Exception) {}
-            monitorJobs[monitorId]?.cancel()
-            monitorJobs.remove(monitorId)
-            monitorFiles.remove(monitorId)
+        _monitors.value = _monitors.value.map {
+            if (it.id == monitorId) it.copy(isActive = false) else it
         }
+        monitorJobs.remove(monitorId)?.cancel()
+        val removedFile = monitorFiles.remove(monitorId)
+        viewModelScope.launch(Dispatchers.IO) {
+            if (R2PipeManager.isR2FridaSession) {
+                runCatching { repo.stopMonitor(monitorId) }
+            }
+            removedFile?.delete()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        freezeJob?.cancel()
+        freezeJob = null
+        monitorJobs.values.forEach { it.cancel() }
+        monitorJobs.clear()
+        monitorFiles.values.forEach { runCatching { it.delete() } }
+        monitorFiles.clear()
     }
 
     fun clearScriptLogs() = LogManager.clear()
@@ -748,51 +861,46 @@ class R2FridaViewModel @Inject constructor(
                     error("R2 session is not connected")
                 }
 
-                val addressRegex = Regex("\\b0x[0-9a-fA-F]+\\b")
                 var replacedCount = 0
 
                 val tempFile = File(context.cacheDir, "frida_rebased_project_${System.currentTimeMillis()}.r2")
-                sourceFile.bufferedReader().use { reader ->
-                    tempFile.bufferedWriter().use { writer ->
-                        reader.forEachLine { line ->
-                            val transformedLine = addressRegex.replace(line) { match ->
-                                val raw = match.value
-                                val parsed = parseHexToULong(raw)
-                                if (parsed == null) {
-                                    raw
-                                } else {
-                                    replacedCount += 1
-                                    "0x${(parsed + moduleBase).toString(16)}"
-                                }
+                try {
+                    sourceFile.bufferedReader().use { reader ->
+                        tempFile.bufferedWriter().use { writer ->
+                            reader.forEachLine { line ->
+                                val (transformedLine, count) = rebaseStaticProjectLine(line, moduleBase)
+                                replacedCount += count
+                                writer.appendLine(transformedLine)
                             }
-                            writer.appendLine(transformedLine)
                         }
                     }
+
+                    LogManager.log(
+                        LogType.INFO,
+                        "Rebased project prepared (${replacedCount} addresses): ${tempFile.absolutePath}"
+                    )
+                    Log.i(TAG, "rebase finished: replacedCount=$replacedCount temp=${tempFile.absolutePath}")
+
+                    if (!tempFile.exists() || !tempFile.isFile) {
+                        error("Rebased script file was not created")
+                    }
+                    LogManager.log(LogType.INFO, "Rebased script size: ${tempFile.length()} bytes")
+
+                    // r2 dot-command treats quotes as literal characters in script path.
+                    // Use plain absolute path to avoid ERROR: Cannot find script '"..."'
+                    val loadCmd = ". ${tempFile.absolutePath}"
+                    LogManager.log(LogType.COMMAND, loadCmd)
+
+                    withTimeout(90_000) {
+                        R2PipeManager.execute(loadCmd).getOrThrow()
+                    }
+                    LogManager.log(LogType.INFO, "Static project loaded into current Frida session")
+                    Log.i(TAG, "loadRebasedStaticProject execute success")
+
+                    replacedCount
+                } finally {
+                    tempFile.delete()
                 }
-
-                LogManager.log(
-                    LogType.INFO,
-                    "Rebased project prepared (${replacedCount} addresses): ${tempFile.absolutePath}"
-                )
-                Log.i(TAG, "rebase finished: replacedCount=$replacedCount temp=${tempFile.absolutePath}")
-
-                if (!tempFile.exists() || !tempFile.isFile) {
-                    error("Rebased script file was not created")
-                }
-                LogManager.log(LogType.INFO, "Rebased script size: ${tempFile.length()} bytes")
-
-                // r2 dot-command treats quotes as literal characters in script path.
-                // Use plain absolute path to avoid ERROR: Cannot find script '"..."'
-                val loadCmd = ". ${tempFile.absolutePath}"
-                LogManager.log(LogType.COMMAND, loadCmd)
-
-                withTimeout(90_000) {
-                    R2PipeManager.execute(loadCmd).getOrThrow()
-                }
-                LogManager.log(LogType.INFO, "Static project loaded into current Frida session")
-                Log.i(TAG, "loadRebasedStaticProject execute success")
-
-                replacedCount
             }.onSuccess { count ->
                 _staticProjectLoadState.value = StaticProjectLoadState.Success(count)
             }.onFailure { e ->
@@ -805,6 +913,40 @@ class R2FridaViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Rebases only address positions in an r2 project script (`@ 0x...`, `s 0x...`, `af+ 0x...`,
+     * `afb+ 0x... 0x...`, `f <name> <size> 0x...`, `ax* 0x... 0x...`), leaving sizes, constants,
+     * and raw byte payloads untouched.
+     */
+    private fun rebaseStaticProjectLine(line: String, moduleBase: ULong): Pair<String, Int> {
+        val trimmed = line.trimStart()
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) return line to 0
+        var count = 0
+        fun rebaseHex(raw: String): String {
+            val parsed = parseHexToULong(raw) ?: return raw
+            count += 1
+            return "0x${(parsed + moduleBase).toString(16)}"
+        }
+
+        // 1. Rebase trailing `@ 0x...` seek modifiers on any command.
+        val atRegex = Regex("(@\\s*)(0x[0-9a-fA-F]+)\\b")
+        var result = atRegex.replace(line) { m -> m.groupValues[1] + rebaseHex(m.groupValues[2]) }
+
+        // 2. Rebase known leading-address commands where the address is a positional argument.
+        val seekRegex = Regex("^(\\s*(?:s|af\\+|af|afC|afB|afb\\+|axC|axc|axd|axF|ax)\\s+)(0x[0-9a-fA-F]+)\\b")
+        result = seekRegex.replace(result) { m -> m.groupValues[1] + rebaseHex(m.groupValues[2]) }
+
+        // 3. Rebase second address in `afb+ <fcnAddr> <bbAddr>` or `ax* <from> <to>`.
+        val twoAddrRegex = Regex("^(\\s*(?:afb\\+|axC|axc|axd|axF|ax)\\s+0x[0-9a-fA-F]+\\s+)(0x[0-9a-fA-F]+)\\b")
+        result = twoAddrRegex.replace(result) { m -> m.groupValues[1] + rebaseHex(m.groupValues[2]) }
+
+        // 4. Rebase flag address in `f <name> <size> 0x<addr>` or `f+ <name> <size> 0x<addr>`.
+        val flagRegex = Regex("^(\\s*f\\+?\\s+\\S+\\s+\\S+\\s+)(0x[0-9a-fA-F]+)\\b")
+        result = flagRegex.replace(result) { m -> m.groupValues[1] + rebaseHex(m.groupValues[2]) }
+
+        return result to count
+    }
+
     private fun parseHexToULong(text: String): ULong? {
         val normalized = text.trim().removePrefix("0x").removePrefix("0X")
         return normalized.toULongOrNull(16)
@@ -813,11 +955,17 @@ class R2FridaViewModel @Inject constructor(
     fun runScript(script: String) {
         if (!hasR2FridaSession()) return
         _scriptContent.value = script
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _scriptRunning.value = true
-            LogManager.clear()
-            repo.executeScript(script, context.cacheDir.absolutePath)
-            _scriptRunning.value = false
+            try {
+                LogManager.clear()
+                repo.executeScript(script, context.cacheDir.absolutePath)
+                    .onFailure { e ->
+                        LogManager.log(LogType.ERROR, "Frida script failed: ${e.message ?: "unknown error"}")
+                    }
+            } finally {
+                _scriptRunning.value = false
+            }
         }
     }
 }

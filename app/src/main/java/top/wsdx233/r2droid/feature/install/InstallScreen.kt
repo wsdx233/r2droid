@@ -12,7 +12,10 @@ import androidx.compose.ui.unit.dp
 import top.wsdx233.r2droid.util.InstallState
 
 @Composable
-fun InstallScreen(installState: InstallState) {
+fun InstallScreen(
+    installState: InstallState,
+    onRetry: (() -> Unit)? = null
+) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -29,36 +32,45 @@ fun InstallScreen(installState: InstallState) {
                 text = stringResource(R.string.install_title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = if (installState.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 进度条
-            LinearProgressIndicator(
-                progress = { installState.progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp),
-            )
+            if (!installState.isError) {
+                // 进度条
+                LinearProgressIndicator(
+                    progress = { installState.progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // 状态文字 (小字)
             Text(
                 text = installState.statusText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (installState.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (installState.isError && onRetry != null) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = onRetry) {
+                    Text(text = stringResource(R.string.common_retry))
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // 显示百分比
-            Text(
-                text = "${(installState.progress * 100).toInt()}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+                // 显示百分比
+                Text(
+                    text = "${(installState.progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
         }
     }
 }

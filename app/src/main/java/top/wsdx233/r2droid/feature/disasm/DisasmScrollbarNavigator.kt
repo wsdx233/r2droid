@@ -50,12 +50,19 @@ internal class DisasmScrollbarNavigator(
         dragging = true
     }
 
+    private fun clampAddress(manager: DisasmDataManager, address: Long): Long {
+        val uStart = manager.viewStartAddress.toULong()
+        val uEnd = manager.viewEndAddress.toULong()
+        val uLast = if (uEnd > uStart) uEnd - 1UL else uStart
+        return address.toULong().coerceIn(uStart, uLast).toLong()
+    }
+
     fun preview(address: Long) {
         if (!dragging) return
         val manager = manager ?: return
-        val target = address.coerceIn(manager.viewStartAddress, manager.viewEndAddress - 1)
+        val target = clampAddress(manager, address)
         if (_preview.value?.address == target) return
-        val nextRegion = (target - manager.viewStartAddress) / REGION_BYTES
+        val nextRegion = ((target.toULong() - manager.viewStartAddress.toULong()) / REGION_BYTES.toULong()).toLong()
         val before = manager.getDataSnapshot()
         val covered = manager.showCachedAddress(target)
         val switchedWindow = before !== manager.getDataSnapshot()
@@ -72,10 +79,12 @@ internal class DisasmScrollbarNavigator(
     /** Release bypasses the dwell timer, but does not cancel a matching in-flight request. */
     fun commit(address: Long) {
         if (!dragging) return
-        preview(address)
+        val manager = manager ?: return
+        val target = clampAddress(manager, address)
+        preview(target)
         committed = true
         publishCommitIfReady()
-        if (!loading && (job?.isActive == true || manager?.isAddressRangeLoaded(address) != true)) {
+        if (!loading && (job?.isActive == true || !manager.isAddressRangeLoaded(target))) {
             cancelWork()
             schedule(0)
         }

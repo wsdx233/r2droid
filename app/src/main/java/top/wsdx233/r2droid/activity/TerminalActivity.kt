@@ -33,6 +33,8 @@ class TerminalActivity : ComponentActivity() {
     private var terminalSession: TerminalSession? = null
     private lateinit var terminalView: TerminalView
     private var terminalMode: String = SettingsManager.TERMINAL_LAUNCH_MODE_SYSTEM
+    private var pendingStartupCommand: String? = null
+    private var isModeDialogVisible = false
 
     // Extra keys modifier state
     private var ctrlPressed = false
@@ -115,10 +117,11 @@ class TerminalActivity : ComponentActivity() {
         override fun onTitleChanged(changedSession: TerminalSession) {}
 
         override fun onSessionFinished(finishedSession: TerminalSession) {
-            if (finishedSession.exitStatus != 0) {
-                // 这里处理非正常退出
+            if (finishedSession.exitStatus == 0) {
+                finish()
+            } else {
+                terminalView.onScreenUpdated()
             }
-            finish()
         }
 
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
@@ -132,14 +135,28 @@ class TerminalActivity : ComponentActivity() {
             val clip = clipboard.primaryClip
             if (clip != null && clip.itemCount > 0) {
                 val pasteText = clip.getItemAt(0).coerceToText(this@TerminalActivity).toString()
-                session?.write(pasteText)
+                val emulator = session?.emulator
+                if (emulator != null) {
+                    emulator.paste(pasteText)
+                } else {
+                    session?.write(pasteText)
+                }
             }
         }
 
         override fun onBell(session: TerminalSession) {}
         override fun onColorsChanged(session: TerminalSession) {}
         override fun onTerminalCursorStateChange(state: Boolean) {}
-        override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+        override fun setTerminalShellPid(session: TerminalSession, pid: Int) {
+            if (pid > 0 && session === terminalSession) {
+                val cmd = pendingStartupCommand
+                if (!cmd.isNullOrBlank()) {
+                    pendingStartupCommand = null
+                    session.write(cmd)
+                    session.write("\n")
+                }
+            }
+        }
         override fun getTerminalCursorStyle(): Int = 0
 
         override fun logError(tag: String?, message: String?) {}
@@ -166,7 +183,9 @@ class TerminalActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (terminalSession == null) {
-            resolveTerminalMode()?.let { mode -> startTerminal(mode) }
+            if (!isModeDialogVisible) {
+                resolveTerminalMode()?.let { mode -> startTerminal(mode) }
+            }
             return
         }
         bindLayout()
@@ -201,11 +220,16 @@ class TerminalActivity : ComponentActivity() {
     }
 
     private fun showTerminalModeDialog() {
+        isModeDialogVisible = true
         setContent {
             R2droidTheme {
                 TerminalLaunchDialog(
-                    onDismiss = { finish() },
+                    onDismiss = {
+                        isModeDialogVisible = false
+                        finish()
+                    },
                     onConfirm = { mode, rememberChoice ->
+                        isModeDialogVisible = false
                         if (rememberChoice) {
                             SettingsManager.terminalLaunchMode = mode
                         }
@@ -217,18 +241,14 @@ class TerminalActivity : ComponentActivity() {
     }
 
     private fun startTerminal(mode: String) {
+        terminalSession?.finishIfRunning()
         terminalMode = SettingsManager.sanitizeTerminalLaunchMode(mode)
         bindLayout()
 
-        val startupCommand = intent.getStringExtra(TerminalLauncher.EXTRA_STARTUP_COMMAND)?.trim().orEmpty()
+        pendingStartupCommand = intent.getStringExtra(TerminalLauncher.EXTRA_STARTUP_COMMAND)?.trim()?.takeIf { it.isNotBlank() }
         val session = createTerminalSession()
         terminalSession = session
         attachSessionToTerminalView()
-
-        if (startupCommand.isNotBlank()) {
-            session.write(startupCommand)
-            session.write("\n")
-        }
     }
 
     private fun bindLayout() {
@@ -337,7 +357,7 @@ class TerminalActivity : ComponentActivity() {
                 }
                 else -> {
                     btn.setOnClickListener {
-                        terminalSession?.write(key.sequence)
+                        sendExtraKeyWithModifiers(key.sequence)
                         terminalView.requestFocus()
                     }
                 }
@@ -363,6 +383,19 @@ class TerminalActivity : ComponentActivity() {
         }
     }
 
+    private fun sendExtraKeyWithModifiers(sequence: String) {
+        val useCtrl = ctrlPressed
+        val useAlt = altPressed
+        if (useCtrl || useAlt) {
+            ctrlPressed = false
+            altPressed = false
+            updateModifierButtons()
+        }
+        val session = terminalSession ?: return
+        val transformed = applyExtraKeyModifiers(sequence, useCtrl, useAlt)
+        session.write(transformed)
+    }
+
     private fun updateModifierButtons() {
         val activeColor = 0xFF5C6BC0.toInt()
         val normalColor = 0xFF424242.toInt()
@@ -382,4 +415,31 @@ class TerminalActivity : ComponentActivity() {
         val isCtrl: Boolean = false,
         val isAlt: Boolean = false
     )
+
+    companion object {
+        internal fun applyExtraKeyModifiers(sequence: String, ctrl: Boolean, alt: Boolean): String {
+            if (!ctrl && !alt) return sequence
+            // CSI sequences like ESC [ A or ESC [ 5 ~
+            if (sequence.startsWith("\u001b[") && sequence.length >= 3) {
+                val modCode = 1 + (if (alt) 2 else 0) + (if (ctrl) 4 else 0)
+                val last = sequence.last()
+                val body = sequence.substring(2, sequence.length - 1)
+                return if (body.isEmpty()) "\u001b[1;${modCode}$last" else "\u001b[${body};${modCode}$last"
+            }
+            if (sequence.length == 1) {
+                var ch = sequence[0]
+                if (ctrl) {
+                    ch = when (ch) {
+                        '/' -> '\u001f'
+                        '-' -> '\u001f'
+                        in 'a'..'z' -> (ch.code - 'a'.code + 1).toChar()
+                        in 'A'..'Z' -> (ch.code - 'A'.code + 1).toChar()
+                        else -> ch
+                    }
+                }
+                return if (alt) "\u001b$ch" else ch.toString()
+            }
+            return if (alt && !sequence.startsWith("\u001b")) "\u001b$sequence" else sequence
+        }
+    }
 }

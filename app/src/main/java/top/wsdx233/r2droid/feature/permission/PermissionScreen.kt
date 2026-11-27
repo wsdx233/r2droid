@@ -41,7 +41,7 @@ fun PermissionScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
+        val allGranted = permissions.isNotEmpty() && permissions.values.all { it }
         if (allGranted) {
              onPermissionGranted()
         } else {

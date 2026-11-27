@@ -83,7 +83,7 @@ private fun AddressBadge(address: Long, color: Color) {
         color = color.copy(alpha = 0.12f)
     ) {
         Text(
-            text = "0x${address.toString(16)}",
+            text = "0x${address.toULong().toString(16)}",
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
             fontFamily = LocalAppFont.current,
@@ -172,7 +172,7 @@ fun SectionItem(section: Section, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = section.name,
         address = section.vAddr,
-        fullText = "Section: ${section.name}, Size: ${section.size}, Perm: ${section.perm}, VAddr: 0x${section.vAddr.toString(16)}",
+        fullText = "Section: ${section.name}, Size: ${section.size}, Perm: ${section.perm}, VAddr: 0x${section.vAddr.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -234,7 +234,7 @@ fun SymbolItem(symbol: Symbol, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = displayName,
         address = symbol.vAddr,
-        fullText = "Symbol: ${symbol.name}, Type: ${symbol.type}, VAddr: 0x${symbol.vAddr.toString(16)}",
+        fullText = "Symbol: ${symbol.name}, Type: ${symbol.type}, VAddr: 0x${symbol.vAddr.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -307,7 +307,7 @@ fun ExportItem(exportInfo: ExportInfo, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = displayName,
         address = exportInfo.vAddr,
-        fullText = "Export: ${exportInfo.name}, Type: ${exportInfo.type}, Bind: ${exportInfo.bind}, Size: ${exportInfo.size}, VAddr: 0x${exportInfo.vAddr.toString(16)}",
+        fullText = "Export: ${exportInfo.name}, Type: ${exportInfo.type}, Bind: ${exportInfo.bind}, Size: ${exportInfo.size}, VAddr: 0x${exportInfo.vAddr.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -387,7 +387,7 @@ fun ImportItem(importInfo: ImportInfo, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = importInfo.name,
         address = if(importInfo.plt != 0L) importInfo.plt else null,
-        fullText = "Import: ${importInfo.name}, Type: ${importInfo.type}, PLT: 0x${importInfo.plt.toString(16)}",
+        fullText = "Import: ${importInfo.name}, Type: ${importInfo.type}, PLT: 0x${importInfo.plt.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -447,7 +447,7 @@ fun RelocationItem(relocation: Relocation, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = relocation.name,
         address = relocation.vAddr,
-        fullText = "Relocation: ${relocation.name}, Type: ${relocation.type}, VAddr: 0x${relocation.vAddr.toString(16)}",
+        fullText = "Relocation: ${relocation.name}, Type: ${relocation.type}, VAddr: 0x${relocation.vAddr.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -505,7 +505,7 @@ fun StringItem(stringInfo: StringInfo, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = stringInfo.string,
         address = stringInfo.vAddr,
-        fullText = "String: ${stringInfo.string}, Section: ${stringInfo.section}, VAddr: 0x${stringInfo.vAddr.toString(16)}",
+        fullText = "String: ${stringInfo.string}, Section: ${stringInfo.section}, VAddr: 0x${stringInfo.vAddr.toULong().toString(16)}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -547,7 +547,7 @@ fun PagingStringList(
     onSearchQueryChange: (String) -> Unit,
     listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_strings_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.vAddr }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_strings_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.id }) { item ->
         StringItem(StringInfo(item.string, item.vAddr, item.section, item.type), actions)
     }
 }
@@ -580,7 +580,7 @@ fun FunctionItem(func: FunctionInfo, actions: ListItemActions) {
     UnifiedListItemWrapper(
         title = func.name,
         address = func.addr,
-        fullText = "Function: ${func.name}, Addr: 0x${func.addr.toString(16)}, Size: ${func.size}, BBs: ${func.nbbs}, Signature: ${func.signature}",
+        fullText = "Function: ${func.name}, Addr: 0x${func.addr.toULong().toString(16)}, Size: ${func.size}, BBs: ${func.nbbs}, Signature: ${func.signature}",
         actions = actions,
         shape = RoundedCornerShape(12.dp),
         elevation = 1.dp
@@ -695,12 +695,10 @@ private fun <T : Any> GenericPagingList(
                     if (cached != null) {
                         itemContent(cached)
                     } else {
-                        // Only call [index] once to trigger the Paging load,
-                        // then rely on peek() on subsequent recompositions.
-                        val triggered = remember { mutableStateOf(false) }
-                        if (scrollSettled && !triggered.value) {
-                            lazyPagingItems[index]
-                            triggered.value = true
+                        LaunchedEffect(scrollSettled, index, lazyPagingItems.itemCount) {
+                            if (scrollSettled && index < lazyPagingItems.itemCount) {
+                                lazyPagingItems[index]
+                            }
                         }
                         ShimmerPlaceholder()
                     }
@@ -722,7 +720,7 @@ fun PagingSectionList(
     onSearchQueryChange: (String) -> Unit,
     listState: LazyListState? = null
 ) {
-    GenericPagingList(pagingData, stringResource(R.string.search_sections_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.vAddr }) { item ->
+    GenericPagingList(pagingData, stringResource(R.string.search_sections_hint), onRefresh, searchQuery, onSearchQueryChange, listState = listState, itemKey = { it.id }) { item ->
         SectionItem(Section(item.name, item.size, item.vSize, item.perm, item.vAddr, item.pAddr), actions)
     }
 }

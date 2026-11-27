@@ -281,14 +281,7 @@ class R2DroidDocumentsProvider : DocumentsProvider() {
     }
 
     private fun deleteRecursively(target: File): Boolean {
-        if (target.isDirectory) {
-            target.listFiles()?.forEach { child ->
-                if (!deleteRecursively(child)) {
-                    return false
-                }
-            }
-        }
-        return target.delete()
+        return top.wsdx233.r2droid.util.SafeFileOps.deleteRecursivelyNoFollow(target)
     }
 
     private fun notifyChildrenChanged(parentDocumentId: String) {

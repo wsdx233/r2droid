@@ -23,7 +23,7 @@ interface RelocationDao {
     @Query("SELECT * FROM relocations ORDER BY id ASC")
     fun getPagingSource(): PagingSource<Int, RelocationEntity>
 
-    @Query("SELECT * FROM relocations WHERE name LIKE '%' || :query || '%' ORDER BY id ASC")
+    @Query("SELECT * FROM relocations WHERE name LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY id ASC")
     fun search(query: String): PagingSource<Int, RelocationEntity>
 
     @Query("DELETE FROM relocations")

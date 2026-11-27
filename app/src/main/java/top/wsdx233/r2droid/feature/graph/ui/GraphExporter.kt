@@ -44,7 +44,7 @@ object GraphExporter {
     ): Bitmap? {
         if (layoutResult.nodes.isEmpty() || graphBounds.width <= 0f || graphBounds.height <= 0f) return null
         val maxDim = 4096f
-        var targetScale = min(2.0f, min(maxDim / graphBounds.width, maxDim / graphBounds.height)).coerceAtLeast(0.25f)
+        var targetScale = min(2.0f, min(maxDim / graphBounds.width, maxDim / graphBounds.height)).coerceAtLeast(0.02f)
 
         for (attempt in 0..2) {
             try {
@@ -135,14 +135,19 @@ object GraphExporter {
                 }
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
                     ?: throw IllegalStateException("Failed to create MediaStore entry")
-                resolver.openOutputStream(uri)?.use { out ->
-                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
-                        throw IllegalStateException("Failed to compress bitmap")
-                    }
-                } ?: throw IllegalStateException("Failed to open output stream")
-                contentValues.clear()
-                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                resolver.update(uri, contentValues, null, null)
+                try {
+                    resolver.openOutputStream(uri)?.use { out ->
+                        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                            throw IllegalStateException("Failed to compress bitmap")
+                        }
+                    } ?: throw IllegalStateException("Failed to open output stream")
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                } catch (e: Throwable) {
+                    runCatching { resolver.delete(uri, null, null) }
+                    throw e
+                }
                 uri
             } else {
                 val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
@@ -186,7 +191,9 @@ object GraphExporter {
             val chooser = Intent.createChooser(shareIntent, context.getString(R.string.graph_share_title)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(chooser)
+            withContext(Dispatchers.Main) {
+                context.startActivity(chooser)
+            }
         }
     }
 }

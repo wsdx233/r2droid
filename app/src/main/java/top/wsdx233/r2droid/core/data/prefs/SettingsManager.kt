@@ -175,8 +175,8 @@ object SettingsManager {
         set(value) { prefs.edit { putFloat(KEY_DECOMPILER_ZOOM_SCALE, value) } }
 
     var maxLogEntries: Int
-        get() = prefs.getInt(KEY_MAX_LOG_ENTRIES, 100)
-        set(value) { prefs.edit { putInt(KEY_MAX_LOG_ENTRIES, value) } }
+        get() = prefs.getInt(KEY_MAX_LOG_ENTRIES, 100).coerceAtLeast(1)
+        set(value) { prefs.edit { putInt(KEY_MAX_LOG_ENTRIES, value.coerceAtLeast(1)) } }
 
     var keepAliveNotification: Boolean
         get() = prefs.getBoolean(KEY_KEEP_ALIVE, true)
@@ -239,8 +239,11 @@ object SettingsManager {
         set(value) { prefs.edit { putString(KEY_TERMINAL_LAUNCH_MODE, sanitizeTerminalLaunchMode(value)) } }
 
     var httpPort: Int
-        get() = prefs.getInt(KEY_HTTP_PORT, 9090)
-        set(value) { prefs.edit { putInt(KEY_HTTP_PORT, value) } }
+        get() = prefs.getInt(KEY_HTTP_PORT, 9090).takeIf { it in 1..65535 } ?: 9090
+        set(value) {
+            val validPort = value.takeIf { it in 1..65535 } ?: 9090
+            prefs.edit { putInt(KEY_HTTP_PORT, validPort) }
+        }
 
     var analysisBenchmarkScore: Float
         get() = prefs.getFloat(KEY_ANALYSIS_BENCHMARK_SCORE, 0f)

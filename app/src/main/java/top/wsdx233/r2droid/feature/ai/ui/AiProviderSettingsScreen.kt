@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,11 +50,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.aallam.openai.client.OpenAI
-import com.aallam.openai.client.OpenAIConfig
-import com.aallam.openai.client.OpenAIHost
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.feature.ai.AiEvent
@@ -125,6 +127,7 @@ fun AiProviderSettingsScreen(viewModel: AiViewModel) {
     if (showAddDialog) {
         ProviderEditDialog(
             provider = null,
+            onFetchModels = viewModel::fetchModels,
             onDismiss = { showAddDialog = false },
             onSave = { provider ->
                 AiSettingsManager.addProvider(provider)
@@ -137,6 +140,7 @@ fun AiProviderSettingsScreen(viewModel: AiViewModel) {
     editingProvider?.let { provider ->
         ProviderEditDialog(
             provider = provider,
+            onFetchModels = viewModel::fetchModels,
             onDismiss = { editingProvider = null },
             onSave = { updated ->
                 AiSettingsManager.updateProvider(updated)
@@ -260,12 +264,14 @@ private fun ProviderCard(
 @Composable
 private fun ProviderEditDialog(
     provider: AiProvider?,
+    onFetchModels: suspend (String, String) -> List<String>,
     onDismiss: () -> Unit,
     onSave: (AiProvider) -> Unit
 ) {
     var name by remember { mutableStateOf(provider?.name ?: "") }
     var baseUrl by remember { mutableStateOf(provider?.baseUrl ?: "https://api.openai.com/v1") }
     var apiKey by remember { mutableStateOf(provider?.apiKey ?: "") }
+    var apiKeyVisible by remember { mutableStateOf(false) }
     var modelsText by remember { mutableStateOf(provider?.models?.joinToString(", ") ?: "") }
     var useResponsesApi by remember { mutableStateOf(provider?.useResponsesApi ?: false) }
 
@@ -304,6 +310,15 @@ private fun ProviderEditDialog(
                     onValueChange = { apiKey = it },
                     label = { Text(stringResource(R.string.ai_provider_api_key)) },
                     singleLine = true,
+                    visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                            Icon(
+                                imageVector = if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("sk-...") }
                 )
@@ -369,13 +384,7 @@ private fun ProviderEditDialog(
                             isFetching = true
                             scope.launch {
                                 try {
-                                    val client = OpenAI(
-                                        OpenAIConfig(
-                                            token = apiKey.trim(),
-                                            host = OpenAIHost(baseUrl = baseUrl.trim().trimEnd('/') + "/")
-                                        )
-                                    )
-                                    val models = client.models().map { it.id.id }.sorted()
+                                    val models = onFetchModels(baseUrl.trim(), apiKey.trim())
                                     fetchedModels = models
                                     isFetching = false
                                     if (models.isNotEmpty()) {
@@ -383,6 +392,8 @@ private fun ProviderEditDialog(
                                     } else {
                                         fetchError = "empty"
                                     }
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
                                 } catch (e: Exception) {
                                     isFetching = false
                                     fetchError = e.message ?: "Unknown error"

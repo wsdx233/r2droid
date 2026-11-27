@@ -16,36 +16,44 @@ import org.eclipse.tm4e.core.registry.IThemeSource
 import io.github.rosemoe.sora.widget.CodeEditor
 import top.wsdx233.r2droid.ui.theme.LocalDarkTheme
 
+@Volatile
 private var textMateInitialized = false
+private val textMateInitLock = Any()
 
 private fun ensureTextMateInit(context: Context, isDark: Boolean) {
     if (textMateInitialized) {
-        // Just switch theme if already initialized
         val themeName = if (isDark) "dark" else "light"
         try { ThemeRegistry.getInstance().setTheme(themeName) } catch (_: Exception) {}
         return
     }
-    textMateInitialized = true
+    synchronized(textMateInitLock) {
+        if (textMateInitialized) {
+            val themeName = if (isDark) "dark" else "light"
+            try { ThemeRegistry.getInstance().setTheme(themeName) } catch (_: Exception) {}
+            return
+        }
 
-    FileProviderRegistry.getInstance().addFileProvider(
-        AssetsFileResolver(context.applicationContext.assets)
-    )
+        FileProviderRegistry.getInstance().addFileProvider(
+            AssetsFileResolver(context.applicationContext.assets)
+        )
 
-    val themeRegistry = ThemeRegistry.getInstance()
-    for ((name, path) in listOf("dark" to "textmate/themes/dark.json", "light" to "textmate/themes/light.json")) {
-        try {
-            themeRegistry.loadTheme(
-                ThemeModel(
-                    IThemeSource.fromInputStream(
-                        FileProviderRegistry.getInstance().tryGetInputStream(path), path, null
-                    ), name
-                ).apply { if (name == "dark") this.isDark = true }
-            )
-        } catch (_: Exception) {}
+        val themeRegistry = ThemeRegistry.getInstance()
+        for ((name, path) in listOf("dark" to "textmate/themes/dark.json", "light" to "textmate/themes/light.json")) {
+            try {
+                FileProviderRegistry.getInstance().tryGetInputStream(path)?.use { stream ->
+                    themeRegistry.loadTheme(
+                        ThemeModel(
+                            IThemeSource.fromInputStream(stream, path, null), name
+                        ).apply { if (name == "dark") this.isDark = true }
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+        themeRegistry.setTheme(if (isDark) "dark" else "light")
+
+        GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
+        textMateInitialized = true
     }
-    themeRegistry.setTheme(if (isDark) "dark" else "light")
-
-    GrammarRegistry.getInstance().loadGrammars("textmate/languages.json")
 }
 
 @Composable
@@ -56,6 +64,7 @@ fun SoraCodeEditor(
 ) {
     val isDark = LocalDarkTheme.current
     val editorRef = remember { mutableStateOf<CodeEditor?>(null) }
+    val appliedScopeRef = remember { mutableStateOf<String?>(null) }
 
     // Update theme when dark mode changes
     LaunchedEffect(isDark) {
@@ -77,13 +86,25 @@ fun SoraCodeEditor(
                 try {
                     colorScheme = TextMateColorScheme.create(ThemeRegistry.getInstance())
                     setEditorLanguage(TextMateLanguage.create(scopeName, true))
+                    appliedScopeRef.value = scopeName
                 } catch (_: Exception) {}
                 editorRef.value = this
                 onEditorReady(this)
                 isHardwareAcceleratedDrawAllowed = true
             }
         },
+        update = { editor ->
+            if (appliedScopeRef.value != scopeName) {
+                try {
+                    editor.setEditorLanguage(TextMateLanguage.create(scopeName, true))
+                    appliedScopeRef.value = scopeName
+                } catch (_: Exception) {}
+            }
+        },
         modifier = modifier,
-        onRelease = { it.release() }
+        onRelease = { editor ->
+            if (editorRef.value === editor) editorRef.value = null
+            editor.release()
+        }
     )
 }

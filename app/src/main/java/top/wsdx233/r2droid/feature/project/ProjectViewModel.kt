@@ -118,6 +118,8 @@ sealed class ProjectUiState {
         val disasmReady: Boolean = false, // Indicates disasm viewer is ready (virtualized)
         val disassembly: List<DisasmInstruction>? = null,
         val decompilation: DecompilationData? = null,
+        val decompilationLoading: Boolean = false,
+        val decompilationError: String? = null,
         val graphData: GraphData? = null,
         val graphType: GraphType = GraphType.FunctionFlow,
         val graphLoading: Boolean = false,
@@ -258,11 +260,14 @@ class ProjectViewModel @Inject constructor(
     private val _stringsUseFullRange = MutableStateFlow(false)
     val stringsUseFullRange: StateFlow<Boolean> = _stringsUseFullRange.asStateFlow()
 
+    private fun escapeLikeQuery(query: String): String =
+        query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val stringsPagingData: Flow<PagingData<StringEntity>> = _stringsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
             if (query.isBlank()) stringDao.getPagingSource()
-            else stringDao.searchStrings(query)
+            else stringDao.searchStrings(escapeLikeQuery(query))
         }.flow
     }.cachedIn(viewModelScope)
 
@@ -285,7 +290,7 @@ class ProjectViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val sectionsPagingData: Flow<PagingData<SectionEntity>> = _sectionsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
-            if (query.isBlank()) sectionDao.getPagingSource() else sectionDao.search(query)
+            if (query.isBlank()) sectionDao.getPagingSource() else sectionDao.search(escapeLikeQuery(query))
         }.flow
     }.cachedIn(viewModelScope)
 
@@ -300,7 +305,7 @@ class ProjectViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val symbolsPagingData: Flow<PagingData<SymbolEntity>> = _symbolsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
-            if (query.isBlank()) symbolDao.getPagingSource() else symbolDao.search(query)
+            if (query.isBlank()) symbolDao.getPagingSource() else symbolDao.search(escapeLikeQuery(query))
         }.flow
     }.cachedIn(viewModelScope)
 
@@ -323,7 +328,7 @@ class ProjectViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val importsPagingData: Flow<PagingData<ImportEntity>> = _importsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
-            if (query.isBlank()) importDao.getPagingSource() else importDao.search(query)
+            if (query.isBlank()) importDao.getPagingSource() else importDao.search(escapeLikeQuery(query))
         }.flow
     }.cachedIn(viewModelScope)
 
@@ -338,7 +343,7 @@ class ProjectViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val relocationsPagingData: Flow<PagingData<RelocationEntity>> = _relocationsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
-            if (query.isBlank()) relocationDao.getPagingSource() else relocationDao.search(query)
+            if (query.isBlank()) relocationDao.getPagingSource() else relocationDao.search(escapeLikeQuery(query))
         }.flow
     }.cachedIn(viewModelScope)
 
@@ -353,7 +358,7 @@ class ProjectViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val functionsPagingData: Flow<PagingData<FunctionEntity>> = _functionsSearchQuery.flatMapLatest { query ->
         Pager(PagingConfig(pageSize = 100, prefetchDistance = 30, enablePlaceholders = true, initialLoadSize = 200)) {
-            val source = if (query.isBlank()) functionDao.getPagingSource() else functionDao.search(query)
+            val source = if (query.isBlank()) functionDao.getPagingSource() else functionDao.search(escapeLikeQuery(query))
             LoggingPagingSource(source, "PagingLoad-Functions")
         }.flow
     }.cachedIn(viewModelScope)
@@ -613,26 +618,57 @@ class ProjectViewModel @Inject constructor(
         // in simple navigation setups (Activity-scoped ViewModel)
     }
 
-    private fun onSessionSwitchedIfNeeded(): Boolean {
-        val token = R2PipeManager.activeSessionPipe
-        if (token === observedSessionToken) return false
-        observedSessionToken = token
-        sectionSyncJob?.cancel()
-        _sectionsSyncing.value = false
+    private var symbolsSyncJob: Job? = null
+    private var exportsLoadJob: Job? = null
+    private var importsSyncJob: Job? = null
+    private var relocationsSyncJob: Job? = null
+    private var stringsSyncJob: Job? = null
+    private var functionsSyncJob: Job? = null
+    private var decompilationJob: Job? = null
+    private var graphJob: Job? = null
 
-        // Reset session-scoped UI/cache state to avoid showing old project's data
+    private fun cancelSessionBackgroundJobs() {
+        sectionSyncJob?.cancel()
+        autoFunctionsJob?.cancel()
+        structureOverlayJob?.cancel()
+        symbolsSyncJob?.cancel()
+        exportsLoadJob?.cancel()
+        importsSyncJob?.cancel()
+        relocationsSyncJob?.cancel()
+        stringsSyncJob?.cancel()
+        functionsSyncJob?.cancel()
+        decompilationJob?.cancel()
+        graphJob?.cancel()
+        _sectionsSyncing.value = false
+        _symbolsSyncing.value = false
+        _exportsLoading.value = false
+        _importsSyncing.value = false
+        _relocationsSyncing.value = false
+        _stringsSyncing.value = false
+        _functionsSyncing.value = false
+    }
+
+    private fun resetSessionTransientState(token: R2PipeSession?) {
+        cancelSessionBackgroundJobs()
         currentOffset = 0L
         addressHistory.clear()
         _canGoBack.value = false
         _historyState.value = HistoryState()
-
-        _uiState.value = ProjectUiState.Loading
+        _disasmStructureOverlay.value = AddressStructureOverlay.Empty
         _saveProjectState.value = SaveProjectState.Idle
         _hasLegacyScript.value = false
         if (_legacyRestoreNotice.value?.sessionToken !== token) {
             _legacyRestoreNotice.value = null
         }
         refreshLegacyScriptAvailability(R2PipeManager.currentProjectId)
+    }
+
+    private fun onSessionSwitchedIfNeeded(): Boolean {
+        val token = R2PipeManager.activeSessionPipe
+        if (token === observedSessionToken) return false
+        observedSessionToken = token
+        resetSessionTransientState(token)
+        _uiState.value = ProjectUiState.Loading
         return true
     }
 
@@ -730,11 +766,14 @@ class ProjectViewModel @Inject constructor(
                     return@launch
                 }
 
-                val loadScriptResult = R2PipeManager.execute(
-                    sessionId,
-                    ". ${preparedReplay.prepared.file.absolutePath} ; iIj",
-                    markDirty = false
-                )
+                val replayPath = preparedReplay.prepared.file.absolutePath
+                val loadScriptResult = if (replayPath.none { it == '\n' || it == '\r' || it == '\u0000' }) {
+                    R2PipeManager.execute(sessionId, "'. $replayPath", markDirty = false).also {
+                        R2PipeManager.execute(sessionId, "iIj", markDirty = false)
+                    }
+                } else {
+                    Result.failure(IllegalArgumentException("Invalid replay script path"))
+                }
                 if (loadScriptResult.isFailure) {
                     // Log warning but continue - script may have partial success
                     android.util.Log.w("ProjectViewModel", "Script load warning: ${loadScriptResult.exceptionOrNull()?.message}")
@@ -742,8 +781,8 @@ class ProjectViewModel @Inject constructor(
                 val replayReport = preparedReplay.prepared.report
                 val restoredProject = preparedReplay.project
                 
-                // Load Data (Overview only)
-                loadOverview()
+                // Load Data (Overview only) and await before entry-point seek
+                if (!loadOverviewSuspend()) return@launch
                 
                 // Set initial offset to entry point if possible, else 0
                 val entryPointsResult = repository.getEntryPoints()
@@ -852,8 +891,11 @@ class ProjectViewModel @Inject constructor(
                      if (analysisCmd.isNotBlank() && analysisCmd != "none") {
                          R2PipeManager.execute("$analysisCmd; iIj")
                      }
-                     // Load Data (Overview only)
-                     loadOverview()
+                     // Load Data (Overview only) and wait before entry-point seek / auto-save
+                     if (!loadOverviewSuspend()) {
+                         R2PipeManager.pendingAutoSaveProject = null
+                         return@launch
+                     }
                      
                      // Set initial offset to entry point if possible, else 0
                      val entryPointsResult = repository.getEntryPoints()
@@ -972,7 +1014,7 @@ class ProjectViewModel @Inject constructor(
             var legacyRestoredProject: SavedProject? = null
 
             val liveRestoreResult = reconnectSnapshot?.let { file ->
-                R2PipeManager.execute(reopenedSession, ". ${file.absolutePath}")
+                R2PipeManager.execute(reopenedSession, "'. ${file.absolutePath}")
             }
 
             when {
@@ -983,7 +1025,7 @@ class ProjectViewModel @Inject constructor(
                 }
                 savedProject != null -> {
                     val savedRestoreResult = savedProjectRepository.withReplayScript(savedProject.id) { replayScript, report, project ->
-                        R2PipeManager.execute(reopenedSession, ". ${replayScript.absolutePath}").getOrThrow()
+                        R2PipeManager.execute(reopenedSession, "'. ${replayScript.absolutePath}").getOrThrow()
                         report to project
                     }
                     if (savedRestoreResult.isSuccess) {
@@ -1083,25 +1125,44 @@ class ProjectViewModel @Inject constructor(
     private fun loadOverview() {
         val sessionToken = R2PipeManager.activeSessionPipe ?: return
         val selection = R2PipeManager.sessionId
-        observedSessionToken = sessionToken
-        _disasmStructureOverlay.value = AddressStructureOverlay.Empty
-        viewModelScope.launch {
-            val binInfoResult = repository.getOverview()
-            if (sessionToken !== R2PipeManager.activeSessionPipe || selection != R2PipeManager.sessionId) return@launch
-            if (binInfoResult.isFailure) {
-                _uiState.value = ProjectUiState.Error("Failed to load binary info: ${binInfoResult.exceptionOrNull()?.message}")
-                return@launch
-            }
-            
-            _uiState.value = ProjectUiState.Success(
-                binInfo = binInfoResult.getOrNull(),
-                cursorAddress = currentOffset,
-                sessionToken = sessionToken
-            )
-
-            // Populate Room and capture the initial Disassembly overview from the same stream.
-            loadSections()
+        if (sessionToken !== observedSessionToken) {
+            observedSessionToken = sessionToken
+            resetSessionTransientState(sessionToken)
+        } else {
+            _disasmStructureOverlay.value = AddressStructureOverlay.Empty
         }
+        viewModelScope.launch {
+            loadOverviewSuspend(sessionToken, selection)
+        }
+    }
+
+    private suspend fun loadOverviewSuspend(
+        sessionToken: R2PipeSession? = R2PipeManager.activeSessionPipe,
+        selection: Int = R2PipeManager.sessionId
+    ): Boolean {
+        val activeToken = sessionToken ?: return false
+        if (activeToken !== observedSessionToken) {
+            observedSessionToken = activeToken
+            resetSessionTransientState(activeToken)
+        } else {
+            _disasmStructureOverlay.value = AddressStructureOverlay.Empty
+        }
+        val binInfoResult = repository.getOverview()
+        if (activeToken !== R2PipeManager.activeSessionPipe || selection != R2PipeManager.sessionId) return false
+        if (binInfoResult.isFailure) {
+            _uiState.value = ProjectUiState.Error("Failed to load binary info: ${binInfoResult.exceptionOrNull()?.message}")
+            return false
+        }
+
+        _uiState.value = ProjectUiState.Success(
+            binInfo = binInfoResult.getOrNull(),
+            cursorAddress = currentOffset,
+            sessionToken = activeToken
+        )
+
+        // Populate Room and capture the initial Disassembly overview from the same stream.
+        loadSections()
+        return true
     }
 
     fun loadSections(forceRefresh: Boolean = false) {
@@ -1117,11 +1178,16 @@ class ProjectViewModel @Inject constructor(
         sectionSyncJob = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _sectionsSyncing.value = true
             try {
-                if (session.isFridaSession) {
-                    syncSections(session, captureSnapshot = false, forceRefresh = forceRefresh)
+                val resolvedSections: List<Section> = if (session.isFridaSession) {
+                    syncSections(session, captureSnapshot = true, forceRefresh = forceRefresh).also {
+                        session.cachedSections = it
+                    }
                 } else {
+                    var capturedSections: List<Section>? = null
                     val (capture, started) = session.disasmLayout.acquire(session.jobScope) {
-                        val sections = syncSections(session, captureSnapshot = true)
+                        val sections = syncSections(session, captureSnapshot = true, forceRefresh = forceRefresh)
+                        session.cachedSections = sections
+                        capturedSections = sections
                         val virtual = DisasmAddressLayout.parseIoVa(
                             R2PipeManager.execute(session, "e io.va", markDirty = false).getOrNull()
                         )
@@ -1155,11 +1221,22 @@ class ProjectViewModel @Inject constructor(
                         }
                     }
                     // An existing live session reuses its layout; only the shared Room table may need syncing.
-                    if (!started) syncSections(session, captureSnapshot = false, forceRefresh = forceRefresh)
+                    if (!started) {
+                        val existing = session.cachedSections
+                        if (existing == null || forceRefresh) {
+                            syncSections(session, captureSnapshot = true, forceRefresh = forceRefresh).also {
+                                session.cachedSections = it
+                            }
+                        } else {
+                            syncSections(session, captureSnapshot = false, forceRefresh = false)
+                            existing
+                        }
+                    } else {
+                        capturedSections ?: session.cachedSections.orEmpty()
+                    }
                 }
                 currentCoroutineContext().ensureActive()
-                // An empty list is the existing Room readiness sentinel, not disassembly metadata.
-                updateSessionState(session.pipe) { it.copy(sections = emptyList()) }
+                updateSessionState(session.pipe) { it.copy(sections = resolvedSections) }
             } finally {
                 if (sectionSyncJob === coroutineContext[Job] && session.pipe === R2PipeManager.activeSessionPipe) {
                     _sectionsSyncing.value = false
@@ -1215,96 +1292,125 @@ class ProjectViewModel @Inject constructor(
 
     fun loadSymbols(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.symbols != null) return
 
-        viewModelScope.launch {
+        symbolsSyncJob?.cancel()
+        symbolsSyncJob = viewModelScope.launch {
             _symbolsSyncing.value = true
-            binInfoRepository.syncSymbolsToDb()
-            _symbolsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(symbols = emptyList())
+            try {
+                val res = binInfoRepository.syncSymbolsToDb(session)
+                if (res.isSuccess) {
+                    updateSessionState(session.pipe) { it.copy(symbols = emptyList()) }
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _symbolsSyncing.value = false
             }
         }
     }
 
     fun loadExports(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.exports != null) return
 
-        viewModelScope.launch {
+        exportsLoadJob?.cancel()
+        exportsLoadJob = viewModelScope.launch {
             _exportsLoading.value = true
-            val result = binInfoRepository.getExports()
-            _exportsLoading.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(exports = result.getOrElse {
-                    Log.e("ProjectViewModel", "Failed to load exports", it)
-                    emptyList()
-                })
+            try {
+                val result = binInfoRepository.getExports()
+                updateSessionState(session.pipe) {
+                    it.copy(exports = result.getOrElse { err ->
+                        Log.e("ProjectViewModel", "Failed to load exports", err)
+                        emptyList()
+                    })
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _exportsLoading.value = false
             }
         }
     }
 
     fun loadImports(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.imports != null) return
 
-        viewModelScope.launch {
+        importsSyncJob?.cancel()
+        importsSyncJob = viewModelScope.launch {
             _importsSyncing.value = true
-            binInfoRepository.syncImportsToDb()
-            _importsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(imports = emptyList())
+            try {
+                val res = binInfoRepository.syncImportsToDb(session)
+                if (res.isSuccess) {
+                    updateSessionState(session.pipe) { it.copy(imports = emptyList()) }
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _importsSyncing.value = false
             }
         }
     }
 
     fun loadRelocations(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.relocations != null) return
 
-        viewModelScope.launch {
+        relocationsSyncJob?.cancel()
+        relocationsSyncJob = viewModelScope.launch {
             _relocationsSyncing.value = true
-            binInfoRepository.syncRelocationsToDb()
-            _relocationsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(relocations = emptyList())
+            try {
+                val res = binInfoRepository.syncRelocationsToDb(session)
+                if (res.isSuccess) {
+                    updateSessionState(session.pipe) { it.copy(relocations = emptyList()) }
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _relocationsSyncing.value = false
             }
         }
     }
 
     fun loadStrings(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.strings != null) return
 
-        viewModelScope.launch {
+        stringsSyncJob?.cancel()
+        stringsSyncJob = viewModelScope.launch {
             _stringsSyncing.value = true
-            binInfoRepository.syncStringsToDb(useFullRange = _stringsUseFullRange.value)
-            _stringsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                // 标记 strings 已加载（用空列表占位，实际数据从 Paging 读取）
-                _uiState.value = currentState.copy(strings = emptyList())
-                refreshDisasmStructureOverlay()
+            try {
+                val res = binInfoRepository.syncStringsToDb(useFullRange = _stringsUseFullRange.value, session = session)
+                if (res.isSuccess) {
+                    updateSessionState(session.pipe) { it.copy(strings = emptyList()) }
+                    refreshDisasmStructureOverlay()
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _stringsSyncing.value = false
             }
         }
     }
 
     fun loadFunctions(forceRefresh: Boolean = false) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val session = R2PipeManager.activeSession() ?: return
+        if (session.pipe !== current.sessionToken) return
         if (!forceRefresh && current.functions != null) return
 
-        viewModelScope.launch {
+        functionsSyncJob?.cancel()
+        functionsSyncJob = viewModelScope.launch {
             _functionsSyncing.value = true
-            binInfoRepository.syncFunctionsToDb()
-            _functionsSyncing.value = false
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(functions = emptyList())
-                refreshDisasmStructureOverlay()
+            try {
+                val res = binInfoRepository.syncFunctionsToDb(session)
+                if (res.isSuccess) {
+                    updateSessionState(session.pipe) { it.copy(functions = emptyList()) }
+                    refreshDisasmStructureOverlay()
+                }
+            } finally {
+                if (session.pipe === R2PipeManager.activeSessionPipe) _functionsSyncing.value = false
             }
         }
     }
@@ -1393,19 +1499,17 @@ class ProjectViewModel @Inject constructor(
             if (!target.isCurrent()) return@launch
             val latest = _uiState.value as? ProjectUiState.Success ?: return@launch
             if (latest.sessionToken !== current.sessionToken) return@launch
+            // Updating cursorAddress triggers LaunchedEffect(state.cursorAddress) on Tab 2/3,
+            // so don't fire a duplicate decompilation request here.
+            val sameAddress = latest.cursorAddress == addr
             _uiState.value = latest.copy(
                 decompilation = if (currentDetailTab == 2) null else latest.decompilation,
+                decompilationError = if (currentDetailTab == 2) null else latest.decompilationError,
+                decompilationLoading = if (currentDetailTab == 2) true else latest.decompilationLoading,
                 cursorAddress = addr
             )
-
-            // Only reload decompilation when on the decompiler tab
-            if (currentDetailTab == 2) {
-                val funcStart = repository.getFunctionStart(addr).getOrDefault(addr)
-                val result = repository.getDecompilation(funcStart, _currentDecompiler.value)
-                val currentState = _uiState.value
-                if (currentState is ProjectUiState.Success && currentState.sessionToken === current.sessionToken && target.isCurrent()) {
-                    _uiState.value = currentState.copy(decompilation = result.getOrNull())
-                }
+            if (currentDetailTab == 2 && sameAddress) {
+                loadDecompilation()
             }
         }
     }
@@ -1442,8 +1546,10 @@ class ProjectViewModel @Inject constructor(
             .filter { it.isNotEmpty() }
             .forEach { candidates.add(it) }
 
+        val safeCandidates = candidates.filter(top.wsdx233.r2droid.util.R2Sanitizer::isSafeIdentifier)
+
         if (graphType != GraphType.FunctionFlow) {
-            for (candidate in candidates) {
+            for (candidate in safeCandidates) {
                 val resolved = repository.resolveExpression("[$candidate]").getOrNull() ?: 0L
                 if (resolved != 0L) return resolved
             }
@@ -1454,7 +1560,7 @@ class ProjectViewModel @Inject constructor(
         extractAddressFromText(node.title)?.let { return it }
         extractAddressFromText(node.body)?.let { return it }
 
-        for (candidate in candidates) {
+        for (candidate in safeCandidates) {
             val resolved = repository.resolveFunctionAddress(candidate)
             if (resolved != 0L) return resolved
         }
@@ -1464,14 +1570,16 @@ class ProjectViewModel @Inject constructor(
 
     private fun extractAddressFromText(text: String): Long? {
         val match = Regex("0x([0-9a-fA-F]+)").find(text) ?: return null
-        return match.groupValues.getOrNull(1)?.toLongOrNull(16)
+        return match.groupValues.getOrNull(1)?.toULongOrNull(16)?.toLong()
     }
 
     fun loadGraph(graphType: GraphType) {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val token = current.sessionToken
 
-        viewModelScope.launch {
-            _uiState.value = current.copy(graphLoading = true, graphType = graphType, graphData = null)
+        graphJob?.cancel()
+        graphJob = viewModelScope.launch {
+            updateSessionState(token) { it.copy(graphLoading = true, graphType = graphType, graphData = null) }
 
             val funcStart = repository.getFunctionStart(currentOffset).getOrDefault(currentOffset)
             val result = when (graphType) {
@@ -1482,9 +1590,8 @@ class ProjectViewModel @Inject constructor(
                 GraphType.DataRefGraph -> repository.getDataRefGraph(funcStart)
             }
 
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(
+            updateSessionState(token) {
+                it.copy(
                     graphData = result.getOrNull(),
                     graphLoading = false
                 )
@@ -1496,21 +1603,34 @@ class ProjectViewModel @Inject constructor(
         _currentDecompiler.value = decompilerType
         // Clear current decompilation to force reload
         val current = _uiState.value as? ProjectUiState.Success ?: return
-        _uiState.value = current.copy(decompilation = null)
+        _uiState.value = current.copy(decompilation = null, decompilationError = null, decompilationLoading = true)
         loadDecompilation()
     }
 
     fun loadDecompilation() {
         val current = _uiState.value as? ProjectUiState.Success ?: return
+        val token = current.sessionToken
 
-        viewModelScope.launch {
-            // "Get function where pointer is located"
+        decompilationJob?.cancel()
+        decompilationJob = viewModelScope.launch {
+            updateSessionState(token) { it.copy(decompilationLoading = true, decompilationError = null) }
             val funcStart = repository.getFunctionStart(currentOffset).getOrDefault(currentOffset)
             val result = repository.getDecompilation(funcStart, _currentDecompiler.value)
 
-            val currentState = _uiState.value
-            if (currentState is ProjectUiState.Success) {
-                _uiState.value = currentState.copy(decompilation = result.getOrNull())
+            updateSessionState(token) { state ->
+                if (result.isSuccess) {
+                    state.copy(
+                        decompilation = result.getOrNull(),
+                        decompilationLoading = false,
+                        decompilationError = null
+                    )
+                } else {
+                    state.copy(
+                        decompilation = null,
+                        decompilationLoading = false,
+                        decompilationError = result.exceptionOrNull()?.message ?: "Decompilation failed"
+                    )
+                }
             }
         }
     }
@@ -1717,7 +1837,8 @@ class ProjectViewModel @Inject constructor(
         viewModelScope.launch {
             _exportLegacyScriptState.value = ExportBinaryState.Exporting
             val result = savedProjectRepository.exportOriginalLegacyScript(targetId) {
-                context.contentResolver.openOutputStream(uri)
+                context.contentResolver.openOutputStream(uri, "wt")
+                    ?: context.contentResolver.openOutputStream(uri)
             }
             _exportLegacyScriptState.value = if (result.isSuccess) {
                 ExportBinaryState.Success(
@@ -1745,8 +1866,17 @@ class ProjectViewModel @Inject constructor(
             _exportBinaryState.value = ExportBinaryState.Exporting
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openOutputStream(uri)?.use { output ->
-                        java.io.File(sourcePath).inputStream().use { input -> input.copyTo(output) }
+                    val srcFile = java.io.File(sourcePath).canonicalFile
+                    val resolvedDest = runCatching {
+                        top.wsdx233.r2droid.util.UriUtils.getPath(context, uri)?.let { java.io.File(it).canonicalFile }
+                    }.getOrNull()
+                    require(resolvedDest == null || resolvedDest != srcFile) {
+                        "Cannot overwrite the currently open source binary"
+                    }
+                    val stream = context.contentResolver.openOutputStream(uri, "wt")
+                        ?: context.contentResolver.openOutputStream(uri)
+                    stream?.use { output ->
+                        srcFile.inputStream().use { input -> input.copyTo(output) }
                     } ?: throw IllegalStateException(context.getString(top.wsdx233.r2droid.R.string.proj_export_binary_error_write))
                 }
             }

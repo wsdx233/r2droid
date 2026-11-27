@@ -7,8 +7,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-private val definitionName = Regex("[^\\s;@~|`'\"\\u0000-\\u001f]{1,256}")
-private val inlineStructFormat = Regex("[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,4096}")
+private val definitionName = Regex("[^\\s;@~|`'\"<>\\$()#\\u0000-\\u001f\\u007f]{1,256}")
+private val inlineStructFormat = Regex("[^;@~|`'\"<>\\$()#\\r\\n\\u0000-\\u001f\\u007f]{1,4096}")
 private val formatDeclaration = Regex("'pf\\.${definitionName.pattern} ${inlineStructFormat.pattern}")
 private val unsignedDecimal = Regex("[0-9]+")
 private val unsignedHex = Regex("0[xX][0-9A-Fa-f]+")

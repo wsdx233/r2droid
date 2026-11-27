@@ -492,13 +492,14 @@ internal fun canDeleteProjectDirectory(directory: File, protectedPaths: List<Str
 
 private const val PS_HEADER = "# r2 rdb project file"
 private const val DESCRIPTOR_NEUTRAL = "# r2droid project replay: uses the already-open binary"
-private val FD_SELECTION = Regex("^o\\s*=\\s*(\\d+)$")
+private val FD_SELECTION = Regex("^['\"]?o\\s*=\\s*(\\d+)$")
 private val FD_MAP = Regex("^omu\\s+(\\d+)\\s+(.+)$")
-private val REPLAY_OPEN = Regex("^(?:o|on|onn|onnu|on\\+|oo|oo\\+)\\s+.+$")
+private val REPLAY_OPEN = Regex("^['\"]?(?:o|o\\+|of|on|onn|onnu|on\\+|oo|oo\\+|ood)(?:\\s+.*)?$")
 // Preserve ordinary cmd options, but not command strings that can run during or after replay.
 private val REPLAY_HOOK = Regex(
     "^['\"]?e\\s+(?:cmd\\.(?!(?:depth|repeat|hitinfo|undo)\\s*=)[^\\s=]+|cfg\\.debug)\\s*=.*$"
 )
+private val REPLAY_SHELL = Regex("^['\"]?(?:!|#!|\\.!).*$")
 
 internal data class ProjectReplayReport(
     val isLegacyScript: Boolean,
@@ -701,6 +702,9 @@ internal fun writeProjectReplay(
         when (first) {
             '#' -> {
                 val command = line.trim()
+                if (command.startsWith("#!")) {
+                    continue
+                }
                 if (command == DESCRIPTOR_NEUTRAL) {
                     if (isFirst) isLegacyScript = false
                     continue
@@ -710,6 +714,9 @@ internal fun writeProjectReplay(
                     beforeAnalysis = false
                 }
                 writer.appendLine(line)
+            }
+            '!' -> {
+                continue
             }
             'w' -> {
                 if (start + 2 < line.length && line[start + 1] == 'x' && line[start + 2].isWhitespace()) {
@@ -724,8 +731,7 @@ internal fun writeProjectReplay(
             'e' -> {
                 if (start + 1 < line.length && line[start + 1].isWhitespace()) {
                     val maybeCache = line.indexOf("io.cache", start + 2) >= 0
-                    val maybeHook = beforeAnalysis &&
-                        (line.indexOf("cmd.", start + 2) >= 0 || line.indexOf("cfg.debug", start + 2) >= 0)
+                    val maybeHook = line.indexOf("cmd.", start + 2) >= 0 || line.indexOf("cfg.debug", start + 2) >= 0
                     if (maybeCache || maybeHook) {
                         val command = line.trim()
                         if (maybeCache && CACHE_OPTION.matches(command)) {
@@ -741,7 +747,9 @@ internal fun writeProjectReplay(
             }
             '\'', '"' -> {
                 val second = if (start + 1 < line.length) line[start + 1] else '\u0000'
-                if (second == 'w' && start + 3 < line.length && line[start + 2] == 'x' && line[start + 3].isWhitespace()) {
+                if (second == '!' || (second == '#' && start + 2 < line.length && line[start + 2] == '!')) {
+                    continue
+                } else if (second == 'w' && start + 3 < line.length && line[start + 2] == 'x' && line[start + 3].isWhitespace()) {
                     val command = line.trim()
                     if (CACHE_PATCH_COMMAND.matches(command)) {
                         filteredLegacyPatches = true
@@ -749,8 +757,7 @@ internal fun writeProjectReplay(
                     }
                 } else if (second == 'e' && start + 2 < line.length && line[start + 2].isWhitespace()) {
                     val maybeCache = line.indexOf("io.cache", start + 3) >= 0
-                    val maybeHook = beforeAnalysis &&
-                        (line.indexOf("cmd.", start + 3) >= 0 || line.indexOf("cfg.debug", start + 3) >= 0)
+                    val maybeHook = line.indexOf("cmd.", start + 3) >= 0 || line.indexOf("cfg.debug", start + 3) >= 0
                     if (maybeCache || maybeHook) {
                         val command = line.trim()
                         if (maybeCache && CACHE_OPTION.matches(command)) {
@@ -761,12 +768,23 @@ internal fun writeProjectReplay(
                             continue
                         }
                     }
+                } else if (second == 'o') {
+                    val command = line.trim()
+                    if (beforeAnalysis) {
+                        if (FD_SELECTION.matches(command) || REPLAY_OPEN.matches(command)) {
+                            continue
+                        }
+                    } else {
+                        check(!REPLAY_OPEN.matches(command) && !FD_SELECTION.matches(command)) {
+                            "Project replay attempts to change descriptors after its analysis section starts"
+                        }
+                    }
                 }
                 writer.appendLine(line)
             }
             'o' -> {
                 val second = if (start + 1 < line.length) line[start + 1] else '\u0000'
-                if (second == '=' || second == 'n' || second == 'o' || second == 'm' || second.isWhitespace()) {
+                if (second == '=' || second == 'n' || second == 'o' || second == 'm' || second == '+' || second == 'f' || second.isWhitespace()) {
                     val command = line.trim()
                     if (beforeAnalysis) {
                         val selectedFd = FD_SELECTION.matchEntire(command)
@@ -803,6 +821,18 @@ internal fun writeProjectReplay(
                 writer.appendLine(line)
             }
             else -> {
+                if (line.indexOf(';', start) >= 0) {
+                    val chained = line.substring(start).split(';')
+                    if (chained.drop(1).any { seg ->
+                            val t = seg.trim()
+                            REPLAY_SHELL.matches(t) || CACHE_PATCH_COMMAND.matches(t) ||
+                                CACHE_OPTION.matches(t) || REPLAY_HOOK.matches(t) ||
+                                REPLAY_OPEN.matches(t) || FD_SELECTION.matches(t)
+                        }
+                    ) {
+                        continue
+                    }
+                }
                 writer.appendLine(line)
             }
         }

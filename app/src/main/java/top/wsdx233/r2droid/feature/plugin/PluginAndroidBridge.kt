@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import java.lang.ref.WeakReference
 import java.lang.reflect.Constructor
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -356,13 +357,22 @@ object PluginAndroidBridge {
 
     private fun registerReference(pluginId: String, value: Any): String {
         val refId = "$pluginId#android#${objectCounter.incrementAndGet()}"
-        objectRefs[refId] = value
+        // Store Activity/Context references weakly so destroyed Activities are never leaked.
+        objectRefs[refId] = if (value is Context) WeakReference(value) else value
         return refId
     }
 
     private fun resolveReference(pluginId: String, refId: String): Any {
         check(refId.startsWith("$pluginId#android#")) { "android reference does not belong to plugin" }
-        return objectRefs[refId] ?: error("android reference not found: $refId")
+        val stored = objectRefs[refId] ?: error("android reference not found: $refId")
+        return if (stored is WeakReference<*>) {
+            stored.get() ?: run {
+                objectRefs.remove(refId)
+                error("android reference was released: $refId")
+            }
+        } else {
+            stored
+        }
     }
 
     private fun releaseReference(pluginId: String, refId: String) {

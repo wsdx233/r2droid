@@ -50,7 +50,7 @@ fun XrefsDialog(
             Column {
                 Text(stringResource(R.string.xrefs_title))
                 Text(
-                    text = "@ 0x${targetAddress.toString(16).uppercase()}",
+                    text = "@ 0x${targetAddress.toULong().toString(16).uppercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = LocalAppFont.current,
                     color = MaterialTheme.colorScheme.primary
@@ -236,7 +236,7 @@ private fun XrefItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "0x${address.toString(16).uppercase()}",
+                    text = "0x${address.toULong().toString(16).uppercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.Bold,

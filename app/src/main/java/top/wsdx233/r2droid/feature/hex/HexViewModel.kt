@@ -635,7 +635,8 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
                 if (!target.isActive()) return@launch
                 if (wtResult.isSuccess) {
                     val writtenBytes = withContext(Dispatchers.IO) {
-                        val out = appContext.contentResolver.openOutputStream(uri)
+                        val out = appContext.contentResolver.openOutputStream(uri, "wt")
+                            ?: appContext.contentResolver.openOutputStream(uri)
                             ?: error("Cannot open output document")
                         out.use { outputStream ->
                             tempFile.inputStream().use { inputStream ->
@@ -647,7 +648,8 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
                 } else {
                     // Fallback to chunked pxj read when wt is unavailable (e.g. ESIL or remote HTTP).
                     val writtenBytes = withContext(Dispatchers.IO) {
-                        val out = appContext.contentResolver.openOutputStream(uri)
+                        val out = appContext.contentResolver.openOutputStream(uri, "wt")
+                            ?: appContext.contentResolver.openOutputStream(uri)
                             ?: error("Cannot open output document")
                         out.use { outputStream ->
                             var written = 0L
@@ -683,8 +685,14 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
         val sel = _selectionState.value
         if (!target.isActive() || !sel.active) return
         val patternBytes = parseHexBytes(hexPattern) ?: return
-        val totalBytes = sel.byteCount.coerceAtMost(MAX_PREVIEW_AND_COPY_BYTES).toInt()
-        if (totalBytes <= 0) return
+        // Reject selections exceeding the fill safety limit instead of silently truncating & clearing selection.
+        if (sel.byteCount <= 0L || sel.byteCount > MAX_PREVIEW_AND_COPY_BYTES) {
+            _exportStatus.value = HexExportStatus.Error(
+                "Selection size (${sel.byteCount} bytes) exceeds fill limit (${MAX_PREVIEW_AND_COPY_BYTES} bytes)"
+            )
+            return
+        }
+        val totalBytes = sel.byteCount.toInt()
 
         val start = sel.rangeStart
         viewModelScope.launch {
@@ -753,16 +761,17 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
         currentOffset: Long
     ): Pair<Long, Long> = withContext(Dispatchers.Default) {
         // vAddr=0 usually denotes non-mapped debug/metadata sections.
-        var min = Long.MAX_VALUE
-        var max = Long.MIN_VALUE
+        var min = ULong.MAX_VALUE
+        var max = 0UL
         for (section in sections) {
-            val base = section.vAddr
+            val base = section.vAddr.toULong()
             val size = maxOf(section.vSize, section.size)
-            if (base == 0L || size <= 0L) continue
+            if (base == 0UL || size <= 0L) continue
+            val uSize = size.toULong()
             min = minOf(min, base)
-            max = maxOf(max, if (base > Long.MAX_VALUE - size) Long.MAX_VALUE else base + size)
+            max = maxOf(max, if (uSize > ULong.MAX_VALUE - base) ULong.MAX_VALUE else base + uSize)
         }
-        if (max > min) return@withContext min to max
+        if (max > min) return@withContext min.toLong() to max.toLong()
 
         if (session.isFridaSession) {
             fridaBounds(session, currentOffset)?.let { return@withContext it }
@@ -792,25 +801,28 @@ class HexViewModel @Inject constructor(private val hexRepository: HexRepository)
         val start = raw.indexOf('[')
         if (start < 0) return null
         return runCatching {
-            val maps = JSONArray(raw.substring(start))
-            var min = Long.MAX_VALUE
-            var max = 0L
+            val maps = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(raw.substring(start))
+            var min = ULong.MAX_VALUE
+            var max = 0UL
+            val offsetU = currentOffset.toULong()
             for (index in 0 until maps.length()) {
                 val map = maps.getJSONObject(index)
-                val base = java.lang.Long.decode(map.optString("base", "0"))
-                val size = map.optLong("size")
-                if (base <= 0L || size <= 0L || base > Long.MAX_VALUE - size) continue
-                val end = base + size
-                if (currentOffset in base until end) return base to end
+                val base = top.wsdx233.r2droid.util.R2Sanitizer.parseUnsignedAddress(map.optString("base", "0"))?.toULong() ?: 0UL
+                val size = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(map.opt("size")) ?: 0L
+                if (base == 0UL || size <= 0L || size.toULong() > ULong.MAX_VALUE - base) continue
+                val end = base + size.toULong()
+                if (offsetU in base until end) return base.toLong() to end.toLong()
                 min = minOf(min, base)
                 max = maxOf(max, end)
             }
             if (max <= min) null
-            else if (max - min > 100L * 1024L * 1024L) {
-                val window = 10L * 1024L * 1024L
-                val windowStart = (currentOffset.coerceIn(min, max - 1) - window / 2).coerceAtLeast(min)
-                windowStart to (windowStart + minOf(window, max - windowStart))
-            } else min to max
+            else if (max - min > 100UL * 1024UL * 1024UL) {
+                val window = 10UL * 1024UL * 1024UL
+                val clamped = offsetU.coerceIn(min, max - 1UL)
+                val half = window / 2UL
+                val windowStart = if (clamped > min + half) clamped - half else min
+                windowStart.toLong() to (windowStart + minOf(window, max - windowStart)).toLong()
+            } else min.toLong() to max.toLong()
         }.getOrNull()
     }
 

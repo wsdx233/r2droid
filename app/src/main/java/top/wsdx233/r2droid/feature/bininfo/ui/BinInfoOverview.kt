@@ -242,7 +242,7 @@ fun BasicInfoCard(info: BinInfo, actions: ListItemActions) {
         }
 
         info.guessedSize?.let { if (it > 0) InfoRow(stringResource(R.string.binary_guessed_size), stringResource(R.string.binary_size_bytes, it), actions = actions) }
-        info.mainAddr?.let { if (it.vaddr > 0) InfoRow(stringResource(R.string.binary_main_address), "0x${it.vaddr.toString(16)}", address = it.vaddr, actions = actions) }
+        info.mainAddr?.let { if (it.vaddr != 0L) InfoRow(stringResource(R.string.binary_main_address), "0x${it.vaddr.toULong().toString(16)}", address = it.vaddr, actions = actions) }
     }
 }
 
@@ -397,7 +397,7 @@ fun EntryPointsCard(entryPoints: List<EntryPoint>, actions: ListItemActions) {
     OverviewSectionCard(title = stringResource(R.string.binary_entry_points), icon = Icons.Default.MyLocation) {
         ExpandableContentList(itemCount = entryPoints.size, initialVisibleCount = 5) { index ->
             val ep = entryPoints[index]
-            InfoRow(ep.type.ifBlank { "Entry" }.replaceFirstChar { it.uppercase() }, "0x${ep.vAddr.toString(16)}", address = ep.vAddr, actions = actions)
+            InfoRow(ep.type.ifBlank { "Entry" }.replaceFirstChar { it.uppercase() }, "0x${ep.vAddr.toULong().toString(16)}", address = ep.vAddr, actions = actions)
         }
     }
 }
@@ -447,7 +447,7 @@ fun HeadersCard(headers: List<HeaderInfo>, headersString: String?, actions: List
         } else if (headers.isNotEmpty()) {
             ExpandableContentList(itemCount = headers.size, initialVisibleCount = 10) { index ->
                 val h = headers[index]
-                InfoRow(h.name, "0x${h.value.toString(16)}", address = h.value, actions = actions) 
+                InfoRow(h.name, "0x${h.value.toULong().toString(16)}", address = h.value, actions = actions) 
             }
         }
     }

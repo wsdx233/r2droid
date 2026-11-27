@@ -285,16 +285,14 @@ object R2Runtime {
 
         listOf(
             filesDir.absolutePath,
-            filesDir.parentFile?.absolutePath,
             cacheDir.absolutePath,
-            cacheDir.parentFile?.absolutePath,
             "/data/data/${context.packageName}/files",
             "/data/data/${context.packageName}/cache",
             "/storage",
             "/sdcard",
             "/mnt"
         ).forEach { path ->
-            if (!path.isNullOrBlank()) bindPaths += path
+            if (path.isNotBlank()) bindPaths += path
         }
 
         SettingsManager.projectHome?.takeIf { it.isNotBlank() }?.let { bindPaths += it }
@@ -311,7 +309,7 @@ object R2Runtime {
         }
     }
 
-    private fun shellEscape(value: String): String {
+    internal fun shellEscape(value: String): String {
         return "'" + value.replace("'", "'\"'\"'") + "'"
     }
 

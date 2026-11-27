@@ -198,14 +198,12 @@ class ProjectRepository @Inject constructor(
      * `?v <expr>` returns the value of the expression in hex, we convert to decimal.
      */
     suspend fun resolveExpression(expression: String): Result<Long> {
-        return R2PipeManager.execute("?v $expression").mapCatching { output ->
-            val trimmed = output.toString().trim()
-            // Parse hex value (e.g., "0x1234" or just "1234")
-            if (trimmed.startsWith("0x", ignoreCase = true)) {
-                trimmed.drop(2).toLong(16)
-            } else {
-                trimmed.toLongOrNull() ?: 0L
-            }
+        val trimmed = expression.trim()
+        if (trimmed.isEmpty() || top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(trimmed)) {
+            return Result.failure(IllegalArgumentException("Invalid expression"))
+        }
+        return R2PipeManager.execute("?v $trimmed").mapCatching { output ->
+            top.wsdx233.r2droid.util.R2Sanitizer.parseUnsignedAddress(output) ?: 0L
         }
     }
 
@@ -290,7 +288,7 @@ class ProjectRepository @Inject constructor(
 
     suspend fun getHexDump(offset: Long, length: Int): Result<ByteArray> {
         // pxj: Hex Dump
-        val cmd = "pxj $length @ $offset"
+        val cmd = "pxj $length @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(offset)}"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
              if (output.isBlank()) return@mapCatching ByteArray(0)
              val jsonArray = JSONArray(output)
@@ -304,10 +302,10 @@ class ProjectRepository @Inject constructor(
 
     suspend fun getDisassembly(offset: Long, count: Int): Result<List<DisasmInstruction>> {
         // pdj: Print Disassembly
-        val cmd = "pdj $count @ $offset"
+        val cmd = "pdj $count @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(offset)}"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank()) return@mapCatching emptyList()
-            val jsonArray = JSONArray(output)
+            val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
             val list = mutableListOf<DisasmInstruction>()
             for (i in 0 until jsonArray.length()) {
                 list.add(DisasmInstruction.fromJson(jsonArray.getJSONObject(i)))
@@ -317,9 +315,10 @@ class ProjectRepository @Inject constructor(
     }
 
     suspend fun getDecompilation(offset: Long, decompilerType: String = "r2ghidra"): Result<DecompilationData> {
+        val hexAddr = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(offset)
         if (decompilerType == "aipdg") {
             return runCatching {
-                val pdg = R2PipeManager.execute("pdg @ $offset").getOrDefault("").trim()
+                val pdg = R2PipeManager.execute("pdg @ $hexAddr").getOrDefault("").trim()
                 val source = pdg.ifBlank { throw RuntimeException("Empty pdg output") }
                 val polished = requestAiPdgPolish(offset, source)
                 DecompilationData(
@@ -329,18 +328,18 @@ class ProjectRepository @Inject constructor(
             }
         }
         if (decompilerType == "r2dec") {
-            return R2PipeManager.executeJson("pddj @ $offset").mapCatching { output ->
+            return R2PipeManager.executeJson("pddj @ $hexAddr").mapCatching { output ->
                 if (output.isBlank()) throw RuntimeException("Empty decompilation output")
-                DecompilationData.fromPddj(JSONObject(output))
+                DecompilationData.fromPddj(top.wsdx233.r2droid.util.R2Sanitizer.parseJsonObject(output))
             }
         }
         val cmd = when (decompilerType) {
-            "native" -> "pdcj @ $offset"
-            else -> "pdgj @ $offset"
+            "native" -> "pdcj @ $hexAddr"
+            else -> "pdgj @ $hexAddr"
         }
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank()) throw RuntimeException("Empty decompilation output")
-            DecompilationData.fromJson(JSONObject(output))
+            DecompilationData.fromJson(top.wsdx233.r2droid.util.R2Sanitizer.parseJsonObject(output))
         }
     }
 
@@ -359,7 +358,7 @@ class ProjectRepository @Inject constructor(
             appendLine("3) Add brief, useful comments when needed.")
             appendLine("4) Output plain text for decompiler rendering (no fenced code blocks).")
             appendLine()
-            appendLine("Function address: 0x${offset.toString(16).uppercase()}")
+            appendLine("Function address: ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddressUpper(offset)}")
             appendLine()
             appendLine("PDG:")
             appendLine(pdg)
@@ -388,25 +387,17 @@ class ProjectRepository @Inject constructor(
         return "Respond in the system language: $display ($tag)."
     }
     suspend fun getFunctionStart(addr: Long): Result<Long> {
-        // Find function containing addr.
-        // afij @ addr returns function info, including offset (start).
-        // If not in function, it might return empty or error.
-        val cmd = "afij @ $addr"
+        val cmd = "afij @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
              if (output.isBlank() || output == "[]") {
-                  // Fallback: Just return the address if not found? 
-                  // Or assume it's a function start?
-                  // Let's return the address itself to be safe, or error?
-                  // User wants "get function where pointer is located".
-                  // If not in function, this fails.
-                  // Try `isj` to find closest symbol?
-                  // For now return addr.
                   return@mapCatching addr
              }
-             val jsonArray = JSONArray(output)
+             val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
              if (jsonArray.length() > 0) {
                  val funcInfo = jsonArray.getJSONObject(0)
-                 funcInfo.optLong("offset", addr)
+                 top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(funcInfo.opt("addr"))
+                     ?: top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(funcInfo.opt("offset"))
+                     ?: addr
              } else {
                  addr
              }
@@ -418,7 +409,7 @@ class ProjectRepository @Inject constructor(
         // iej: Entry Points
         return R2PipeManager.executeJson("iej").mapCatching { output ->
             if (output.isBlank()) return@mapCatching emptyList()
-            val jsonArray = JSONArray(output)
+            val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
             val list = mutableListOf<EntryPoint>()
             for (i in 0 until jsonArray.length()) {
                 list.add(EntryPoint.fromJson(jsonArray.getJSONObject(i)))
@@ -436,21 +427,22 @@ class ProjectRepository @Inject constructor(
      */
     suspend fun getXrefs(addr: Long): Result<XrefsData> {
         return runCatching {
+            val hexAddr = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)
             // Get refs FROM current address (axfj)
-            val axfResult = R2PipeManager.executeJson("axfj @ $addr")
+            val axfResult = R2PipeManager.executeJson("axfj @ $hexAddr")
             val refsFrom = mutableListOf<XrefWithDisasm>()
             if (axfResult.isSuccess) {
                 val output = axfResult.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
                     for (i in 0 until jsonArray.length()) {
                         val json = jsonArray.getJSONObject(i)
                         // axfj doesn't have fcn_name, so we need to look it up via afij
-                        val toAddr = json.optLong("to", 0)
+                        val toAddr = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(json.opt("to")) ?: 0L
                         val fcnName = getFunctionNameForAddress(toAddr)
                         val xref = Xref(
                             type = json.optString("type", ""),
-                            from = json.optLong("from", 0),
+                            from = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(json.opt("from")) ?: 0L,
                             to = toAddr,
                             opcode = json.optString("opcode", ""),
                             fcnName = fcnName,
@@ -469,19 +461,19 @@ class ProjectRepository @Inject constructor(
             }
             
             // Get refs TO current address (axtj)
-            val axtResult = R2PipeManager.executeJson("axtj @ $addr")
+            val axtResult = R2PipeManager.executeJson("axtj @ $hexAddr")
             val refsTo = mutableListOf<XrefWithDisasm>()
             if (axtResult.isSuccess) {
                 val output = axtResult.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
                     for (i in 0 until jsonArray.length()) {
                         val json = jsonArray.getJSONObject(i)
                         // axtj returns: from (source), type, opcode, fcn_addr, fcn_name, refname
                         // Note: axtj doesn't have 'to' field, the 'to' is the current addr
                         val xref = Xref(
                             type = json.optString("type", ""),
-                            from = json.optLong("from", 0),
+                            from = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(json.opt("from")) ?: 0L,
                             to = addr, // The target is the current address
                             opcode = json.optString("opcode", ""),
                             fcnName = json.optString("fcn_name", ""),
@@ -509,11 +501,11 @@ class ProjectRepository @Inject constructor(
      */
     private suspend fun getDisasmForAddress(addr: Long): Triple<String, String, String> {
         return try {
-            val result = R2PipeManager.executeJson("pdj 1 @ $addr")
+            val result = R2PipeManager.executeJson("pdj 1 @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}")
             if (result.isSuccess) {
                 val output = result.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
                     if (jsonArray.length() > 0) {
                         val json = jsonArray.getJSONObject(0)
                         return Triple(
@@ -552,13 +544,13 @@ class ProjectRepository @Inject constructor(
     // === Function Operations ===
 
     suspend fun analyzeFunction(addr: Long): Result<String> {
-        return R2PipeManager.execute("af @ $addr")
+        return R2PipeManager.execute("af @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}")
     }
 
     suspend fun getFunctionDetail(addr: Long): Result<FunctionDetailInfo?> {
-        return R2PipeManager.executeJson("afij @ $addr").mapCatching { output ->
+        return R2PipeManager.executeJson("afij @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}").mapCatching { output ->
             if (output.isBlank() || output == "[]") return@mapCatching null
-            val jsonArray = JSONArray(output)
+            val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
             if (jsonArray.length() > 0) {
                 FunctionDetailInfo.fromJson(jsonArray.getJSONObject(0))
             } else null
@@ -566,9 +558,9 @@ class ProjectRepository @Inject constructor(
     }
 
     suspend fun getFunctionXrefs(addr: Long): Result<List<FunctionXref>> {
-        return R2PipeManager.executeJson("afxj @ $addr").mapCatching { output ->
+        return R2PipeManager.executeJson("afxj @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}").mapCatching { output ->
             if (output.isBlank() || output == "[]") return@mapCatching emptyList()
-            val jsonArray = JSONArray(output)
+            val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
             val list = mutableListOf<FunctionXref>()
             for (i in 0 until jsonArray.length()) {
                 list.add(FunctionXref.fromJson(jsonArray.getJSONObject(i)))
@@ -578,9 +570,9 @@ class ProjectRepository @Inject constructor(
     }
 
     suspend fun getFunctionVariables(addr: Long): Result<FunctionVariablesData> {
-        return R2PipeManager.executeJson("afvj @ $addr").mapCatching { output ->
+        return R2PipeManager.executeJson("afvj @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}").mapCatching { output ->
             if (output.isBlank() || output == "{}") return@mapCatching FunctionVariablesData()
-            val json = JSONObject(output)
+            val json = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonObject(output)
             fun parseVarArray(key: String, storage: String): List<FunctionVariable> {
                 val arr = json.optJSONArray(key) ?: return emptyList()
                 val list = mutableListOf<FunctionVariable>()
@@ -598,11 +590,22 @@ class ProjectRepository @Inject constructor(
     }
 
     suspend fun renameFunction(addr: Long, newName: String): Result<String> {
-        return R2PipeManager.execute("afn $newName @ $addr")
+        val clean = newName.trim()
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(clean)) {
+            return Result.failure(IllegalArgumentException("Invalid function name"))
+        }
+        return R2PipeManager.execute("afn $clean @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}")
     }
 
     suspend fun renameFunctionVariable(addr: Long, newName: String, oldName: String): Result<String> {
-        return R2PipeManager.execute("afvn $newName $oldName @ $addr")
+        val cleanNew = newName.trim()
+        val cleanOld = oldName.trim()
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanNew) ||
+            !top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanOld)
+        ) {
+            return Result.failure(IllegalArgumentException("Invalid variable name"))
+        }
+        return R2PipeManager.execute("afvn $cleanNew $cleanOld @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}")
     }
 
     // === Graph Operations ===
@@ -611,10 +614,11 @@ class ProjectRepository @Inject constructor(
      * Get function flow graph (agj) for the function at the given address.
      */
     suspend fun getFunctionGraph(addr: Long): Result<GraphData> {
-        val cmd = "agf@$addr > 0 ; agj @ $addr" // 杩欐槸涓巹瀛﹂棶棰橈紝涓嶇煡閬撲负浠€涔坅gf涔嬪悗娴佺▼鍥炬樉绀哄湴鏇存暣榻愶紝鍙兘鏄痳2鍐呴儴鏈夎嚜鍔ㄦ帓鍒?
+        val hexAddr = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)
+        val cmd = "agf@$hexAddr > /dev/null ; agj @ $hexAddr"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank() || output == "[]") throw RuntimeException("Empty graph output")
-            val jsonArray = JSONArray(output)
+            val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
             GraphData.fromAgj(jsonArray)
         }
     }
@@ -623,7 +627,7 @@ class ProjectRepository @Inject constructor(
      * Get cross-reference graph (agrj) for the function at the given address.
      */
     suspend fun getXrefGraph(addr: Long): Result<GraphData> {
-        val cmd = "s $addr; agrj"
+        val cmd = "s ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}; agrj"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank() || output == "{}") throw RuntimeException("Empty xref graph output")
             val json = JSONObject(output)
@@ -635,7 +639,7 @@ class ProjectRepository @Inject constructor(
      * Get function call graph (agcj) for the function at the given address.
      */
     suspend fun getCallGraph(addr: Long): Result<GraphData> {
-        val cmd = "s $addr; agcj"
+        val cmd = "s ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}; agcj"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank() || output == "[]") throw RuntimeException("Empty call graph output")
             val jsonArray = JSONArray(output)
@@ -659,7 +663,7 @@ class ProjectRepository @Inject constructor(
      * Get data reference graph (agaj) for the function at the given address.
      */
     suspend fun getDataRefGraph(addr: Long): Result<GraphData> {
-        val cmd = "s $addr; agaj"
+        val cmd = "s ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}; agaj"
         return R2PipeManager.executeJson(cmd).mapCatching { output ->
             if (output.isBlank() || output == "{}") throw RuntimeException("Empty data ref graph output")
             val json = JSONObject(output)
@@ -672,14 +676,19 @@ class ProjectRepository @Inject constructor(
      * Called lazily on click rather than eagerly on load.
      */
     suspend fun resolveFunctionAddress(name: String): Long {
+        val clean = name.trim()
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(clean)) return 0L
         return try {
-            val result = R2PipeManager.executeJson("afij@$name")
+            val result = R2PipeManager.executeJson("afij@$clean")
             if (result.isSuccess) {
                 val out = result.getOrDefault("")
                 if (out.isNotBlank() && out.startsWith("[")) {
-                    val arr = JSONArray(out)
+                    val arr = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(out)
                     if (arr.length() > 0) {
-                        arr.getJSONObject(0).optLong("addr", 0L)
+                        val obj = arr.getJSONObject(0)
+                        top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("addr"))
+                            ?: top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("offset"))
+                            ?: 0L
                     } else 0L
                 } else 0L
             } else 0L
@@ -692,11 +701,11 @@ class ProjectRepository @Inject constructor(
      */
     private suspend fun getFunctionNameForAddress(addr: Long): String {
         return try {
-            val result = R2PipeManager.executeJson("afij @ $addr")
+            val result = R2PipeManager.executeJson("afij @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}")
             if (result.isSuccess) {
                 val output = result.getOrDefault("")
                 if (output.isNotBlank() && output != "[]") {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
                     if (jsonArray.length() > 0) {
                         val json = jsonArray.getJSONObject(0)
                         return json.optString("name", "")

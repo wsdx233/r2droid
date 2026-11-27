@@ -1,7 +1,9 @@
 package top.wsdx233.r2droid.feature.manual
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,11 +59,21 @@ fun R2ManualScreen(
     onReconnect: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    remember { R2CommandHelp.load(context); true }
+    var helpLoaded by remember { mutableStateOf(R2CommandHelp.isLoaded) }
+    LaunchedEffect(Unit) {
+        if (!helpLoaded) {
+            R2CommandHelp.ensureLoaded(context)
+            helpLoaded = true
+        }
+    }
 
     // Navigation stack: empty = root
     val pathStack = remember { mutableStateListOf<String>() }
     var searchQuery by remember { mutableStateOf("") }
+
+    BackHandler(enabled = pathStack.isNotEmpty()) {
+        pathStack.removeAt(pathStack.lastIndex)
+    }
 
     val currentPrefix = pathStack.lastOrNull()
     val title = currentPrefix ?: stringResource(R.string.manual_title)
@@ -136,7 +149,14 @@ fun R2ManualScreen(
                 singleLine = true
             )
 
-            if (searchQuery.isNotBlank()) {
+            if (!helpLoaded) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (searchQuery.isNotBlank()) {
                 SearchResults(searchQuery) { prefix ->
                     pathStack.clear()
                     // Build path to this prefix

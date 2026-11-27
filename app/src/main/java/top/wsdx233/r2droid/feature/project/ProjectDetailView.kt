@@ -1,6 +1,8 @@
 package top.wsdx233.r2droid.feature.project
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -8,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import top.wsdx233.r2droid.core.ui.dialogs.InstructionDetailDialog
 import top.wsdx233.r2droid.feature.annotations.AnnotationAction
@@ -54,12 +57,13 @@ fun ProjectDetailView(
     
     when(tabIndex) {
         0 -> {
-            androidx.compose.runtime.LaunchedEffect(state.sessionToken, hexDataManager == null) {
-                if (state.sessionToken === R2PipeManager.activeSessionPipe) {
-                    hexViewModel.onEvent(HexEvent.LoadHex(state.sections.orEmpty(), R2PipeManager.currentFilePath, state.cursorAddress))
+            val sections = state.sections
+            androidx.compose.runtime.LaunchedEffect(state.sessionToken, sections, hexDataManager == null) {
+                if (sections != null && state.sessionToken === R2PipeManager.activeSessionPipe) {
+                    hexViewModel.onEvent(HexEvent.LoadHex(sections, R2PipeManager.currentFilePath, state.cursorAddress))
                 }
             }
-            if (hexDataManager == null || hexDataManager !== hexViewModel.hexDataManager ||
+            if (sections == null || hexDataManager == null || hexDataManager !== hexViewModel.hexDataManager ||
                 state.sessionToken !== R2PipeManager.activeSessionPipe
             ) {
                 androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -93,7 +97,7 @@ fun ProjectDetailView(
                 androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else {
+            } else key(disasmDataManager) {
                 DisassemblyViewer(
                     viewModel = disasmViewModel,
                     cursorAddress = state.cursorAddress,
@@ -107,7 +111,23 @@ fun ProjectDetailView(
         }
         2 -> {
             val soraMode by viewModel.decompilerSoraMode.collectAsState()
-            if (state.decompilation == null) {
+            if (state.decompilation == null && state.decompilationError != null && !state.decompilationLoading) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                ) {
+                    androidx.compose.material3.Text(
+                        text = state.decompilationError,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                    )
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.material3.Button(onClick = { viewModel.onEvent(ProjectEvent.LoadDecompilation) }) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(top.wsdx233.r2droid.R.string.common_retry))
+                    }
+                }
+            } else if (state.decompilation == null) {
                 androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     CircularProgressIndicator()
                 }

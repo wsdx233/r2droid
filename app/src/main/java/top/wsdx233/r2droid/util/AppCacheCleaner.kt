@@ -151,7 +151,7 @@ object AppCacheCleaner {
         val normalized = normalizePath(target.absolutePath)
         if (normalized in protectedPaths) return
 
-        if (target.isDirectory) {
+        if (!SafeFileOps.isSymlink(target) && target.isDirectory) {
             target.listFiles()?.forEach { child ->
                 clearPath(child, protectedPaths, stats)
             }
@@ -164,11 +164,11 @@ object AppCacheCleaner {
     }
 
     private fun deleteTarget(target: File, stats: Stats) {
-        if (!target.exists()) return
+        if (!SafeFileOps.existsOrSymlink(target)) return
 
-        val bytes = target.safeSize()
-        val entries = target.safeEntryCount()
-        val deleted = runCatching { target.deleteRecursively() }.getOrDefault(false)
+        val bytes = SafeFileOps.safeSizeNoFollow(target)
+        val entries = SafeFileOps.safeEntryCountNoFollow(target)
+        val deleted = runCatching { SafeFileOps.deleteRecursivelyNoFollow(target) }.getOrDefault(false)
 
         if (deleted) {
             stats.freedBytes += bytes
@@ -183,18 +183,6 @@ object AppCacheCleaner {
 
     private fun normalizePath(path: String): String {
         return runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
-    }
-
-    private fun File.safeSize(): Long {
-        if (!exists()) return 0L
-        if (isFile) return length()
-        return listFiles()?.sumOf { it.safeSize() } ?: 0L
-    }
-
-    private fun File.safeEntryCount(): Int {
-        if (!exists()) return 0
-        val children = listFiles()
-        return 1 + (children?.sumOf { it.safeEntryCount() } ?: 0)
     }
 
     private class Stats {

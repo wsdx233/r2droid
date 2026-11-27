@@ -116,7 +116,9 @@ object ReportExporter {
             }
 
             onProgress(context.getString(R.string.export_report_progress_writing))
-            context.contentResolver.openOutputStream(uri)?.use { outputStream: OutputStream ->
+            val stream = context.contentResolver.openOutputStream(uri, "wt")
+                ?: context.contentResolver.openOutputStream(uri)
+            stream?.use { outputStream: OutputStream ->
                 outputStream.write(content.toByteArray())
             } ?: return@withContext Result.failure(Exception(context.getString(R.string.export_report_error_write)))
 

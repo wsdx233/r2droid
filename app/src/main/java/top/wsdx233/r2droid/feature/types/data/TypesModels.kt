@@ -405,6 +405,7 @@ object TypesJsonParser {
      * Leading `'` disables r2 command separators (`;`, `|`, `>`, `@`, `$`).
      */
     fun buildTdCommand(cCode: String): String {
+        require('\u0000' !in cCode) { "C declaration cannot contain NUL characters." }
         val withoutLineComments = stripLineComments(cCode)
         val normalized = withoutLineComments
             .replace('\r', ' ')

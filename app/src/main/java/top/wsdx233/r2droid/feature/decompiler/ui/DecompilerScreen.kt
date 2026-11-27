@@ -78,66 +78,69 @@ fun DecompilationViewer(
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val scrollState = rememberScrollState()
 
-    // Split code into lines for line number display
-    val lines = data.code.lines()
-    
+    // Normalize line endings and track exact line start offsets for accurate cursor/wrap mapping
+    val normalizedCode = remember(data.code) { data.code.replace("\r\n", "\n") }
+    val lines = remember(normalizedCode) { normalizedCode.split('\n') }
+
     // Find which line corresponds to cursor address
-    val cursorLineIndex = remember(cursorAddress, data.annotations) {
+    val cursorLineIndex = remember(cursorAddress, data.annotations, lines) {
         if (cursorAddress == 0L) -1
         else {
             val note = data.annotations.firstOrNull { it.offset == cursorAddress }
             if (note != null && note.start >= 0 && note.start < data.code.length) {
-                // Find line number for this offset
                 var charCount = 0
-                lines.indexOfFirst { line ->
-                    charCount += line.length + 1
-                    charCount > note.start
+                var idx = 0
+                val raw = data.code
+                for (i in 0 until note.start.coerceAtMost(raw.length)) {
+                    if (raw[i] == '\n') idx++
+                    charCount = i + 1
                 }
+                idx.coerceIn(0, (lines.size - 1).coerceAtLeast(0))
             } else -1
         }
     }
-    
+
     // Dark Blue background for highlighted line (adapted for dark theme)
     val highlightBackgroundColor = Color(0xFF1A3A60)
-    
-    // Process annotations
-    val annotatedString = buildAnnotatedString {
-        append(data.code)
-        
-        data.annotations.forEach { note ->
-            val start = note.start
-            val end = note.end
-            
-            // Validate bounds
-            if (start >= 0 && end <= data.code.length && start < end) {
-                // Highlighting based on cursor
-                // If annotation corresponds to current cursor address, highlight background
-                if (note.offset == cursorAddress && cursorAddress != 0L) {
-                    addStyle(
-                        style = SpanStyle(background = highlightBackgroundColor),
-                        start = start,
-                        end = end
-                    )
-                }
-                
-                val color = when(note.syntaxHighlight) {
-                    "datatype" -> Color(0xFF569CD6) // Blue (VSCodeish)
-                    "function_name" -> Color(0xFFFFD700) // Gold
-                    "keyword" -> Color(0xFFC586C0) // Purple
-                    "local_variable" -> Color(0xFF9CDCFE) // Light Blue
-                    "global_variable" -> Color(0xFF4EC9B0) // Teal
-                    "comment" -> Color(0xFF6A9955) // Green
-                    "string" -> Color(0xFFCE9178) // Orange/Red
-                    "offset" -> Color(0xFFB5CEA8) // Light Green
-                    else -> null 
-                }
-                
-                if (color != null) {
-                    addStyle(
-                        style = SpanStyle(color = color),
-                        start = start,
-                        end = end
-                    )
+
+    // Process annotations (memoized so pinch-zoom recompositions don't rebuild spans every frame)
+    val annotatedString = remember(data, cursorAddress) {
+        buildAnnotatedString {
+            append(data.code)
+
+            data.annotations.forEach { note ->
+                val start = note.start
+                val end = note.end
+
+                // Validate bounds
+                if (start >= 0 && end <= data.code.length && start < end) {
+                    if (note.offset == cursorAddress && cursorAddress != 0L) {
+                        addStyle(
+                            style = SpanStyle(background = highlightBackgroundColor),
+                            start = start,
+                            end = end
+                        )
+                    }
+
+                    val color = when (note.syntaxHighlight) {
+                        "datatype" -> Color(0xFF569CD6) // Blue (VSCodeish)
+                        "function_name" -> Color(0xFFFFD700) // Gold
+                        "keyword" -> Color(0xFFC586C0) // Purple
+                        "local_variable" -> Color(0xFF9CDCFE) // Light Blue
+                        "global_variable" -> Color(0xFF4EC9B0) // Teal
+                        "comment" -> Color(0xFF6A9955) // Green
+                        "string" -> Color(0xFFCE9178) // Orange/Red
+                        "offset" -> Color(0xFFB5CEA8) // Light Green
+                        else -> null
+                    }
+
+                    if (color != null) {
+                        addStyle(
+                            style = SpanStyle(color = color),
+                            start = start,
+                            end = end
+                        )
+                    }
                 }
             }
         }
@@ -205,31 +208,43 @@ fun DecompilationViewer(
 
     val horizontalScrollState = rememberScrollState()
 
+    // Compute exact line start offsets in raw data.code (handling both LF and CRLF)
+    val rawLineStarts = remember(data.code) {
+        val starts = mutableListOf(0)
+        val raw = data.code
+        for (i in raw.indices) {
+            if (raw[i] == '\n') starts.add(i + 1)
+        }
+        starts
+    }
+
     // Compute per-line heights when word wrap is enabled (wrapped lines need more space)
-    val lineHeights = remember(textLayoutResult, wordWrap, lines.size) {
+    val lineHeights = remember(textLayoutResult, wordWrap, rawLineStarts) {
         val layout = textLayoutResult ?: return@remember null
         if (!wordWrap) return@remember null
-        var charOffset = 0
-        lines.mapIndexed { i, line ->
-            val start = charOffset
-            charOffset += line.length + 1
-            val vLine = layout.getLineForOffset(start.coerceAtMost(layout.layoutInput.text.length - 1))
+        val maxOffset = (layout.layoutInput.text.length - 1).coerceAtLeast(0)
+        rawLineStarts.indices.map { i ->
+            val start = rawLineStarts[i].coerceAtMost(maxOffset)
+            val vLine = layout.getLineForOffset(start)
             val top = layout.getLineTop(vLine)
-            val bottom = if (i < lines.size - 1) {
-                val ns = charOffset.coerceAtMost(layout.layoutInput.text.length - 1)
+            val bottom = if (i < rawLineStarts.lastIndex) {
+                val ns = rawLineStarts[i + 1].coerceAtMost(maxOffset)
                 layout.getLineTop(layout.getLineForOffset(ns))
             } else {
-                layout.getLineBottom(layout.lineCount - 1)
+                layout.getLineBottom((layout.lineCount - 1).coerceAtLeast(0))
             }
-            bottom - top
+            (bottom - top).coerceAtLeast(0f)
         }
     }
+
+    val scaledLineHeightDp = with(density) { scaledLineHeight.toDp() }
 
     SelectionContainer {
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF1E1E1E))
+                .verticalScroll(scrollState)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         var prevSpan = 0f
@@ -275,7 +290,6 @@ fun DecompilationViewer(
                     Box(
                         modifier = Modifier
                             .width(lineNumberWidth)
-                            .verticalScroll(scrollState)
                             .background(Color(0xFF252526))
                             .padding(top = 8.dp, bottom = 8.dp)
                     ) {
@@ -283,7 +297,7 @@ fun DecompilationViewer(
                             lines.forEachIndexed { index, _ ->
                                 val isCurrentLine = index == cursorLineIndex
                                 val h = lineHeights?.getOrNull(index)?.let { with(density) { it.toDp() } }
-                                    ?: scaledLineHeight.value.dp
+                                    ?: scaledLineHeightDp
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -309,7 +323,6 @@ fun DecompilationViewer(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(scrollState)
                     .then(if (!wordWrap) Modifier.horizontalScroll(horizontalScrollState) else Modifier)
                     .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
             ) {
@@ -321,7 +334,7 @@ fun DecompilationViewer(
                     lineHeight = scaledLineHeight,
                     softWrap = wordWrap,
                     onTextLayout = { textLayoutResult = it },
-                    modifier = Modifier.pointerInput(cursorAddress) {
+                    modifier = Modifier.pointerInput(data, cursorAddress) {
                         detectTapGestures { pos ->
                             val layout = textLayoutResult ?: return@detectTapGestures
                             if (pos.y <= layout.size.height) {

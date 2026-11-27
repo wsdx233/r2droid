@@ -114,6 +114,29 @@ class AiChatHistoryStore(context: Context) {
         }
     }
 
+    /**
+     * Removes expired orphan `.deleted` tombstones once legacy preference migration is complete
+     * and the corresponding session file is no longer present on disk. Keeping recent tombstones
+     * prevents stale retries or concurrent saves from resurrecting a freshly deleted session.
+     */
+    fun pruneDeletedTombstones(maxAgeMillis: Long = TOMBSTONE_RETENTION_MS) {
+        val tombstones = historyDir.listFiles { file ->
+            file.isFile && file.name.endsWith(".deleted")
+        } ?: return
+        val cutoff = System.currentTimeMillis() - maxAgeMillis.coerceAtLeast(0L)
+        var pruned = false
+        for (tombstone in tombstones) {
+            val stem = tombstone.name.removeSuffix(".deleted")
+            val session = File(historyDir, stem + SESSION_FILE_SUFFIX)
+            if (!session.exists() && tombstone.lastModified() <= cutoff && tombstone.delete()) {
+                pruned = true
+            }
+        }
+        if (pruned) {
+            runCatching { syncDirectory(historyDir) }
+        }
+    }
+
     fun importLegacySessions(
         raw: String,
         existing: List<ChatSessionMetadata>
@@ -560,6 +583,7 @@ class AiChatHistoryStore(context: Context) {
     }
 
     companion object {
+        private const val TOMBSTONE_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
         private const val TAG = "AiChatHistoryStore"
         private const val MAX_HEADER_BYTES = 8 * 1024
         private const val SESSION_COMPLETE_FIELD = "complete"

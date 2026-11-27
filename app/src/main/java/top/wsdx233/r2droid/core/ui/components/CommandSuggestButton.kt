@@ -15,6 +15,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,7 +36,9 @@ fun CommandSuggestButton(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    androidx.compose.runtime.remember { R2CommandHelp.load(context); true }
+    LaunchedEffect(Unit) {
+        R2CommandHelp.ensureLoaded(context)
+    }
 
     FilledTonalIconButton(
         onClick = onToggle,
@@ -47,8 +54,19 @@ fun CommandSuggestionPanel(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val suggestions = if (currentInput.isBlank()) R2CommandHelp.complete("a").take(30)
+    val context = LocalContext.current
+    var helpLoaded by remember { mutableStateOf(R2CommandHelp.isLoaded) }
+    LaunchedEffect(Unit) {
+        if (!helpLoaded) {
+            R2CommandHelp.ensureLoaded(context)
+            helpLoaded = true
+        }
+    }
+    val suggestions = remember(currentInput, helpLoaded) {
+        if (!helpLoaded) emptyList()
+        else if (currentInput.isBlank()) R2CommandHelp.complete("a").take(30)
         else R2CommandHelp.complete(currentInput)
+    }
 
     Surface(
         shape = MaterialTheme.shapes.medium,

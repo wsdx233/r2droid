@@ -50,7 +50,7 @@ open class NativeR2DebuggerBackend @Inject constructor(
         if (preparedTarget?.requiresSessionReopen == true) {
             reopenDebugSession(session, preparedTarget.file, existingBreakpoints)
         } else if (config.attachPid != null) {
-            runner.executeFirstSuccessful(session, "doo ${config.attachPid}", "ood ${config.attachPid}").getOrThrow()
+            runner.executeFirstSuccessful(session, "dp=${config.attachPid}", "o dbg://${config.attachPid}").getOrThrow()
         } else {
             val launchArgs = config.args.trim()
             val openCommand = if (launchArgs.isBlank()) "ood" else "ood $launchArgs"
@@ -119,7 +119,7 @@ open class NativeR2DebuggerBackend @Inject constructor(
         }
         runner.execute(addCmd).getOrThrow()
         breakpoint.condition?.trim()?.takeIf { it.isNotEmpty() }?.let { cond ->
-            require('\n' !in cond && '\r' !in cond) { "Invalid breakpoint condition" }
+            require(!top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(cond)) { "Invalid breakpoint condition" }
             runner.execute("dbC $addrHex $cond").getOrThrow()
         }
         if (!breakpoint.enabled) {
@@ -140,7 +140,7 @@ open class NativeR2DebuggerBackend @Inject constructor(
     override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = suspendRunCatching {
         val addrHex = formatHexAddress(address)
         val clean = condition?.trim().orEmpty()
-        require('\n' !in clean && '\r' !in clean) { "Invalid breakpoint condition" }
+        require(!top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(clean)) { "Invalid breakpoint condition" }
         val cmd = if (clean.isEmpty()) "dbC $addrHex" else "dbC $addrHex $clean"
         runner.execute(cmd).getOrThrow()
     }

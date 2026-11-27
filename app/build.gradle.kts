@@ -13,7 +13,7 @@ plugins {
 }
 
 
-val nativeRuntimeNdkVersion = "28.2.13676358"
+val nativeRuntimeNdkVersion = providers.gradleProperty("ndkVersion").getOrElse("28.2.13676358")
 val nativeRuntimePython = providers.gradleProperty("nativeRuntimePython").orElse("python3")
 val nativeRuntimeGithubToken = providers.gradleProperty("nativeRuntimeGithubToken")
     .orElse(providers.environmentVariable("GITHUB_TOKEN"))
@@ -23,13 +23,29 @@ val nativeRuntimeScript = rootProject.layout.projectDirectory.file("tools/build_
 val nativeRuntimeRecipes = rootProject.fileTree("tools") {
     include("build_native_runtime.py", "native_*.py")
 }
+val localPropertiesContent = providers.fileContents(
+    rootProject.layout.projectDirectory.file("local.properties")
+).asText
+val envAndroidSdkRoot = providers.environmentVariable("ANDROID_SDK_ROOT")
+val envAndroidHome = providers.environmentVariable("ANDROID_HOME")
+val envAndroidNdkRoot = providers.environmentVariable("ANDROID_NDK_ROOT")
+val envAndroidNdkHome = providers.environmentVariable("ANDROID_NDK_HOME")
+val releaseKeystoreFile = providers.gradleProperty("KEYSTORE_FILE")
+    .orElse(providers.environmentVariable("KEYSTORE_FILE"))
+val releaseKeystorePassword = providers.gradleProperty("KEYSTORE_PASSWORD")
+    .orElse(providers.environmentVariable("KEYSTORE_PASSWORD"))
+val releaseKeyAlias = providers.gradleProperty("KEY_ALIAS")
+    .orElse(providers.environmentVariable("KEY_ALIAS"))
+val releaseKeyPassword = providers.gradleProperty("KEY_PASSWORD")
+    .orElse(providers.environmentVariable("KEY_PASSWORD"))
 
 fun nativeRuntimeSdkDirectory(): File {
-    val localProperties = rootProject.file("local.properties")
     val properties = Properties()
-    if (localProperties.isFile) localProperties.inputStream().use(properties::load)
-    val sdk = System.getenv("ANDROID_SDK_ROOT")
-        ?: System.getenv("ANDROID_HOME")
+    localPropertiesContent.orNull?.let { content ->
+        content.reader().use(properties::load)
+    }
+    val sdk = envAndroidSdkRoot.orNull
+        ?: envAndroidHome.orNull
         ?: properties.getProperty("sdk.dir")
         ?: throw GradleException("Android SDK location is required to locate NDK $nativeRuntimeNdkVersion")
     return File(sdk.replace("\\:", ":"))
@@ -39,7 +55,7 @@ fun nativeRuntimeNdkDirectory(): File {
     val pinned = File(nativeRuntimeSdkDirectory(), "ndk/$nativeRuntimeNdkVersion")
     // Hosted runners also export a default NDK, which may not be the one installed for this build.
     if (pinned.isDirectory) return pinned.absoluteFile
-    val explicit = System.getenv("ANDROID_NDK_ROOT") ?: System.getenv("ANDROID_NDK_HOME")
+    val explicit = envAndroidNdkRoot.orNull ?: envAndroidNdkHome.orNull
     return (explicit?.let(::File) ?: pinned).absoluteFile
 }
 
@@ -63,12 +79,11 @@ android {
     // 1. 定义签名配置
     signingConfigs {
         create("release") {
-            // 尝试从项目属性中读取，如果不存在则使用空字符串或本地调试配置
-            // GitHub Action 会通过命令行参数传入这些属性 (-PKEYSTORE_FILE=...)
-            storeFile = file(project.findProperty("KEYSTORE_FILE") ?: "keystore.jks")
-            storePassword = project.findProperty("KEYSTORE_PASSWORD") as String?
-            keyAlias = project.findProperty("KEY_ALIAS") as String?
-            keyPassword = project.findProperty("KEY_PASSWORD") as String?
+            // 优先从 Gradle 属性或环境变量读取，避免在本地构建或 CI 命令参数暴露密钥
+            storeFile = file(releaseKeystoreFile.getOrElse("keystore.jks"))
+            storePassword = releaseKeystorePassword.orNull
+            keyAlias = releaseKeyAlias.orNull
+            keyPassword = releaseKeyPassword.orNull
         }
     }
 
@@ -81,8 +96,8 @@ android {
                 "proguard-rules.pro"
             )
             // 2. 应用签名配置
-            // 只有当提供了密码时才应用签名（避免本地构建报错）
-            if (project.findProperty("KEYSTORE_PASSWORD") != null) {
+            // 只有当提供了密码时才应用签名（避免本地构建或未签名 CI 构建报错）
+            if (releaseKeystorePassword.isPresent) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
@@ -254,7 +269,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.material3)
     testImplementation(libs.junit)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation("org.json:json:20231013")

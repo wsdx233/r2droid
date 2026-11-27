@@ -17,6 +17,8 @@ import top.wsdx233.r2droid.core.data.model.XrefWithDisasm
 import top.wsdx233.r2droid.core.data.model.XrefsData
 import top.wsdx233.r2droid.core.data.source.R2DataSource
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.R2Sanitizer
+import top.wsdx233.r2droid.util.optUnsignedLong
 
 import javax.inject.Inject
 class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSource) {
@@ -42,16 +44,16 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
         try {
             // R2 serializes the pipe itself; only CPU parsing/model construction moves off Main.
             val start = annotations.rowStart(offset)
-            val output = executeJson("pdj $count @ $start").getOrThrow()
+            val output = executeJson("pdj $count @ ${start.toHexAddr()}").getOrThrow()
             currentCoroutineContext().ensureActive()
             val list = if (output.isBlank()) emptyList() else {
-                val jsonArray = JSONArray(output)
+                val jsonArray = R2Sanitizer.parseJsonArray(output)
                 List(jsonArray.length()) { i ->
                     currentCoroutineContext().ensureActive()
                     DisasmInstruction.fromJson(jsonArray.getJSONObject(i))
                 }
             }
-            val annotated = annotations.render(list) { addr, size -> execute("p8 $size @ $addr").getOrThrow().trim() }
+            val annotated = annotations.render(list) { addr, size -> execute("p8 $size @ ${addr.toHexAddr()}").getOrThrow().trim() }
             Result.success(resolveStringRefs(annotated, execute))
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -77,7 +79,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
         for (addr in strnAddrs) {
             try {
                 currentCoroutineContext().ensureActive()
-                val result = execute("ps @ $addr")
+                val result = execute("ps @ ${addr.toHexAddr()}")
                 val str = result.getOrThrow().trim()
                 if (!str.isNullOrEmpty()) stringMap[addr] = str
             } catch (cancelled: CancellationException) {
@@ -97,20 +99,21 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     suspend fun getXrefs(addr: Long): Result<XrefsData> {
         return runCatching {
+            val hexAddr = addr.toHexAddr()
             // Get refs FROM current address (axfj)
-            val axfResult = r2DataSource.executeJson("axfj @ $addr")
+            val axfResult = r2DataSource.executeJson("axfj @ $hexAddr")
             val refsFrom = mutableListOf<XrefWithDisasm>()
             if (axfResult.isSuccess) {
                 val output = axfResult.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = R2Sanitizer.parseJsonArray(output)
                     for (i in 0 until jsonArray.length()) {
                         val json = jsonArray.getJSONObject(i)
-                        val toAddr = json.optLong("to", 0)
+                        val toAddr = json.optUnsignedLong("to", 0L)
                         val fcnName = getFunctionNameForAddress(toAddr)
                         val xref = Xref(
                             type = json.optString("type", ""),
-                            from = json.optLong("from", 0),
+                            from = json.optUnsignedLong("from", 0L),
                             to = toAddr,
                             opcode = json.optString("opcode", ""),
                             fcnName = fcnName,
@@ -128,17 +131,17 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
             }
             
             // Get refs TO current address (axtj)
-            val axtResult = r2DataSource.executeJson("axtj @ $addr")
+            val axtResult = r2DataSource.executeJson("axtj @ $hexAddr")
             val refsTo = mutableListOf<XrefWithDisasm>()
             if (axtResult.isSuccess) {
                 val output = axtResult.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = R2Sanitizer.parseJsonArray(output)
                     for (i in 0 until jsonArray.length()) {
                         val json = jsonArray.getJSONObject(i)
                         val xref = Xref(
                             type = json.optString("type", ""),
-                            from = json.optLong("from", 0),
+                            from = json.optUnsignedLong("from", 0L),
                             to = addr, 
                             opcode = json.optString("opcode", ""),
                             fcnName = json.optString("fcn_name", ""),
@@ -161,11 +164,11 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     private suspend fun getDisasmForAddress(addr: Long): Triple<String, String, String> {
         return try {
-            val result = r2DataSource.executeJson("pdj 1 @ $addr")
+            val result = r2DataSource.executeJson("pdj 1 @ ${addr.toHexAddr()}")
             if (result.isSuccess) {
                 val output = result.getOrDefault("")
                 if (output.isNotBlank()) {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = R2Sanitizer.parseJsonArray(output)
                     if (jsonArray.length() > 0) {
                         val json = jsonArray.getJSONObject(0)
                         return Triple(
@@ -185,13 +188,13 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     // === Function Operations ===
 
     suspend fun analyzeFunction(addr: Long): Result<String> {
-        return r2DataSource.execute("af @ $addr")
+        return r2DataSource.execute("af @ ${addr.toHexAddr()}")
     }
 
     suspend fun getFunctionDetail(addr: Long): Result<FunctionDetailInfo?> {
-        return r2DataSource.executeJson("afij @ $addr").mapCatching { output ->
+        return r2DataSource.executeJson("afij @ ${addr.toHexAddr()}").mapCatching { output ->
             if (output.isBlank() || output == "[]") return@mapCatching null
-            val jsonArray = JSONArray(output)
+            val jsonArray = R2Sanitizer.parseJsonArray(output)
             if (jsonArray.length() > 0) {
                 FunctionDetailInfo.fromJson(jsonArray.getJSONObject(0))
             } else null
@@ -199,9 +202,9 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     }
 
     suspend fun getFunctionXrefs(addr: Long): Result<List<FunctionXref>> {
-        return r2DataSource.executeJson("afxj @ $addr").mapCatching { output ->
+        return r2DataSource.executeJson("afxj @ ${addr.toHexAddr()}").mapCatching { output ->
             if (output.isBlank() || output == "[]") return@mapCatching emptyList()
-            val jsonArray = JSONArray(output)
+            val jsonArray = R2Sanitizer.parseJsonArray(output)
             val list = mutableListOf<FunctionXref>()
             for (i in 0 until jsonArray.length()) {
                 list.add(FunctionXref.fromJson(jsonArray.getJSONObject(i)))
@@ -211,9 +214,9 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     }
 
     suspend fun getFunctionVariables(addr: Long): Result<FunctionVariablesData> {
-        return r2DataSource.executeJson("afvj @ $addr").mapCatching { output ->
+        return r2DataSource.executeJson("afvj @ ${addr.toHexAddr()}").mapCatching { output ->
             if (output.isBlank() || output == "{}") return@mapCatching FunctionVariablesData()
-            val json = JSONObject(output)
+            val json = R2Sanitizer.parseJsonObject(output)
             fun parseVarArray(key: String, storage: String): List<FunctionVariable> {
                 val arr = json.optJSONArray(key) ?: return emptyList()
                 val list = mutableListOf<FunctionVariable>()
@@ -232,7 +235,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     suspend fun renameFunction(addr: Long, newName: String): Result<String> {
         val cleanName = newName.trim()
-        if (cleanName.isEmpty() || cleanName.any { it.isWhitespace() || it.isISOControl() || it == ';' }) {
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanName)) {
             return Result.failure(IllegalArgumentException("Invalid function name."))
         }
         return r2DataSource.execute("afn $cleanName @ ${addr.toHexAddr()}")
@@ -241,9 +244,8 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     suspend fun renameFunctionVariable(addr: Long, newName: String, oldName: String): Result<String> {
         val cleanNew = newName.trim()
         val cleanOld = oldName.trim()
-        if (cleanNew.isEmpty() || cleanOld.isEmpty() ||
-            cleanNew.any { it.isWhitespace() || it.isISOControl() || it == ';' } ||
-            cleanOld.any { it.isWhitespace() || it.isISOControl() || it == ';' }
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanNew) ||
+            !top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanOld)
         ) {
             return Result.failure(IllegalArgumentException("Invalid variable name."))
         }
@@ -253,10 +255,12 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     suspend fun retypeFunctionVariable(addr: Long, varName: String, newType: String): Result<String> {
         val cleanVar = varName.trim()
         val cleanType = newType.trim().trim('"').trim()
-        if (cleanVar.isEmpty() || cleanVar.any { it.isWhitespace() || it.isISOControl() || it == ';' }) {
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanVar)) {
             return Result.failure(IllegalArgumentException("Invalid variable name."))
         }
-        if (cleanType.isEmpty() || cleanType.any { it.isISOControl() || it == ';' || it == '"' || it == '\n' || it == '\r' }) {
+        if (cleanType.isEmpty() || top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(cleanType) ||
+            cleanType.any { it == '"' || it == '@' || it == '>' || it == '<' }
+        ) {
             return Result.failure(IllegalArgumentException("Invalid variable type."))
         }
         val cmd = "afvt $cleanVar \"$cleanType\" @ ${addr.toHexAddr()}"
@@ -265,7 +269,9 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     suspend fun setFunctionSignature(addr: Long, signature: String): Result<String> {
         val cleanSig = signature.replace('\r', ' ').replace('\n', ' ').trim().trimEnd(';').trim()
-        if (cleanSig.isEmpty() || cleanSig.any { it.isISOControl() || it == ';' }) {
+        if (cleanSig.isEmpty() || top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(cleanSig) ||
+            cleanSig.any { it == '@' || it == '>' || it == '<' }
+        ) {
             return Result.failure(IllegalArgumentException("Invalid function signature."))
         }
         val cmd = "afs $cleanSig @ ${addr.toHexAddr()}"
@@ -274,7 +280,7 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     suspend fun setFunctionCallingConvention(addr: Long, callingConvention: String): Result<String> {
         val cleanCc = callingConvention.trim()
-        if (cleanCc.isEmpty() || cleanCc.any { it.isWhitespace() || it.isISOControl() || it == ';' }) {
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeIdentifier(cleanCc)) {
             return Result.failure(IllegalArgumentException("Invalid calling convention."))
         }
         val cmd = "afc $cleanCc @ ${addr.toHexAddr()}"
@@ -323,9 +329,9 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
     private fun Long.toHexAddr(): String = "0x${toULong().toString(16)}"
 
     suspend fun getInstructionDetail(addr: Long): Result<top.wsdx233.r2droid.core.data.model.InstructionDetail?> {
-        return r2DataSource.executeJson("aoj @ $addr").mapCatching { output ->
+        return r2DataSource.executeJson("aoj @ ${addr.toHexAddr()}").mapCatching { output ->
             if (output.isBlank() || output == "[]") return@mapCatching null
-            val jsonArray = JSONArray(output)
+            val jsonArray = R2Sanitizer.parseJsonArray(output)
             if (jsonArray.length() > 0) {
                 top.wsdx233.r2droid.core.data.model.InstructionDetail.fromJson(jsonArray.getJSONObject(0))
             } else null
@@ -334,11 +340,11 @@ class DisasmRepository @Inject constructor(private val r2DataSource: R2DataSourc
 
     private suspend fun getFunctionNameForAddress(addr: Long): String {
         return try {
-            val result = r2DataSource.executeJson("afij @ $addr")
+            val result = r2DataSource.executeJson("afij @ ${addr.toHexAddr()}")
             if (result.isSuccess) {
                 val output = result.getOrDefault("")
                 if (output.isNotBlank() && output != "[]") {
-                    val jsonArray = JSONArray(output)
+                    val jsonArray = R2Sanitizer.parseJsonArray(output)
                     if (jsonArray.length() > 0) {
                         val json = jsonArray.getJSONObject(0)
                         return json.optString("name", "")

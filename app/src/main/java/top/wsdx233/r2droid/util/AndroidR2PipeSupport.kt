@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.util
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import org.radare.r2pipe.kotlin.LaunchSpec
 import org.radare.r2pipe.kotlin.ProcessKiller
@@ -14,9 +15,7 @@ internal object AndroidR2PipeSupport {
         override fun interrupt(process: Process) {
             val pid = getProcessId(process)
             if (pid <= 0) return
-            runShellCommand(
-                "kill -2 -$pid 2>/dev/null; kill -2 ${'$'}(pgrep -P $pid) 2>/dev/null"
-            )
+            signalProcessTree(pid, 2)
             LogManager.log(LogType.INFO, "Sent SIGINT to R2 process group (pid=$pid)")
         }
 
@@ -24,18 +23,24 @@ internal object AndroidR2PipeSupport {
             val pid = getProcessId(process)
             if (pid > 0) {
                 val signal = if (force) 9 else 15
-                runShellCommand(
-                    "kill -$signal -$pid 2>/dev/null; kill -$signal ${'$'}(pgrep -P $pid) 2>/dev/null"
-                )
+                signalProcessTree(pid, signal)
             }
             try {
-                if (force) {
+                if (force && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     process.destroyForcibly()
                 } else {
                     process.destroy()
                 }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
             }
+        }
+
+        private fun signalProcessTree(pid: Int, signal: Int) {
+            // Walk descendant PIDs recursively so nested proot -> sh -> r2 processes receive the signal too.
+            runShellCommand(
+                "kill_tree() { local p=\$1 s=\$2; for c in \$(pgrep -P \"\$p\" 2>/dev/null); do kill_tree \"\$c\" \"\$s\"; done; kill -\$s \"\$p\" 2>/dev/null; }; " +
+                    "kill -$signal -$pid 2>/dev/null; kill_tree $pid $signal"
+            )
         }
     }
 
@@ -122,13 +127,34 @@ internal object AndroidR2PipeSupport {
             process.outputStream.close()
             process.inputStream.close()
             process.errorStream.close()
-            process.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+            waitForProcessBounded(process, 1_000L)
         } catch (e: Exception) {
             LogManager.log(LogType.WARNING, "Failed to run shell command: ${e.message}")
         } finally {
             try {
                 process?.destroy()
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun waitForProcessBounded(process: Process, timeoutMs: Long) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            return
+        }
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        while (System.nanoTime() < deadline) {
+            try {
+                process.exitValue()
+                return
+            } catch (_: IllegalThreadStateException) {
+                try {
+                    Thread.sleep(20L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
             }
         }
     }

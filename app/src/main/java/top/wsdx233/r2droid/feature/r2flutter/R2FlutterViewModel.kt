@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import top.wsdx233.r2droid.feature.r2flutter.data.FlutterClass
 import top.wsdx233.r2droid.feature.r2flutter.data.FlutterComponent
@@ -21,6 +23,7 @@ import top.wsdx233.r2droid.feature.r2flutter.data.FlutterString
 import top.wsdx233.r2droid.feature.r2flutter.data.FlutterTargetStatus
 import top.wsdx233.r2droid.feature.r2flutter.data.FlutterXref
 import top.wsdx233.r2droid.feature.r2flutter.data.R2FlutterRepository
+import top.wsdx233.r2droid.util.R2PipeManager
 import java.io.File
 import javax.inject.Inject
 
@@ -33,7 +36,7 @@ class R2FlutterViewModel @Inject constructor(
     private val _targetStatus = MutableStateFlow(FlutterTargetStatus.CHECKING)
     val targetStatus = _targetStatus.asStateFlow()
 
-    private val _overview = MutableStateFlow<FlutterDataState<FlutterOverview>>(FlutterDataState.Loading)
+    private val _overview = MutableStateFlow<FlutterDataState<FlutterOverview>>(FlutterDataState.Idle)
     val overview = _overview.asStateFlow()
 
     private val _functions = MutableStateFlow<FlutterDataState<List<FlutterFunction>>>(FlutterDataState.Idle)
@@ -72,20 +75,40 @@ class R2FlutterViewModel @Inject constructor(
     private val _mapFileName = MutableStateFlow<String?>(null)
     val mapFileName = _mapFileName.asStateFlow()
 
-    init {
-        loadOverview(force = true)
+    private var overviewJob: Job? = null
+    private var stringsJob: Job? = null
+
+    fun probeTargetIfNeeded(shouldProbe: Boolean) {
+        if (!shouldProbe) {
+            if (_targetStatus.value == FlutterTargetStatus.CHECKING) {
+                _targetStatus.value = FlutterTargetStatus.UNAVAILABLE
+            }
+            return
+        }
+        if (_overview.value is FlutterDataState.Idle) {
+            loadOverview(force = false)
+        }
     }
 
     fun loadOverview(force: Boolean = false) {
-        if (!force && _overview.value is FlutterDataState.Ready) return
+        if (!force && (_overview.value is FlutterDataState.Ready || _overview.value is FlutterDataState.Loading)) return
+        val target = R2PipeManager.captureActiveTarget()
+        if (target == null || target.isFridaSession) {
+            _overview.value = FlutterDataState.Error("Flutter snapshot is unavailable in this session")
+            _targetStatus.value = FlutterTargetStatus.UNAVAILABLE
+            return
+        }
         _overview.value = FlutterDataState.Loading
-        viewModelScope.launch(Dispatchers.IO) {
+        overviewJob?.cancel()
+        overviewJob = viewModelScope.launch(Dispatchers.IO) {
             repository.getOverview()
                 .onSuccess {
+                    if (!target.isCurrent()) return@onSuccess
                     _overview.value = FlutterDataState.Ready(it)
                     _targetStatus.value = FlutterTargetStatus.AVAILABLE
                 }
                 .onFailure {
+                    if (!target.isCurrent()) return@onFailure
                     _overview.value = FlutterDataState.Error(it.message ?: "Flutter snapshot was not detected")
                     _targetStatus.value = FlutterTargetStatus.UNAVAILABLE
                 }
@@ -97,12 +120,15 @@ class R2FlutterViewModel @Inject constructor(
     fun loadClasses(force: Boolean = false) = loadList(_classes, force, repository::getClasses)
 
     fun loadStrings(force: Boolean = false) {
-        if (!force && _strings.value is FlutterDataState.Ready) return
+        if (!force && (_strings.value is FlutterDataState.Ready || _strings.value is FlutterDataState.Loading)) return
+        val target = R2PipeManager.captureActiveTarget() ?: return
+        val fuzzy = _fuzzyStrings.value
         _strings.value = FlutterDataState.Loading
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.getStrings(_fuzzyStrings.value)
-                .onSuccess { _strings.value = FlutterDataState.Ready(it) }
-                .onFailure { _strings.value = FlutterDataState.Error(it.message ?: "Unable to load strings") }
+        stringsJob?.cancel()
+        stringsJob = viewModelScope.launch(Dispatchers.IO) {
+            repository.getStrings(fuzzy)
+                .onSuccess { if (target.isCurrent()) _strings.value = FlutterDataState.Ready(it) }
+                .onFailure { if (target.isCurrent()) _strings.value = FlutterDataState.Error(it.message ?: "Unable to load strings") }
         }
     }
 
@@ -120,41 +146,62 @@ class R2FlutterViewModel @Inject constructor(
 
     fun runAnalysis(depth: Int, onApplied: () -> Unit) {
         if (_analysisRunning.value) return
+        val target = R2PipeManager.captureActiveTarget() ?: return
         _analysisRunning.value = true
         _operationMessage.value = null
         viewModelScope.launch(Dispatchers.IO) {
-            repository.runAnalysis(depth)
-                .onSuccess {
-                    _operationMessage.value = "Analysis A${"A".repeat((depth - 1).coerceAtLeast(0))} completed"
-                    loadFunctions(force = true)
-                    loadXrefs(force = true)
-                    onApplied()
-                }
-                .onFailure { _operationMessage.value = it.message ?: "Analysis failed" }
-            _analysisRunning.value = false
+            try {
+                repository.runAnalysis(depth)
+                    .onSuccess {
+                        if (!target.isCurrent()) return@onSuccess
+                        _operationMessage.value = "Analysis A${"A".repeat((depth - 1).coerceAtLeast(0))} completed"
+                        loadFunctions(force = true)
+                        loadXrefs(force = true)
+                        withContext(Dispatchers.Main) { onApplied() }
+                    }
+                    .onFailure {
+                        if (target.isCurrent()) _operationMessage.value = it.message ?: "Analysis failed"
+                    }
+            } finally {
+                _analysisRunning.value = false
+            }
         }
     }
 
     fun applyClasses(onApplied: () -> Unit) {
         if (_analysisRunning.value) return
+        val target = R2PipeManager.captureActiveTarget() ?: return
         _analysisRunning.value = true
         _operationMessage.value = null
         viewModelScope.launch(Dispatchers.IO) {
-            repository.applyClasses()
-                .onSuccess {
-                    _operationMessage.value = "Dart classes and types applied"
-                    onApplied()
-                }
-                .onFailure { _operationMessage.value = it.message ?: "Unable to apply Dart classes" }
-            _analysisRunning.value = false
+            try {
+                repository.applyClasses()
+                    .onSuccess {
+                        if (!target.isCurrent()) return@onSuccess
+                        _operationMessage.value = "Dart classes and types applied"
+                        withContext(Dispatchers.Main) { onApplied() }
+                    }
+                    .onFailure {
+                        if (target.isCurrent()) _operationMessage.value = it.message ?: "Unable to apply Dart classes"
+                    }
+            } finally {
+                _analysisRunning.value = false
+            }
         }
     }
 
     fun setNamePool(enabled: Boolean) {
+        val previous = _namePool.value
+        val target = R2PipeManager.captureActiveTarget() ?: return
         _namePool.value = enabled
         viewModelScope.launch(Dispatchers.IO) {
             repository.setNamePool(enabled)
-                .onFailure { _operationMessage.value = it.message }
+                .onFailure {
+                    if (target.isCurrent()) {
+                        _namePool.value = previous
+                        _operationMessage.value = it.message
+                    }
+                }
         }
     }
 
@@ -163,21 +210,28 @@ class R2FlutterViewModel @Inject constructor(
     }
 
     fun applyProfile() {
+        val target = R2PipeManager.captureActiveTarget() ?: return
         viewModelScope.launch(Dispatchers.IO) {
             repository.setProfile(_profile.value)
                 .onSuccess {
+                    if (!target.isCurrent()) return@onSuccess
                     _operationMessage.value = "Dart profile updated"
                     loadOverview(force = true)
                 }
-                .onFailure { _operationMessage.value = it.message ?: "Invalid Dart profile" }
+                .onFailure {
+                    if (target.isCurrent()) _operationMessage.value = it.message ?: "Invalid Dart profile"
+                }
         }
     }
 
     fun importObfuscationMap(uri: Uri) {
+        val target = R2PipeManager.captureActiveTarget() ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            var stagedFile: File? = null
             runCatching {
                 val directory = File(context.filesDir, "r2flutter/maps").apply { mkdirs() }
                 val file = File(directory, "obfuscation-${System.currentTimeMillis()}.json")
+                stagedFile = file
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     file.outputStream().use { output -> input.copyTo(output) }
                 } ?: error("Unable to read the obfuscation map")
@@ -188,15 +242,20 @@ class R2FlutterViewModel @Inject constructor(
                 ) {
                     "The obfuscation map must contain original/obfuscated name pairs"
                 }
+                check(target.isCurrent()) { "Active session changed" }
                 repository.setMapFile(file.absolutePath).getOrThrow()
                 _mapFileName.value = file.name
             }.onSuccess {
+                if (!target.isCurrent()) return@onSuccess
                 _operationMessage.value = "Obfuscation map applied"
                 loadOverview(force = true)
                 loadFunctions(force = true)
                 loadClasses(force = true)
             }.onFailure {
-                _operationMessage.value = it.message ?: "Unable to import the obfuscation map"
+                stagedFile?.delete()
+                if (target.isCurrent()) {
+                    _operationMessage.value = it.message ?: "Unable to import the obfuscation map"
+                }
             }
         }
     }
@@ -210,12 +269,13 @@ class R2FlutterViewModel @Inject constructor(
         force: Boolean,
         loader: suspend () -> Result<List<T>>
     ) {
-        if (!force && state.value is FlutterDataState.Ready) return
+        if (!force && (state.value is FlutterDataState.Ready || state.value is FlutterDataState.Loading)) return
+        val target = R2PipeManager.captureActiveTarget() ?: return
         state.value = FlutterDataState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             loader()
-                .onSuccess { state.value = FlutterDataState.Ready(it) }
-                .onFailure { state.value = FlutterDataState.Error(it.message ?: "Unable to load Flutter data") }
+                .onSuccess { if (target.isCurrent()) state.value = FlutterDataState.Ready(it) }
+                .onFailure { if (target.isCurrent()) state.value = FlutterDataState.Error(it.message ?: "Unable to load Flutter data") }
         }
     }
 }

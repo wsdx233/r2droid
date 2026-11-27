@@ -43,12 +43,8 @@ internal fun AiRepository.streamChatTurn(
             add(ChatMessage(role = ChatRole.Assistant, content = "Summary of earlier conversation:\n${using.summary}"))
             addAll(messages.subList(using.coveredMessages, messages.size))
         }
-        return streamTurn(provider, input, modelName, systemPrompt, thinkingLevel, tools).onEach { event ->
-            if (event is AiTurnEvent.Completed && event.calls.isNotEmpty()) {
-                val ids = event.calls.mapTo(mutableSetOf()) { it.id }
-                wireCheck(prefix.none { row -> row.toolCalls.any { it.id in ids } }, "Duplicate historical tool call ID")
-            }
-        }
+        val prefixCallIds = prefix.flatMapTo(mutableSetOf()) { row -> row.toolCalls.map { it.id } }
+        return streamTurn(provider, input, modelName, systemPrompt, thinkingLevel, tools, reservedCallIds = prefixCallIds)
     }
 
     return request(cache).catch { error ->

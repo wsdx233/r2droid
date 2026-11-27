@@ -20,7 +20,7 @@ class BinaryByteProfile(
     val asciiRatio: ByteArray
 ) {
     val bucketCount: Int get() = entropy.size
-    val isEmpty: Boolean get() = entropy.isEmpty() || endExclusive <= startAddress
+    val isEmpty: Boolean get() = entropy.isEmpty() || endExclusive.toULong() <= startAddress.toULong()
 
     fun entropyAt(bucket: Int): Int = entropy[bucket].toInt() and 0xFF
     fun zeroRatioAt(bucket: Int): Int = zeroRatio[bucket].toInt() and 0xFF
@@ -28,9 +28,11 @@ class BinaryByteProfile(
 
     fun bucketForAddress(address: Long): Int {
         if (isEmpty) return -1
-        val range = (endExclusive - 1 - startAddress).coerceAtLeast(1).toDouble()
-        val clamped = address.coerceIn(startAddress, endExclusive - 1)
-        return (((clamped - startAddress).toDouble() / range) * bucketCount)
+        val uStart = startAddress.toULong()
+        val uEnd = endExclusive.toULong()
+        val range = (uEnd - 1UL - uStart).coerceAtLeast(1UL).toDouble()
+        val clamped = address.toULong().coerceIn(uStart, uEnd - 1UL)
+        return (((clamped - uStart).toDouble() / range) * bucketCount)
             .toInt()
             .coerceIn(0, bucketCount - 1)
     }
@@ -76,15 +78,17 @@ object BinaryByteSampler {
         sampleWindowBytes: Int = DEFAULT_SAMPLE_WINDOW
     ): BinaryByteProfile? {
         if (file == null || !file.isFile || !file.canRead()) return null
-        if (buckets <= 0 || sampleWindowBytes <= 0 || startAddress < 0 || endAddress <= startAddress) return null
+        val uStart = startAddress.toULong()
+        val uEnd = endAddress.toULong()
+        if (buckets <= 0 || sampleWindowBytes <= 0 || uEnd <= uStart) return null
         val fileLength = file.length()
         if (fileLength <= 0L) return null
 
         val fileSpans = buildFileSpans(sections, virtualAddressing, fileLength, isElf)
         if (fileSpans.isEmpty()) return null
 
-        val addressSpan = endAddress - startAddress
-        val actualBuckets = minOf(buckets.toLong(), addressSpan).toInt().coerceAtLeast(1)
+        val addressSpan = uEnd - uStart
+        val actualBuckets = minOf(buckets.toULong(), addressSpan).toInt().coerceAtLeast(1)
         val entropyOut = ByteArray(actualBuckets)
         val zeroOut = ByteArray(actualBuckets)
         val asciiOut = ByteArray(actualBuckets)
@@ -99,19 +103,22 @@ object BinaryByteSampler {
                 var spanCursor = 0
 
                 for (i in 0 until actualBuckets) {
-                    val bStart = startAddress + ((i.toDouble() / actualBuckets) * totalRange).toLong()
+                    val bStart = uStart + ((i.toDouble() / actualBuckets) * totalRange).toULong()
                     val bEnd = if (i == actualBuckets - 1) {
-                        endAddress
+                        uEnd
                     } else {
-                        (startAddress + (((i + 1).toDouble() / actualBuckets) * totalRange).toLong())
-                            .coerceAtLeast(bStart + 1)
+                        val candidate = uStart + (((i + 1).toDouble() / actualBuckets) * totalRange).toULong()
+                        val minNext = if (bStart < uEnd) bStart + 1UL else uEnd
+                        maxOf(candidate, minNext).coerceAtMost(uEnd)
                     }
-                    val mid = bStart + (bEnd - bStart) / 2
+                    val mid = bStart + (bEnd - bStart) / 2UL
 
-                    while (spanCursor < fileSpans.size && fileSpans[spanCursor].endExclusive <= mid) {
+                    while (spanCursor < fileSpans.size && fileSpans[spanCursor].endExclusive.toULong() <= mid) {
                         spanCursor++
                     }
-                    val span = fileSpans.getOrNull(spanCursor)?.takeIf { mid >= it.start && mid < it.endExclusive }
+                    val span = fileSpans.getOrNull(spanCursor)?.takeIf {
+                        mid >= it.start.toULong() && mid < it.endExclusive.toULong()
+                    }
                     if (span == null) {
                         // NOBITS (e.g. .bss) or unmapped gap -> treat as zero-filled / hollow
                         entropyOut[i] = 0
@@ -120,16 +127,23 @@ object BinaryByteSampler {
                         continue
                     }
 
-                    val overlapStart = maxOf(bStart, span.start)
-                    val overlapEnd = minOf(bEnd, span.endExclusive)
-                    val overlapLen = (overlapEnd - overlapStart).coerceAtLeast(1L)
-                    val readLen = minOf(overlapLen, sampleWindowBytes.toLong()).toInt()
-                    val sampleAddr = if (overlapLen > readLen) {
-                        overlapStart + (overlapLen - readLen) / 2
+                    val overlapStart = maxOf(bStart, span.start.toULong())
+                    val overlapEnd = minOf(bEnd, span.endExclusive.toULong())
+                    val overlapLen = if (overlapEnd > overlapStart) overlapEnd - overlapStart else 1UL
+                    val readLen = minOf(overlapLen, sampleWindowBytes.toULong()).toInt()
+                    val sampleAddr = if (overlapLen > readLen.toULong()) {
+                        overlapStart + (overlapLen - readLen.toULong()) / 2UL
                     } else {
                         overlapStart
                     }
-                    val filePos = span.fileOffset + (sampleAddr - span.start)
+                    val relOffset = sampleAddr - span.start.toULong()
+                    if (relOffset > Long.MAX_VALUE.toULong()) {
+                        entropyOut[i] = 0
+                        zeroOut[i] = 0xFF.toByte()
+                        asciiOut[i] = 0
+                        continue
+                    }
+                    val filePos = span.fileOffset + relOffset.toLong()
                     if (filePos < 0L || filePos >= fileLength) {
                         entropyOut[i] = 0
                         zeroOut[i] = 0xFF.toByte()
@@ -248,12 +262,12 @@ object BinaryByteSampler {
             if (section.type.equals("NOBITS", ignoreCase = true) ||
                 section.type.equals("SHT_NOBITS", ignoreCase = true)
             ) return@mapNotNull null
-            if (section.vAddr < 0 || section.pAddr < 0 || section.size <= 0 || section.pAddr >= fileLength) {
+            if (section.pAddr < 0 || section.size <= 0 || section.pAddr >= fileLength) {
                 return@mapNotNull null
             }
             val backedSize = minOf(section.size, fileLength - section.pAddr)
             val virtualLimit = if (section.vSize > 0) minOf(backedSize, section.vSize) else backedSize
-            if (virtualLimit <= 0 || virtualLimit > Long.MAX_VALUE - section.vAddr) return@mapNotNull null
+            if (virtualLimit <= 0 || virtualLimit.toULong() > ULong.MAX_VALUE - section.vAddr.toULong()) return@mapNotNull null
             FileSpan(
                 start = section.vAddr,
                 endExclusive = section.vAddr + virtualLimit,
@@ -263,8 +277,8 @@ object BinaryByteSampler {
         }
         if (rawSpans.isEmpty()) return emptyList()
 
-        val sorted = rawSpans.sortedBy { it.start }
-        val active = PriorityQueue(compareBy<FileSpan> { it.sourceSize }.thenBy { it.start })
+        val sorted = rawSpans.sortedBy { it.start.toULong() }
+        val active = PriorityQueue(compareBy<FileSpan> { it.sourceSize }.thenBy { it.start.toULong() })
         val resolved = ArrayList<ResolvedSpan>(sorted.size)
         var next = 0
         var pos = sorted.first().start
@@ -272,18 +286,18 @@ object BinaryByteSampler {
             if (active.isEmpty()) pos = sorted[next].start
             while (next < sorted.size && sorted[next].start == pos) active.add(sorted[next++])
             val top = active.element()
-            val end = minOf(top.endExclusive, sorted.getOrNull(next)?.start ?: Long.MAX_VALUE)
-            val offsetAtPos = top.fileOffset + (pos - top.start)
+            val end = minOf(top.endExclusive.toULong(), sorted.getOrNull(next)?.start?.toULong() ?: ULong.MAX_VALUE).toLong()
+            val offsetAtPos = top.fileOffset + (pos.toULong() - top.start.toULong()).toLong()
             val last = resolved.lastOrNull()
             if (last != null && last.endExclusive == pos &&
-                last.fileOffset + (pos - last.start) == offsetAtPos
+                last.fileOffset + (pos.toULong() - last.start.toULong()).toLong() == offsetAtPos
             ) {
                 last.endExclusive = end
             } else {
                 resolved.add(ResolvedSpan(pos, end, offsetAtPos))
             }
             pos = end
-            while (active.isNotEmpty() && active.element().endExclusive <= pos) active.remove()
+            while (active.isNotEmpty() && active.element().endExclusive.toULong() <= pos.toULong()) active.remove()
         }
         return resolved
     }

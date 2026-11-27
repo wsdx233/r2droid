@@ -4,6 +4,7 @@ import android.content.Context
 import android.system.Os
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
@@ -56,25 +57,30 @@ object PluginProotInstaller {
     }
 
     fun updateState(status: ProotInstallState.Status, progress: Float, message: String) {
-        _state.value = _state.value.copy(
-            status = status,
-            progress = progress.coerceIn(0f, 1f),
-            message = message,
-            canRetryCurrentStage = false
-        )
+        _state.update { current ->
+            current.copy(
+                status = status,
+                progress = progress.coerceIn(0f, 1f),
+                message = message,
+                canRetryCurrentStage = false
+            )
+        }
     }
 
     fun appendLog(line: String) {
-        val logs = (_state.value.logs + line).takeLast(MAX_LOG_LINES)
-        _state.value = _state.value.copy(logs = logs)
+        _state.update { current ->
+            current.copy(logs = (current.logs + line).takeLast(MAX_LOG_LINES))
+        }
     }
 
     fun markDone(message: String = "Plugin proot environment is ready.") {
-        _state.value = _state.value.copy(
-            status = ProotInstallState.Status.DONE,
-            progress = 1f,
-            message = message
-        )
+        _state.update { current ->
+            current.copy(
+                status = ProotInstallState.Status.DONE,
+                progress = 1f,
+                message = message
+            )
+        }
     }
 
     fun markError(error: Throwable, context: Context? = null, sourceUrl: String? = null) {
@@ -84,11 +90,13 @@ object PluginProotInstaller {
             error.message ?: "Unknown error"
         }
         appendLog("INSTALL FAILED: $reason")
-        _state.value = _state.value.copy(
-            status = ProotInstallState.Status.ERROR,
-            message = reason,
-            canRetryCurrentStage = true
-        )
+        _state.update { current ->
+            current.copy(
+                status = ProotInstallState.Status.ERROR,
+                message = reason,
+                canRetryCurrentStage = true
+            )
+        }
     }
 
     @Synchronized
@@ -239,7 +247,7 @@ object PluginProotInstaller {
         runCatching { Os.chmod(getHostTmpDir(context).absolutePath, 511) }
         getReadyMarker(context).delete()
         if (forceReinstall) {
-            getRootfsDir(context).deleteRecursively()
+            SafeFileOps.deleteRecursivelyNoFollow(getRootfsDir(context))
             getExtractMarker(context).delete()
         }
         getRootfsDir(context).mkdirs()
@@ -333,7 +341,7 @@ object PluginProotInstaller {
             appendLog("Plugin proot extraction failed: ${firstError.message ?: firstError::class.java.simpleName}")
             logger?.invoke("Plugin proot extraction failed; re-downloading rootfs and retrying extraction once.")
             getArchiveFile(context, option).delete()
-            rootfsDir.deleteRecursively()
+            SafeFileOps.deleteRecursivelyNoFollow(rootfsDir)
             getExtractMarker(context).delete()
             downloadRootfsIfNeeded(context, option, logger, forceRedownload = true)
             extractRootfsArchive(context, option, logger)
@@ -347,7 +355,7 @@ object PluginProotInstaller {
         updateState(ProotInstallState.Status.EXTRACTING, 0.46f, "Extracting plugin proot rootfs...")
         appendLog("Extracting plugin proot rootfs to ${rootfsDir.absolutePath}")
         logger?.invoke("Extracting plugin proot rootfs to ${rootfsDir.absolutePath}")
-        rootfsDir.deleteRecursively()
+        SafeFileOps.deleteRecursivelyNoFollow(rootfsDir)
         rootfsDir.mkdirs()
         getExtractMarker(context).delete()
         val rootCanonical = rootfsDir.canonicalPath
@@ -470,9 +478,7 @@ object PluginProotInstaller {
             add("/proc")
             add("/sys")
             add(filesDir.absolutePath)
-            filesDir.parentFile?.absolutePath?.let(::add)
             add(cacheDir.absolutePath)
-            cacheDir.parentFile?.absolutePath?.let(::add)
             add("/data/data/${context.packageName}/files")
             add("/data/data/${context.packageName}/cache")
             add("/storage")

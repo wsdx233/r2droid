@@ -73,9 +73,19 @@ data class FridaSearchResult(
         fun fromJson(json: JSONObject) = FridaSearchResult(
             address = json.optString("address"),
             value = json.optString("value"),
-            displayType = try {
-                SearchValueType.valueOf(json.optString("type", "DWORD"))
-            } catch (_: Exception) { SearchValueType.DWORD }
+            displayType = when (json.optString("type", "DWORD").trim().uppercase()) {
+                "U8", "I8", "BYTE" -> SearchValueType.BYTE
+                "U16", "I16", "SHORT" -> SearchValueType.SHORT
+                "U32", "I32", "DWORD" -> SearchValueType.DWORD
+                "U64", "I64", "QWORD" -> SearchValueType.QWORD
+                "FLOAT", "F32" -> SearchValueType.FLOAT
+                "DOUBLE", "F64" -> SearchValueType.DOUBLE
+                "UTF8", "UTF-8" -> SearchValueType.UTF8
+                "UTF16", "UTF-16" -> SearchValueType.UTF16
+                "HEX" -> SearchValueType.HEX
+                else -> runCatching { SearchValueType.valueOf(json.optString("type", "DWORD").uppercase()) }
+                    .getOrDefault(SearchValueType.DWORD)
+            }
         )
     }
 }

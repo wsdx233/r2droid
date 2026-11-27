@@ -1,21 +1,34 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Preserve stack trace metadata for crash reports
+-keepattributes SourceFile,LineNumberTable,*Annotation*,Signature,InnerClasses,EnclosingMethod
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# WebView JS bridge methods & plugin runtime bridge
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class top.wsdx233.r2droid.feature.plugin.PluginAndroidBridge { *; }
+-keep class top.wsdx233.r2droid.feature.plugin.PluginWebBridge { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Termux JNI methods invoked from native libtermux.so
+-keepclasseswithmembernames class com.termux.terminal.JNI {
+    native <methods>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Kotlinx Serialization
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** {
+    *** Companion;
+}
+-keepclasseswithmembers class kotlinx.serialization.json.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep,includedescriptorclasses class top.wsdx233.r2droid.**$$serializer { *; }
+-keepclassmembers class top.wsdx233.r2droid.** {
+    *** Companion;
+}
+-keepclasseswithmembers class top.wsdx233.r2droid.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# QuickJS JNI bindings
+-keep class com.dokar.quickjs.** { *; }

@@ -4,9 +4,12 @@ import android.content.Context
 import android.os.Build
 import android.system.Os
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -38,6 +41,7 @@ object R2FlutterInstaller {
     private const val CHECKSUM_FILE_NAME = "SHA256SUMS"
     private const val BUILD_INFO_FILE_NAME = "build-info.json"
     private val json = Json { ignoreUnknownKeys = true }
+    private val installMutex = Mutex()
 
     private val _state = MutableStateFlow(R2FlutterInstallState())
     val state = _state.asStateFlow()
@@ -60,19 +64,23 @@ object R2FlutterInstaller {
         _state.value = R2FlutterInstallState()
     }
 
-    suspend fun install(context: Context) = withContext(Dispatchers.IO) {
-        runCatching {
-            if (SettingsManager.useProotMode) {
-                installInProot(context.applicationContext)
-            } else {
-                installNative(context.applicationContext)
+    suspend fun install(context: Context) = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            try {
+                if (SettingsManager.useProotMode) {
+                    installInProot(context.applicationContext)
+                } else {
+                    installNative(context.applicationContext)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (error: Throwable) {
+                Log.e(TAG, "Installation failed", error)
+                _state.value = R2FlutterInstallState(
+                    status = R2FlutterInstallState.Status.ERROR,
+                    message = error.message ?: "Unknown installation error"
+                )
             }
-        }.onFailure { error ->
-            Log.e(TAG, "Installation failed", error)
-            _state.value = R2FlutterInstallState(
-                status = R2FlutterInstallState.Status.ERROR,
-                message = error.message ?: "Unknown installation error"
-            )
         }
     }
 

@@ -1,5 +1,6 @@
 package top.wsdx233.r2droid.feature.project
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -121,9 +122,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.R
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.core.ui.adaptive.LocalWindowWidthClass
@@ -231,20 +234,23 @@ fun ProjectScaffold(
         }
     }
 
-    // Refresh function list and decompilation when disasm/function metadata is modified
+    // Refresh function list, hex, and decompilation when disasm/function metadata is modified
     val dataModified by disasmViewModel.dataModifiedEvent.collectAsState()
     androidx.compose.runtime.LaunchedEffect(dataModified) {
         if (dataModified > 0) {
             viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
             viewModel.invalidateDecompilationAndGraph()
+            hexViewModel.onEvent(HexEvent.RefreshData)
         }
     }
 
-    // Also clear when hex data is modified
+    // Also refresh disasm, decompilation, and graph when hex data is modified
     val hexDataModified by hexViewModel.dataModifiedEvent.collectAsState()
     androidx.compose.runtime.LaunchedEffect(hexDataModified) {
         if (hexDataModified > 0) {
             viewModel.onEvent(ProjectEvent.ClearFunctionsCache)
+            viewModel.invalidateDecompilationAndGraph()
+            disasmViewModel.refreshData((uiState as? ProjectUiState.Success)?.cursorAddress)
         }
     }
 
@@ -269,6 +275,24 @@ fun ProjectScaffold(
     val isAiEnabled = SettingsManager.aiEnabled
     val isWide = LocalWindowWidthClass.current != WindowWidthClass.Compact
     val tutorialState by OnboardingTutorial.state.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(sessionId, uiState) {
+        if (isR2Frida) {
+            r2flutterViewModel.probeTargetIfNeeded(false)
+            return@LaunchedEffect
+        }
+        val successState = uiState as? ProjectUiState.Success ?: return@LaunchedEffect
+        val projectPath = R2PipeManager.currentFilePath.orEmpty()
+        if (R2PipeManager.pendingOpenR2Flutter || projectPath.contains("libapp", ignoreCase = true)) {
+            r2flutterViewModel.probeTargetIfNeeded(true)
+            return@LaunchedEffect
+        }
+        val binInfo = successState.binInfo ?: return@LaunchedEffect
+        val isArm64Elf = binInfo.arch.contains("arm", ignoreCase = true) &&
+            binInfo.bits == 64 &&
+            (binInfo.binType.equals("ELF", ignoreCase = true) || binInfo.format.contains("elf", ignoreCase = true))
+        r2flutterViewModel.probeTargetIfNeeded(isArm64Elf)
+    }
 
     androidx.compose.runtime.LaunchedEffect(r2FlutterTargetStatus) {
         if (r2FlutterTargetStatus == FlutterTargetStatus.CHECKING) return@LaunchedEffect
@@ -1044,7 +1068,9 @@ fun ProjectScaffold(
                                             val n = instrs.size
                                             val start = state.rangeStart
                                             msScope.launch {
-                                                val result = top.wsdx233.r2droid.util.R2PipeManager.execute("pd $n @ $start").getOrDefault("")
+                                                val result = top.wsdx233.r2droid.util.R2PipeManager.execute(
+                                                    "pd $n @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(start)}"
+                                                ).getOrDefault("")
                                                 msClipboard.setText(androidx.compose.ui.text.AnnotatedString(result))
                                             }
                                         }
@@ -1218,7 +1244,7 @@ fun ProjectScaffold(
                     )
                     Spacer(Modifier.width(8.dp))
                     androidx.compose.material3.FilledTonalIconButton(
-                        onClick = { R2PipeManager.interrupt() },
+                        onClick = { sheetScope.launch(Dispatchers.IO) { R2PipeManager.interrupt() } },
                         modifier = Modifier.size(32.dp),
                         colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -1839,6 +1865,7 @@ fun ProjectScaffold(
                                         onWriteValue = { addr, v -> r2fridaViewModel.writeValue(addr, v) },
                                         onBatchWrite = { v -> r2fridaViewModel.batchWriteAll(v) },
                                         onToggleFreeze = { addr, v -> r2fridaViewModel.toggleFreeze(addr, v) },
+                                        onSetFreeze = { addr, v, enabled -> r2fridaViewModel.setFreeze(addr, v, enabled) },
                                         onValueTypeChange = { r2fridaViewModel.updateSearchValueType(it) },
                                         onCompareChange = { r2fridaViewModel.updateSearchCompare(it) },
                                         onRegionsChange = { r2fridaViewModel.updateSelectedRegions(it) },
@@ -1914,14 +1941,11 @@ fun ProjectScaffold(
         val code = exportDecompCode ?: return@LaunchedEffect
         exportDecompCode = null
         try {
-            val dir = java.io.File(
-                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
-                "R2droidExport"
-            )
-            dir.mkdirs()
-            val fileName = "decompile_${System.currentTimeMillis()}.c"
-            val file = java.io.File(dir, fileName)
-            file.writeText(code)
+            val file = withContext(Dispatchers.IO) {
+                val dir = java.io.File(exportContext.cacheDir, "exports").apply { mkdirs() }
+                val fileName = "decompile_${System.currentTimeMillis()}.c"
+                java.io.File(dir, fileName).apply { writeText(code) }
+            }
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 exportContext, "${exportContext.packageName}.fileprovider", file
             )
@@ -1930,8 +1954,18 @@ fun ProjectScaffold(
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             exportContext.startActivity(android.content.Intent.createChooser(intent, null))
+        } catch (e: ActivityNotFoundException) {
+            android.widget.Toast.makeText(
+                exportContext,
+                e.message ?: exportContext.getString(R.string.common_error),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
         } catch (e: Exception) {
-            android.widget.Toast.makeText(exportContext, e.message, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(
+                exportContext,
+                e.message ?: exportContext.getString(R.string.common_error),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
         }
     }
 

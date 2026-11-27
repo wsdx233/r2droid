@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -266,9 +267,15 @@ internal fun LocalTypesScreen(
                     val safeName = TypesJsonParser.sanitizeHeaderFilename(name)
                     val dir = File(context.cacheDir, "types_headers").apply { mkdirs() }
                     val target = File(dir, "${System.currentTimeMillis()}_$safeName")
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        target.outputStream().use { output -> input.copyTo(output) }
-                    } ?: error("Unable to read selected file.")
+                    stagedFile = target
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            target.outputStream().use { output -> input.copyTo(output) }
+                        } ?: error("Unable to read selected file.")
+                    } catch (e: Throwable) {
+                        runCatching { target.delete() }
+                        throw e
+                    }
                     target to name
                 }
                 stagedFile = file
@@ -696,7 +703,10 @@ internal fun LocalTypesContent(
                                     )
                                 }
                             } else {
-                                items(filteredLinks, key = { "link_${it.address}_${it.typeName}" }) { link ->
+                                itemsIndexed(
+                                    filteredLinks,
+                                    key = { index, link -> "link_${index}_${link.address}_${link.typeName}" }
+                                ) { _, link ->
                                     TypeLinkCard(
                                         link = link,
                                         previewText = linkPreviews[link.address],
@@ -741,7 +751,10 @@ internal fun LocalTypesContent(
                             }
                         } else {
                             if (selectedCategory == TypeCategory.ALL || selectedCategory == TypeCategory.STRUCT) {
-                                items(filteredStructs, key = { "struct_${it.name}" }) { s ->
+                                itemsIndexed(
+                                    filteredStructs,
+                                    key = { index, s -> "struct_${index}_${s.name}" }
+                                ) { _, s ->
                                     StructTypeCard(
                                         info = s,
                                         linkedCount = snapshot.linkedAddressesFor(s.name).size,
@@ -750,7 +763,10 @@ internal fun LocalTypesContent(
                                 }
                             }
                             if (selectedCategory == TypeCategory.ALL || selectedCategory == TypeCategory.ENUM) {
-                                items(filteredEnums, key = { "enum_${it.name}" }) { e ->
+                                itemsIndexed(
+                                    filteredEnums,
+                                    key = { index, e -> "enum_${index}_${e.name}" }
+                                ) { _, e ->
                                     EnumTypeCard(
                                         info = e,
                                         onClick = { onInspectType(InspectedType.Enum(e)) }
@@ -758,7 +774,10 @@ internal fun LocalTypesContent(
                                 }
                             }
                             if (selectedCategory == TypeCategory.ALL || selectedCategory == TypeCategory.UNION) {
-                                items(filteredUnions, key = { "union_${it.name}" }) { u ->
+                                itemsIndexed(
+                                    filteredUnions,
+                                    key = { index, u -> "union_${index}_${u.name}" }
+                                ) { _, u ->
                                     UnionTypeCard(
                                         info = u,
                                         linkedCount = snapshot.linkedAddressesFor(u.name).size,
@@ -767,7 +786,10 @@ internal fun LocalTypesContent(
                                 }
                             }
                             if (selectedCategory == TypeCategory.ALL || selectedCategory == TypeCategory.TYPEDEF) {
-                                items(filteredTypedefs, key = { "typedef_${it.name}" }) { t ->
+                                itemsIndexed(
+                                    filteredTypedefs,
+                                    key = { index, t -> "typedef_${index}_${t.name}" }
+                                ) { _, t ->
                                     TypedefTypeCard(
                                         info = t,
                                         linkedCount = snapshot.linkedAddressesFor(t.name).size,

@@ -13,6 +13,13 @@ class FridaDebuggerBackend @Inject constructor(
     override val breakpointListCommand: String = "dbj"
     override val seekCommand: String = "s"
 
+    // r2frida maps target memory into r2's IO layer; standard r2 commands (`pxj`, `?v`, `s`, `pxr`)
+    // must NOT be prefixed with `:`.
+    override suspend fun queryR2(command: String): Result<String> {
+        requireFridaSession().onFailure { return Result.failure(it) }
+        return runner.execute(command)
+    }
+
     private fun requireFridaSession(): Result<Unit> = if (R2PipeManager.isR2FridaSession) {
         Result.success(Unit)
     } else {

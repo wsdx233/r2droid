@@ -80,9 +80,12 @@ class R2PipeHttp private constructor(
     override fun forceClose() {
         try {
             closeRequests()
-            process?.let { processKiller.terminate(it, true) }
+            process?.let { proc ->
+                closeProcessStreams(proc)
+                processKiller.terminate(proc, true)
+            }
         } finally {
-            httpClient.connectionPool.evictAll()
+            shutdownHttpClient()
         }
     }
 
@@ -108,10 +111,23 @@ class R2PipeHttp private constructor(
                 } catch (_: Exception) {
                 }
             }
+            closeProcessStreams(currentProcess)
             processKiller.terminate(currentProcess, false)
         } finally {
-            httpClient.connectionPool.evictAll()
+            shutdownHttpClient()
         }
+    }
+
+    private fun closeProcessStreams(proc: Process) {
+        try { proc.outputStream.close() } catch (_: Exception) {}
+        try { proc.inputStream.close() } catch (_: Exception) {}
+        try { proc.errorStream.close() } catch (_: Exception) {}
+    }
+
+    private fun shutdownHttpClient() {
+        try { httpClient.dispatcher.cancelAll() } catch (_: Exception) {}
+        try { httpClient.connectionPool.evictAll() } catch (_: Exception) {}
+        try { httpClient.dispatcher.executorService.shutdown() } catch (_: Exception) {}
     }
 
     override fun isRunning(): Boolean {

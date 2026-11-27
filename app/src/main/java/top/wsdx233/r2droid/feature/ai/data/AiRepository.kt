@@ -1,8 +1,5 @@
 package top.wsdx233.r2droid.feature.ai.data
 
-import com.aallam.openai.client.OpenAI
-import com.aallam.openai.client.OpenAIConfig
-import com.aallam.openai.client.OpenAIHost
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -13,10 +10,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -49,7 +48,8 @@ class AiRepository @Inject constructor() {
         modelName: String,
         systemPrompt: String,
         thinkingLevel: ThinkingLevel,
-        tools: List<AiToolDefinition>
+        tools: List<AiToolDefinition>,
+        reservedCallIds: Set<String> = emptySet()
     ): Flow<AiTurnEvent> = flow {
         var currentTools = tools
         var includeReasoning = true
@@ -64,7 +64,8 @@ class AiRepository @Inject constructor() {
                     thinkingLevel = thinkingLevel,
                     tools = currentTools,
                     includeReasoningParams = includeReasoning,
-                    includeReasoningSummary = includeSummary
+                    includeReasoningSummary = includeSummary,
+                    reservedCallIds = reservedCallIds
                 ) { emit(it) }
                 break
             } catch (error: AiHttpException) {
@@ -93,6 +94,7 @@ class AiRepository @Inject constructor() {
         tools: List<AiToolDefinition>,
         includeReasoningParams: Boolean,
         includeReasoningSummary: Boolean,
+        reservedCallIds: Set<String>,
         emit: suspend (AiTurnEvent) -> Unit
     ): Unit = coroutineScope {
         val endpoint = if (provider.useResponsesApi) "/responses" else "/chat/completions"
@@ -125,7 +127,7 @@ class AiRepository @Inject constructor() {
             call.execute().use { response ->
                 ensureActive()
                 if (!response.isSuccessful) {
-                    val body = response.body.string()
+                    val body = readBoundedBody(response.body, MAX_ERROR_BODY_CHARS)
                     val diagnostic = "AI API failed (${response.code}): $body"
                     if (isContextLimitRejection(response.code, body)) throw AiContextLimitException(diagnostic)
                     throw AiHttpException(response.code, body, diagnostic)
@@ -148,7 +150,10 @@ class AiRepository @Inject constructor() {
                         )
                     }
                     if (completed != null) {
-                        val usedIds = payload.callIds.toMutableSet()
+                        val usedIds = HashSet<String>(payload.callIds.size + reservedCallIds.size).apply {
+                            addAll(payload.callIds)
+                            addAll(reservedCallIds)
+                        }
                         val normalizedCalls = completed.calls.map { call ->
                             val uniqueId = deduplicateCallId(call.id, usedIds)
                             if (uniqueId == call.id) call else call.copy(id = uniqueId)
@@ -167,14 +172,61 @@ class AiRepository @Inject constructor() {
         }
     }
 
-    suspend fun fetchModels(baseUrl: String, apiKey: String): List<String> {
-        val client = OpenAI(
-            OpenAIConfig(
-                token = apiKey,
-                host = OpenAIHost(baseUrl = baseUrl.trimEnd('/') + "/")
-            )
-        )
-        return client.models().map { it.id.id }.sorted()
+    suspend fun fetchModels(baseUrl: String, apiKey: String): List<String> = withContext(Dispatchers.IO) {
+        coroutineScope {
+            val request = Request.Builder()
+                .url(baseUrl.trim().trimEnd('/') + "/models")
+                .header("Authorization", "Bearer ${apiKey.trim()}")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            val call = client.newCall(request)
+            val cancelCall = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    call.cancel()
+                }
+            }
+            try {
+                ensureActive()
+                call.execute().use { response ->
+                    ensureActive()
+                    if (!response.isSuccessful) {
+                        val body = readBoundedBody(response.body, MAX_ERROR_BODY_CHARS)
+                        throw IOException("Failed to fetch models (HTTP ${response.code}): $body")
+                    }
+                    val raw = readBoundedBody(response.body, MAX_MODELS_BODY_CHARS)
+                    val root = JSONObject(raw)
+                    val data = root.optJSONArray("data") ?: return@use emptyList()
+                    buildList(data.length()) {
+                        for (i in 0 until data.length()) {
+                            val id = data.optJSONObject(i)?.optString("id")?.trim().orEmpty()
+                            if (id.isNotEmpty()) add(id)
+                        }
+                    }.distinct().sorted()
+                }
+            } catch (error: IOException) {
+                ensureActive()
+                throw error
+            } finally {
+                cancelCall.cancel()
+            }
+        }
+    }
+
+    private fun readBoundedBody(body: ResponseBody?, maxChars: Int): String {
+        if (body == null) return ""
+        val reader = body.charStream()
+        val buf = CharArray(minOf(8192, maxChars))
+        val sb = StringBuilder()
+        while (sb.length < maxChars) {
+            val remaining = maxChars - sb.length
+            val read = reader.read(buf, 0, minOf(buf.size, remaining))
+            if (read <= 0) break
+            sb.append(buf, 0, read)
+        }
+        return sb.toString()
     }
 
     private fun isContextLimitRejection(status: Int, body: String): Boolean {
@@ -237,6 +289,8 @@ class AiRepository @Inject constructor() {
     }
 
     private companion object {
+        const val MAX_ERROR_BODY_CHARS = 64 * 1024
+        const val MAX_MODELS_BODY_CHARS = 2 * 1024 * 1024
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val UNSUPPORTED_PARAMETER_CODES = setOf("unsupported_parameter", "unknown_parameter", "unrecognized_parameter")
         val CONTEXT_INPUT_PARAMS = setOf("", "input", "messages", "prompt")

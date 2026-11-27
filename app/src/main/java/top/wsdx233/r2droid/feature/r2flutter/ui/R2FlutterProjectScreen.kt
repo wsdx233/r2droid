@@ -280,6 +280,7 @@ private fun FlutterClassesScreen(viewModel: R2FlutterViewModel, onJump: (Long) -
             onRefresh = { viewModel.loadClasses(force = true) },
             placeholder = stringResource(R.string.r2flutter_search_classes)
         ) { item ->
+            val classKey = "${item.library}|${item.name}"
             Column(modifier = Modifier.fillMaxWidth()) {
                 ListItem(
                     headlineContent = { Text(item.name) },
@@ -294,9 +295,9 @@ private fun FlutterClassesScreen(viewModel: R2FlutterViewModel, onJump: (Long) -
                         )
                     },
                     leadingContent = { Icon(Icons.Default.DataObject, contentDescription = null) },
-                    modifier = Modifier.clickable { expanded[item.name] = expanded[item.name] != true }
+                    modifier = Modifier.clickable { expanded[classKey] = expanded[classKey] != true }
                 )
-                if (expanded[item.name] == true) {
+                if (expanded[classKey] == true) {
                     item.fields.forEach { field ->
                         Text(
                             "+0x${field.offset.toString(16)}  ${field.type} ${field.name} ${field.flags}",
@@ -310,7 +311,7 @@ private fun FlutterClassesScreen(viewModel: R2FlutterViewModel, onJump: (Long) -
                             "${formatAddress(method.address)}  ${method.name} ${method.signature}",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = method.address > 0) { onJump(method.address) }
+                                .clickable(enabled = method.address != 0L) { onJump(method.address) }
                                 .padding(horizontal = 24.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace
@@ -461,7 +462,7 @@ private fun <T> DataStateContent(
     }
 }
 
-private fun formatAddress(address: Long): String = "0x${address.toString(16)}"
+private fun formatAddress(address: Long): String = "0x${address.toULong().toString(16)}"
 
 private fun nodeLabel(node: top.wsdx233.r2droid.feature.r2flutter.data.FlutterXrefNode): String {
     val value = node.name.ifBlank { node.type }

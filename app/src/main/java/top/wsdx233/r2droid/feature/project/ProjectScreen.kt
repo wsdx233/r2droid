@@ -95,7 +95,8 @@ private data class CacheDiscardRequest(val action: SessionAction, val session: R
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectScreen(
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    externalOpenTrigger: Int = 0
 ) {
     val viewModel: ProjectViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -195,11 +196,21 @@ fun ProjectScreen(
         }
         drawerScope.launch {
             val hasPending = runCatching {
-                val raw = R2PipeManager.execute(session, "wcj", markDirty = false).getOrNull().orEmpty().trim()
-                if (raw.isEmpty() || raw == "{}" || raw == "[]") false
-                else {
-                    val entries = top.wsdx233.r2droid.feature.project.patches.WriteCacheFormat.parseEntries(raw)
-                    entries.any { !it.written }
+                val layersRaw = R2PipeManager.execute(session, "wcl", markDirty = false).getOrNull().orEmpty().trim()
+                val layers = if (layersRaw.isNotEmpty()) {
+                    top.wsdx233.r2droid.feature.project.patches.WriteCacheFormat.parseLayers(layersRaw)
+                } else emptyList()
+                // If lower layers (any layer except possibly an empty top) contain patches, prompt to avoid silent loss.
+                val lowerLayersHavePatches = layers.size > 1 && layers.dropLast(1).any { it > 0 }
+                if (lowerLayersHavePatches) {
+                    true
+                } else {
+                    val raw = R2PipeManager.execute(session, "wcj", markDirty = false).getOrNull().orEmpty().trim()
+                    if (raw.isEmpty() || raw == "{}" || raw == "[]") false
+                    else {
+                        val entries = top.wsdx233.r2droid.feature.project.patches.WriteCacheFormat.parseEntries(raw)
+                        entries.any { !it.written }
+                    }
                 }
             }.getOrDefault(true)
             if (!request.isCurrent()) return@launch
@@ -313,8 +324,8 @@ fun ProjectScreen(
         }
     ) {
 
-            // Re-initialize when active session changes (e.g. switched from sidebar)
-            androidx.compose.runtime.LaunchedEffect(activeSessionId) {
+            // Re-initialize when active session changes (e.g. switched from sidebar) or an external file is opened
+            androidx.compose.runtime.LaunchedEffect(activeSessionId, externalOpenTrigger) {
                 viewModel.onEvent(ProjectEvent.Initialize)
             }
 
@@ -800,7 +811,7 @@ private fun BitwiseDialog(
 ) {
     var a by remember { mutableStateOf("") }
     var b by remember { mutableStateOf("") }
-    fun parse(v: String): Long = v.removePrefix("0x").toLongOrNull(16) ?: v.toLongOrNull() ?: 0L
+    fun parse(v: String): Long = top.wsdx233.r2droid.util.R2Sanitizer.parseUnsignedAddress(v) ?: 0L
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.tool_bitwise)) },
@@ -809,9 +820,9 @@ private fun BitwiseDialog(
                 OutlinedTextField(value = a, onValueChange = { a = it }, label = { Text("A") })
                 OutlinedTextField(value = b, onValueChange = { b = it }, label = { Text("B") })
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = { onShowResult("0x${(parse(a) and parse(b)).toString(16)}") }) { Text("AND") }
-                    TextButton(onClick = { onShowResult("0x${(parse(a) or parse(b)).toString(16)}") }) { Text("OR") }
-                    TextButton(onClick = { onShowResult("0x${(parse(a) xor parse(b)).toString(16)}") }) { Text("XOR") }
+                    TextButton(onClick = { onShowResult("0x${(parse(a) and parse(b)).toULong().toString(16)}") }) { Text("AND") }
+                    TextButton(onClick = { onShowResult("0x${(parse(a) or parse(b)).toULong().toString(16)}") }) { Text("OR") }
+                    TextButton(onClick = { onShowResult("0x${(parse(a) xor parse(b)).toULong().toString(16)}") }) { Text("XOR") }
                 }
             }
         },

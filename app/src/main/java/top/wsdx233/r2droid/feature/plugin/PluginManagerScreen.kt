@@ -1167,7 +1167,9 @@ private fun LogsTab(
             }
         }
 
-        items(logs.takeLast(120), key = { "log_${it.hashCode()}_${it.length}" }) { line ->
+        val recentLogs = logs.takeLast(120)
+        items(recentLogs.size, key = { idx -> "log_$idx" }) { idx ->
+            val line = recentLogs[idx]
             Card(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = line,

@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,8 +58,9 @@ object R2PipeManager {
         val mutex: Mutex = Mutex(),
         val state: MutableStateFlow<State> = MutableStateFlow(State.Idle),
         val isConnected: AtomicBoolean = AtomicBoolean(true),
-        var currentProjectId: String? = null,
-        var isDirtyAfterSave: Boolean = false,
+        @Volatile var currentProjectId: String? = null,
+        @Volatile var isDirtyAfterSave: Boolean = false,
+        @Volatile internal var cachedSections: List<top.wsdx233.r2droid.core.data.model.Section>? = null,
         internal val disasmLayout: SessionAddressLayout = SessionAddressLayout()
     )
 
@@ -410,6 +413,32 @@ object R2PipeManager {
         return session
     }
 
+    private fun allocateAvailableHttpPort(preferredPort: Int, excludedPort: Int? = null): Int {
+        val activePorts = synchronized(sessionsLock) {
+            _sessions.value.values.mapNotNullTo(mutableSetOf()) { it.httpPort }
+        }
+        if (excludedPort != null) activePorts.add(excludedPort)
+        fun isPortFree(port: Int): Boolean {
+            if (port !in 1..65535 || port in activePorts) return false
+            return runCatching {
+                java.net.ServerSocket().use { socket ->
+                    socket.reuseAddress = true
+                    socket.bind(java.net.InetSocketAddress("127.0.0.1", port))
+                }
+                true
+            }.getOrDefault(false)
+        }
+        val start = preferredPort.coerceIn(1024, 65535)
+        if (isPortFree(start)) return start
+        for (offset in 1..64) {
+            val candidate = start + offset
+            if (candidate <= 65535 && isPortFree(candidate)) return candidate
+        }
+        return runCatching {
+            java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        }.getOrDefault(start)
+    }
+
     private suspend fun createSessionInternal(
         context: Context,
         filePath: String? = null,
@@ -419,8 +448,10 @@ object R2PipeManager {
         currentProjectId: String? = null
     ): Result<String> {
         return withContext(Dispatchers.IO) {
-            runCatching {
+            var created: R2Session? = null
+            try {
                 val sid = UUID.randomUUID().toString()
+                val httpPort = allocateAvailableHttpPort(SettingsManager.httpPort)
                 val session = buildSession(
                     context = context,
                     sid = sid,
@@ -428,8 +459,11 @@ object R2PipeManager {
                     flags = flags,
                     rawArgs = rawArgs,
                     writeCacheEnabled = writeCacheEnabled,
-                    currentProjectId = currentProjectId
+                    currentProjectId = currentProjectId,
+                    httpPort = httpPort
                 )
+                created = session
+                currentCoroutineContext().ensureActive()
 
                 synchronized(sessionsLock) {
                     _sessions.value = _sessions.value + (sid to session)
@@ -437,7 +471,14 @@ object R2PipeManager {
                     _sessionId.incrementAndGet()
                     _state.value = session.state.value
                 }
-                sid
+                created = null
+                Result.success(sid)
+            } catch (cancelled: CancellationException) {
+                created?.let { closeSessionPipe(it, force = true) }
+                throw cancelled
+            } catch (t: Throwable) {
+                created?.let { closeSessionPipe(it, force = true) }
+                Result.failure(t)
             }
         }
     }
@@ -461,11 +502,15 @@ object R2PipeManager {
         }
 
         return withContext(Dispatchers.IO) {
-            runCatching {
+            var created: R2Session? = null
+            try {
                 val reconnectHttpPort = if (oldSession.isHttpMode) {
-                    (oldSession.httpPort ?: SettingsManager.httpPort) + 1
+                    allocateAvailableHttpPort(
+                        preferredPort = (oldSession.httpPort ?: SettingsManager.httpPort) + 1,
+                        excludedPort = oldSession.httpPort
+                    )
                 } else {
-                    SettingsManager.httpPort
+                    allocateAvailableHttpPort(SettingsManager.httpPort)
                 }
 
                 val newSession = buildSession(
@@ -477,6 +522,8 @@ object R2PipeManager {
                     writeCacheEnabled = writeCacheEnabled,
                     httpPort = reconnectHttpPort
                 )
+                created = newSession
+                currentCoroutineContext().ensureActive()
 
                 val replaced = synchronized(sessionsLock) {
                     if (activeSessionPipe !== oldSession.pipe) {
@@ -493,10 +540,18 @@ object R2PipeManager {
                 }
                 if (!replaced) {
                     closeSessionPipe(newSession, force = true)
+                    created = null
                     error("The R2Pipe session changed while reconnecting.")
                 }
+                created = null
                 closeSessionPipe(oldSession, force = true)
-                newSession
+                Result.success(newSession)
+            } catch (cancelled: CancellationException) {
+                created?.let { closeSessionPipe(it, force = true) }
+                throw cancelled
+            } catch (t: Throwable) {
+                created?.let { closeSessionPipe(it, force = true) }
+                Result.failure(t)
             }
         }
     }
@@ -697,12 +752,42 @@ object R2PipeManager {
     internal fun isEsilBlockedCommand(command: String): Boolean {
         if (command.isBlank()) return true
         if (command.any { it == '\u0000' || it == '\n' || it == '\r' }) return true
+        if (containsUnquotedSubstitutionOrPipe(command)) return true
 
         val segments = splitUnquotedSemicolons(command)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
         if (segments.isEmpty()) return true
         return segments.any { isBlockedEsilSegment(it) }
+    }
+
+    private fun containsUnquotedSubstitutionOrPipe(command: String): Boolean {
+        var quote: Char? = null
+        var escaped = false
+        for (i in command.indices) {
+            val ch = command[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (ch == '\\' && quote != '\'') {
+                escaped = true
+                continue
+            }
+            if (quote != null) {
+                if (ch == quote) quote = null
+                else if (quote == '"' && (ch == '`' || (ch == '$' && i + 1 < command.length && command[i + 1] == '('))) {
+                    return true
+                }
+                continue
+            }
+            when (ch) {
+                '\'', '"' -> quote = ch
+                '`', '|' -> return true
+                '$' -> if (i + 1 < command.length && command[i + 1] == '(') return true
+            }
+        }
+        return false
     }
 
     internal fun isEsilViewerRead(command: String): Boolean = !isEsilBlockedCommand(command)
@@ -776,7 +861,8 @@ object R2PipeManager {
     private fun isBlockedEsilSegment(segment: String): Boolean {
         val base = stripUnquotedModifiers(segment)
         if (base.isEmpty()) return true
-        val withoutRepeat = base.dropWhile { it.isDigit() }.trimStart()
+        val unquotedLead = base.dropWhile { it == '\'' || it == '"' }.trimStart()
+        val withoutRepeat = unquotedLead.dropWhile { it.isDigit() }.trimStart()
         if (withoutRepeat.isEmpty()) return true
 
         val splitIdx = withoutRepeat.indexOfFirst { it.isWhitespace() }
@@ -900,11 +986,11 @@ object R2PipeManager {
      * 向 R2 进程发送中断信号 (SIGINT)，取消当前正在执行的操作。
      * 不需要获取 mutex，因为只是发送信号，不涉及管道读写。
      */
-    fun interrupt(): Unit = synchronized(sessionsLock) {
-        val session = activeSession() ?: return@synchronized
-        if (session.isConnected.get()) {
-            session.managedPipe.transport.interrupt()
-        }
+    fun interrupt() {
+        val transport = synchronized(sessionsLock) {
+            activeSession()?.takeIf { it.isConnected.get() }?.managedPipe?.transport
+        } ?: return
+        transport.interrupt()
     }
 
     /** View model teardown is not consent to discard a write cache. */

@@ -89,7 +89,8 @@ fun ProotSetupScreen(
     }
 
     val canGoBack = !installState.isWorking
-    BackHandler(enabled = canGoBack) {
+    BackHandler(enabled = true) {
+        if (!canGoBack) return@BackHandler
         if (installStarted && installState.status != ProotInstallState.Status.IDLE) {
             ProotInstaller.resetState()
             installStarted = false

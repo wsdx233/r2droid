@@ -1,6 +1,8 @@
 package top.wsdx233.r2droid.util
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 data class R2HelpEntry(
@@ -16,14 +18,29 @@ data class R2HelpGroup(
 )
 
 object R2CommandHelp {
+    @Volatile
     private var allEntries: List<R2HelpEntry> = emptyList()
+    @Volatile
     private var groups: List<R2HelpGroup> = emptyList()
+    @Volatile
     private var loaded = false
 
+    val isLoaded: Boolean
+        get() = loaded
+
+    suspend fun ensureLoaded(context: Context) {
+        if (loaded) return
+        val appContext = context.applicationContext
+        withContext(Dispatchers.IO) {
+            load(appContext)
+        }
+    }
+
+    @Synchronized
     fun load(context: Context) {
         if (loaded) return
         try {
-            val json = context.assets.open("radare2_command_help.json")
+            val json = context.applicationContext.assets.open("radare2_command_help.json")
                 .bufferedReader().use { it.readText() }
             val root = JSONObject(json)
             val files = root.getJSONArray("files")

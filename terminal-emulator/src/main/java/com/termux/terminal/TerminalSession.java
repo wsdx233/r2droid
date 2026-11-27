@@ -233,9 +233,19 @@ public final class TerminalSession extends TerminalOutput {
 
     /** Finish this terminal session by sending SIGKILL to the shell. */
     public void finishIfRunning() {
-        if (isRunning()) {
+        final int pid;
+        synchronized (this) {
+            pid = mShellPid;
+            if (pid == 0) {
+                // Not started yet (before first layout); never call kill(0, SIGKILL), which kills
+                // the entire app process group.
+                mShellPid = -1;
+                return;
+            }
+        }
+        if (pid > 0) {
             try {
-                Os.kill(mShellPid, OsConstants.SIGKILL);
+                Os.kill(pid, OsConstants.SIGKILL);
             } catch (ErrnoException e) {
                 Logger.logWarn(mClient, LOG_TAG, "Failed sending SIGKILL: " + e.getMessage());
             }

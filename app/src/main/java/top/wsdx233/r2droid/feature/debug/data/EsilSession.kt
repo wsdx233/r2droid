@@ -114,28 +114,32 @@ internal class EsilSession(
 
     private suspend fun createScratchStack(size: Long): Long {
         val maps = maps()
-        val requested = config.stackAddress
-        var base = requested ?: if (wordBytes < 4) 0x1000L else 0x100000L
-        val maxAddress = if (wordBytes == 8) Long.MAX_VALUE else (1L shl (wordBytes * 8)) - 1
-        val occupied = (0 until maps.length()).map {
+        val requested = config.stackAddress?.toULong()
+        var base = requested ?: if (wordBytes < 4) 0x1000UL else 0x100000UL
+        val maxAddress = if (wordBytes >= 8) ULong.MAX_VALUE else (1UL shl (wordBytes * 8)) - 1UL
+        val uSize = size.toULong()
+        val occupied = (0 until maps.length()).mapNotNull {
             val map = maps.getJSONObject(it)
-            map.getLong("from")..map.getLong("to")
+            val from = runner.parseLongFlexible(map.opt("from"))?.toULong() ?: return@mapNotNull null
+            val to = runner.parseLongFlexible(map.opt("to"))?.toULong() ?: return@mapNotNull null
+            from..to
         }.sortedBy { it.first }
         for (range in occupied) {
             if (range.last < base) continue
-            if (range.first > base && range.first - base >= size) break
+            if (range.first > base && range.first - base >= uSize) break
             check(requested == null) { "Configured ESIL stack overlaps an existing memory map" }
-            check(range.last < Long.MAX_VALUE - 0x1000) { "No space for ESIL stack" }
-            base = (range.last + 0x1000) and -0x1000L
+            check(range.last < ULong.MAX_VALUE - 0x1000UL) { "No space for ESIL stack" }
+            base = (range.last + 0x1000UL) and 0xFFFF_FFFF_FFFF_F000UL
         }
-        check(base <= maxAddress - (size - 1)) { "ESIL stack does not fit this register profile" }
+        check(uSize > 0UL && base <= maxAddress - (uSize - 1UL)) { "ESIL stack does not fit this register profile" }
+        val baseLong = base.toLong()
         val originalFd = checked("oqq").toInt()
         // Allocate only anonymous memory. In particular aeim/aeim- must not touch aaa's fd.
-        scratchBase = base
-        checked("on malloc://$size 0x${base.toULong().toString(16)} rw-")
+        scratchBase = baseLong
+        checked("on malloc://$size 0x${base.toString(16)} rw-")
         check(scratchFd() != null) { "Failed to map the ESIL stack" }
         if (checked("oqq").toInt() != originalFd) checked("o=$originalFd")
-        return base + if (requested == null) size / 2 else size - 16
+        return (base + if (requested == null) uSize / 2UL else uSize - 16UL).toLong()
     }
 
     private suspend fun scratchFd(): Int? {
@@ -143,7 +147,8 @@ internal class EsilSession(
         val maps = maps()
         for (i in 0 until maps.length()) {
             val map = maps.getJSONObject(i)
-            if (map.getLong("from") == base) return map.getInt("fd")
+            val from = runner.parseLongFlexible(map.opt("from"))
+            if (from == base) return map.getInt("fd")
         }
         return null
     }
@@ -166,39 +171,56 @@ internal class EsilSession(
 
     suspend fun close() = withContext(NonCancellable) {
         var cleanupFailure: Throwable? = null
+        fun recordFailure(t: Throwable) {
+            if (cleanupFailure == null) cleanupFailure = t else cleanupFailure?.addSuppressed(t)
+        }
         try {
             if (lease.isConnected) {
-                pendingBreakpointRestore?.let { checked(it); pendingBreakpointRestore = null }
-                scratchFd()?.let {
-                    checked("o- $it")
-                    check(scratchFd() == null) { "Could not release ESIL stack fd $it" }
+                pendingBreakpointRestore?.let { cmd ->
+                    pendingBreakpointRestore = null
+                    runCatching { checked(cmd) }.onFailure(::recordFailure)
                 }
-                scratchBase = null
+                runCatching {
+                    scratchFd()?.let {
+                        checked("o- $it")
+                        check(scratchFd() == null) { "Could not release ESIL stack fd $it" }
+                    }
+                    scratchBase = null
+                }.onFailure {
+                    scratchBase = null
+                    recordFailure(it)
+                }
                 if (engineStarted) {
-                    checked("aei-")
-                    engineStarted = false
+                    runCatching {
+                        checked("aei-")
+                        engineStarted = false
+                    }.onFailure(::recordFailure)
                 }
                 if (arenaPushed) {
-                    checked("ara-")
-                    arenaPushed = false
+                    runCatching {
+                        checked("ara-")
+                        arenaPushed = false
+                    }.onFailure(::recordFailure)
                 }
                 originalLayer?.let { base ->
-                    when (layerIndex()) {
-                        base + 1 -> checked("wc--")
-                        base -> Unit // setup failed before it could push
-                        else -> error("Unexpected r2 cache layer; refusing to discard user patches")
-                    }
-                    check(layerIndex() == base) { "ESIL cache rollback failed" }
-                    originalLayer = null
+                    runCatching {
+                        when (layerIndex()) {
+                            base + 1 -> checked("wc--")
+                            base -> Unit // setup failed before it could push
+                            else -> error("Unexpected r2 cache layer; refusing to discard user patches")
+                        }
+                        check(layerIndex() == base) { "ESIL cache rollback failed" }
+                        originalLayer = null
+                    }.onFailure(::recordFailure)
                 }
-                for ((key, value) in restore.entries.reversed()) {
-                    checked("e $key=$value")
-                    check(option(key) == value) { "Could not restore $key after ESIL" }
-                    restore.remove(key)
+                for ((key, value) in restore.entries.toList().reversed()) {
+                    runCatching {
+                        checked("e $key=$value")
+                        check(option(key) == value) { "Could not restore $key after ESIL" }
+                        restore.remove(key)
+                    }.onFailure(::recordFailure)
                 }
             }
-        } catch (failure: Throwable) {
-            cleanupFailure = failure
         } finally {
             // Always release the lease so a partial cleanup error never bricks the session permanently.
             lease.release()

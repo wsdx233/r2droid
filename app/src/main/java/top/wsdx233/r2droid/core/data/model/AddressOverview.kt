@@ -20,7 +20,12 @@ enum class RegionKind {
 data class AddressRegion(val start: Long, val endExclusive: Long, val name: String, val kind: RegionKind) {
     companion object {
         fun fromSize(start: Long, size: Long, name: String, permissions: String): AddressRegion? {
-            if (start < 0 || size <= 0 || size > Long.MAX_VALUE - start) return null
+            if (size <= 0L) return null
+            val uStart = start.toULong()
+            val uSize = size.toULong()
+            if (uSize > ULong.MAX_VALUE - uStart) return null
+            // Reject ranges crossing the non-canonical signed/unsigned midpoint (0x7fff... -> 0x8000...).
+            if (start >= 0L && (start + size) < 0L) return null
             return AddressRegion(start, start + size, name, RegionKind.fromPermissions(permissions))
         }
     }
@@ -39,13 +44,13 @@ class AddressOverview private constructor(private val spans: List<Span>) {
         val Empty = AddressOverview(emptyList())
         private const val MIN_DIVIDED_ROWS = 3
         // A narrow named section inside a wider mapping should win, independent of input order.
-        private val mostSpecific = compareBy<AddressRegion> { it.endExclusive - it.start }
-            .thenBy { it.kind }.thenBy { it.start }.thenBy { it.name }
+        private val mostSpecific = compareBy<AddressRegion> { it.endExclusive.toULong() - it.start.toULong() }
+            .thenBy { it.kind }.thenBy { it.start.toULong() }.thenBy { it.name }
 
         fun of(regions: List<AddressRegion>): AddressOverview {
-            val sorted = regions.filterTo(ArrayList(regions.size)) { it.start >= 0 && it.endExclusive > it.start }
+            val sorted = regions.filterTo(ArrayList(regions.size)) { it.endExclusive.toULong() > it.start.toULong() }
             if (sorted.isEmpty()) return Empty
-            sorted.sortBy { it.start }
+            sorted.sortBy { it.start.toULong() }
             val spans = ArrayList<Span>(sorted.size)
             val active = PriorityQueue(mostSpecific)
             var next = 0
@@ -54,26 +59,28 @@ class AddressOverview private constructor(private val spans: List<Span>) {
                 if (active.isEmpty()) pos = sorted[next].start
                 while (next < sorted.size && sorted[next].start == pos) active.add(sorted[next++])
                 val region = active.element()
-                val end = minOf(region.endExclusive, sorted.getOrNull(next)?.start ?: Long.MAX_VALUE)
+                val nextStart = sorted.getOrNull(next)?.start?.toULong() ?: ULong.MAX_VALUE
+                val end = minOf(region.endExclusive.toULong(), nextStart).toLong()
                 val last = spans.lastOrNull()
                 if (last != null && last.end == pos && last.region === region) last.end = end
                 else spans.add(Span(pos, end, region))
                 pos = end
-                while (active.isNotEmpty() && active.element().endExclusive <= pos) active.remove()
+                while (active.isNotEmpty() && active.element().endExclusive.toULong() <= pos.toULong()) active.remove()
             }
             return AddressOverview(spans)
         }
     }
 
     fun regionAt(address: Long): AddressRegion? {
+        val target = address.toULong()
         var lo = 0
         var hi = spans.lastIndex
         while (lo <= hi) {
             val mid = (lo + hi).ushr(1)
             val span = spans[mid]
             when {
-                address < span.start -> hi = mid - 1
-                address >= span.end -> lo = mid + 1
+                target < span.start.toULong() -> hi = mid - 1
+                target >= span.end.toULong() -> lo = mid + 1
                 else -> return span.region
             }
         }
@@ -82,26 +89,32 @@ class AddressOverview private constructor(private val spans: List<Span>) {
 
     /** Most covered permission (or gap) per physical pixel. Disjoint spans make this O(spans + rows). */
     fun rasterize(start: Long, endExclusive: Long, rows: Int): List<OverviewBand> {
-        if (rows <= 0 || spans.isEmpty() || start < 0 || endExclusive <= start) return emptyList()
+        val uStart = start.toULong()
+        val uEnd = endExclusive.toULong()
+        if (rows <= 0 || spans.isEmpty() || uEnd <= uStart) return emptyList()
         val kinds = RegionKind.entries
         val coverage = DoubleArray(rows * kinds.size)
         val cuts = BooleanArray(rows)
-        // Same axis as the thumb: ratio 1 selects endExclusive - 1. Subtract in Long first for ASLR.
-        val range = (endExclusive - 1 - start).coerceAtLeast(1).toDouble()
+        // Same axis as the thumb: ratio 1 selects endExclusive - 1. Subtract in ULong first for ASLR/high 64-bit.
+        val range = (uEnd - 1UL - uStart).coerceAtLeast(1UL).toDouble()
         var previousName: String? = null
         for (span in spans) {
-            if (span.end <= start) continue
-            if (span.start >= endExclusive) break
-            val top = (maxOf(span.start, start) - start) / range * rows
-            val bottom = if (span.end >= endExclusive) rows.toDouble() else (span.end - start) / range * rows
+            val sStart = span.start.toULong()
+            val sEnd = span.end.toULong()
+            if (sEnd <= uStart) continue
+            if (sStart >= uEnd) break
+            val top = (maxOf(sStart, uStart) - uStart).toDouble() / range * rows
+            val bottom = if (sEnd >= uEnd) rows.toDouble() else ((sEnd - uStart).toDouble() / range * rows).coerceAtMost(rows.toDouble())
             val kind = span.region.kind.ordinal
-            for (row in top.toInt() until ceil(bottom).toInt()) {
+            val rowStart = top.toInt().coerceIn(0, rows - 1)
+            val rowEnd = ceil(bottom).toInt().coerceIn(rowStart, rows)
+            for (row in rowStart until rowEnd) {
                 coverage[row * kinds.size + kind] += minOf(bottom, row + 1.0) - maxOf(top, row.toDouble())
             }
             // Mark substantial named sections, but never inflate a subpixel section into a visible stripe.
             val name = span.region.name
             if (name.isNotEmpty() && name != previousName && bottom - top >= MIN_DIVIDED_ROWS) {
-                cuts[top.roundToInt()] = true
+                cuts[top.roundToInt().coerceIn(0, rows - 1)] = true
             }
             previousName = name
         }

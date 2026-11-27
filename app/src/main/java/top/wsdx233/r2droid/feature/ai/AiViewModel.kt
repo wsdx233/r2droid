@@ -96,12 +96,21 @@ class AiViewModel @Inject constructor(
     init {
         viewModelScope.launch { AiSettingsManager.configFlow.collect { config -> _uiState.update { it.copy(config = config) } } }
         viewModelScope.launch { AiSettingsManager.sessionsFlow.collect { chats -> _uiState.update { it.copy(chatSessions = chats) } } }
+        viewModelScope.launch { AiSettingsManager.systemPromptFlow.collect { prompt -> _uiState.update { it.copy(systemPrompt = prompt) } } }
         viewModelScope.launch {
             combine(R2PipeManager.activeSessionId, R2PipeManager.sessions, R2PipeManager.state) { _, _, _ ->
                 target?.isCurrent() == false
-            }.collect { changed -> if (changed && target?.isCurrent() == false) stopGeneration(TARGET_CHANGED) }
+            }.collect { changed ->
+                if (changed && target?.isCurrent() == false) {
+                    sessionAutoApprove = false
+                    stopGeneration(TARGET_CHANGED)
+                }
+            }
         }
     }
+
+    suspend fun fetchModels(baseUrl: String, apiKey: String): List<String> =
+        aiRepository.fetchModels(baseUrl, apiKey)
 
     fun onEvent(event: AiEvent) {
         when (event) {

@@ -150,7 +150,7 @@ class EsilDebuggerBackend @Inject constructor(
         val trimmed = expression.trim()
         if (trimmed.isEmpty()) return Result.failure(IllegalArgumentException("Expression cannot be empty"))
         parseExplicitLiteral(trimmed)?.let { return Result.success(it) }
-        if ('\n' in trimmed || '\r' in trimmed || ';' in trimmed) {
+        if (top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(trimmed)) {
             return Result.failure(IllegalArgumentException("Invalid characters in expression"))
         }
         return onCurrentPipe { pipe ->
@@ -182,7 +182,7 @@ class EsilDebuggerBackend @Inject constructor(
         val addrHex = formatHexAddress(breakpoint.address)
         breakpointCommand(it, "db $addrHex")
         breakpoint.condition?.trim()?.takeIf { cond -> cond.isNotEmpty() }?.let { cond ->
-            require('\n' !in cond && '\r' !in cond) { "Invalid breakpoint condition" }
+            require(!top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(cond)) { "Invalid breakpoint condition" }
             breakpointCommand(it, "dbC $addrHex $cond")
         }
         if (!breakpoint.enabled) {
@@ -205,7 +205,7 @@ class EsilDebuggerBackend @Inject constructor(
     override suspend fun setBreakpointCondition(address: Long, condition: String?): Result<Unit> = onCurrentPipe {
         val addrHex = formatHexAddress(address)
         val clean = condition?.trim().orEmpty()
-        require('\n' !in clean && '\r' !in clean) { "Invalid breakpoint condition" }
+        require(!top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(clean)) { "Invalid breakpoint condition" }
         val cmd = if (clean.isEmpty()) "dbC $addrHex" else "dbC $addrHex $clean"
         breakpointCommand(it, cmd)
         Unit

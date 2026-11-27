@@ -51,7 +51,10 @@ import top.wsdx233.r2droid.util.R2PipeManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnalysisBottomSheet(onDismiss: () -> Unit) {
+fun AnalysisBottomSheet(
+    onDismiss: () -> Unit,
+    onAnalysisComplete: (() -> Unit)? = null
+) {
     var selected by remember { mutableStateOf("aaa") }
     var isRunning by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -133,16 +136,25 @@ fun AnalysisBottomSheet(onDismiss: () -> Unit) {
                         Text(stringResource(R.string.proj_analysis_cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
                     Button(onClick = {
                         isRunning = true
                         val cmd = selected
                         val appContext = context.applicationContext
-                        CoroutineScope(Dispatchers.Main).launch {
+                        scope.launch {
                             try {
-                                R2PipeManager.execute(cmd)
-                                Toast.makeText(appContext, appContext.getString(R.string.proj_analysis_done), Toast.LENGTH_SHORT).show()
+                                val result = R2PipeManager.execute(cmd)
+                                if (result.isSuccess) {
+                                    onAnalysisComplete?.invoke()
+                                    Toast.makeText(appContext, appContext.getString(R.string.proj_analysis_done), Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val msg = result.exceptionOrNull()?.message ?: "unknown error"
+                                    Toast.makeText(appContext, appContext.getString(R.string.proj_analysis_error) + ": $msg", Toast.LENGTH_LONG).show()
+                                }
                             } catch (e: Exception) {
                                 Toast.makeText(appContext, appContext.getString(R.string.proj_analysis_error) + ": ${e.message}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isRunning = false
                             }
                             onDismiss()
                         }

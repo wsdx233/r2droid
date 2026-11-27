@@ -42,35 +42,39 @@ object FlutterTargetResolver {
         val targetDir = File(context.cacheDir, "r2flutter/targets/${System.currentTimeMillis()}")
             .apply { mkdirs() }
         val target = File(targetDir, "libapp.so")
-        val input = context.contentResolver.openInputStream(uri)
-            ?: error("Unable to open the selected APK")
-        var found = false
+        try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: error("Unable to open the selected APK")
+            var found = false
 
-        input.use { raw ->
-            ZipInputStream(BufferedInputStream(raw)).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    val normalized = entry.name.replace('\\', '/')
-                    if (!entry.isDirectory && normalized == "lib/arm64-v8a/libapp.so") {
-                        FileOutputStream(target).use { output -> zip.copyTo(output) }
-                        found = true
-                        break
+            input.use { raw ->
+                ZipInputStream(BufferedInputStream(raw)).use { zip ->
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        val normalized = entry.name.replace('\\', '/')
+                        if (!entry.isDirectory && normalized == "lib/arm64-v8a/libapp.so") {
+                            FileOutputStream(target).use { output -> zip.copyTo(output) }
+                            found = true
+                            break
+                        }
+                        entry = zip.nextEntry
                     }
-                    entry = zip.nextEntry
                 }
             }
-        }
 
-        if (!found) {
-            targetDir.deleteRecursively()
-            error("The APK does not contain lib/arm64-v8a/libapp.so")
+            if (!found) {
+                error("The APK does not contain lib/arm64-v8a/libapp.so")
+            }
+            validateArm64Elf(target)
+            return Target(
+                path = target.absolutePath,
+                displayName = displayName.removeSuffix(".apk") + " / libapp.so",
+                extractedFromApk = true
+            )
+        } catch (t: Throwable) {
+            SafeFileOps.deleteRecursivelyNoFollow(targetDir)
+            throw t
         }
-        validateArm64Elf(target)
-        return Target(
-            path = target.absolutePath,
-            displayName = displayName.removeSuffix(".apk") + " / libapp.so",
-            extractedFromApk = true
-        )
     }
 
     internal fun validateArm64Elf(file: File) {

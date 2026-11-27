@@ -30,7 +30,8 @@ import top.wsdx233.r2droid.util.R2PipeManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwitchArchBottomSheet(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onArchSwitched: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -43,15 +44,24 @@ fun SwitchArchBottomSheet(
         if (!isSwitching) {
             isSwitching = true
             scope.launch {
-                withContext(Dispatchers.IO) {
-                    commands.forEach { cmd ->
-                        R2PipeManager.execute(cmd)
+                try {
+                    val results = withContext(Dispatchers.IO) {
+                        commands.map { cmd -> R2PipeManager.execute(cmd) }
                     }
+                    if (results.all { it.isSuccess }) {
+                        onArchSwitched?.invoke()
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        val err = results.firstOrNull { it.isFailure }?.exceptionOrNull()?.message ?: "Failed"
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } finally {
+                    isSwitching = false
                 }
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
-                }
-                isSwitching = false
                 onDismiss()
             }
         }

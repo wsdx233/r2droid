@@ -35,10 +35,13 @@ object UriUtils {
             if (isExternalStorageDocument(uri)) {
                 val docId = DocumentsContract.getDocumentId(uri)
                 val split = docId.split(":".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+                if (split.isEmpty()) return null
                 val type = split[0]
 
                 if ("primary".equals(type, ignoreCase = true)) {
-                    return Environment.getExternalStorageDirectory().toString() + "/" + split[1]
+                    val relPath = if (split.size > 1) split[1] else ""
+                    return if (relPath.isEmpty()) Environment.getExternalStorageDirectory().toString()
+                    else Environment.getExternalStorageDirectory().toString() + "/" + relPath
                 }
                 // Handle non-primary volumes (SD card) if needed
             } else if (isDownloadsDocument(uri)) {
@@ -60,6 +63,7 @@ object UriUtils {
             } else if (isMediaDocument(uri)) {
                 val docId = DocumentsContract.getDocumentId(uri)
                 val split = docId.split(":".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+                if (split.size < 2) return null
                 val type = split[0]
 
                 var contentUri: Uri? = null
@@ -68,6 +72,7 @@ object UriUtils {
                     "video" -> contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                     "audio" -> contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
                 }
+                if (contentUri == null) return null
 
                 val selection = "_id=?"
                 val selectionArgs = arrayOf(split[1])

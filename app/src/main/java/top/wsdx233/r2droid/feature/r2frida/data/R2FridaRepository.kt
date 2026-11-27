@@ -47,9 +47,13 @@ class R2FridaRepository {
     }
 
     suspend fun executeScript(script: String, cacheDir: String): Result<String> = runCatching {
-        val file = java.io.File(cacheDir, "frida_script.js")
-        file.writeText(script)
-        executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+        val file = java.io.File(cacheDir, "frida_script_${java.util.UUID.randomUUID()}.js")
+        try {
+            file.writeText(script)
+            executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+        } finally {
+            file.delete()
+        }
     }
 
     private suspend fun <T> parseJsonArray(
@@ -63,13 +67,18 @@ class R2FridaRepository {
 
     suspend fun getCustomFunctions(scriptDir: String, resultDir: String): Result<List<FridaFunction>> = runCatching {
         val json = runCustomScript(FridaCustomScripts.GET_FUNCTIONS_SCRIPT, scriptDir, resultDir)
+        checkErrorPayload(json)
         val arr = JSONArray(json)
         (0 until arr.length()).map { FridaFunction.fromJson(arr.getJSONObject(it)) }
     }
 
     suspend fun demangleSymbol(name: String): Result<String> = runCatching {
-        val raw = R2PipeManager.execute("iD cxx $name").getOrThrow()
-        normalizeDemangleOutput(raw, name)
+        val trimmed = name.trim()
+        if (!top.wsdx233.r2droid.util.R2Sanitizer.isSafeMangledSymbol(trimmed)) {
+            return@runCatching name
+        }
+        val raw = R2PipeManager.execute("iD cxx $trimmed").getOrThrow()
+        normalizeDemangleOutput(raw, trimmed)
     }
 
     /**
@@ -83,16 +92,17 @@ class R2FridaRepository {
         maxResults: Int = 50000,
         timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
-        val valuesJson = values.joinToString(",") { "\"${escapeJs(it)}\"" }
+        val valuesJson = JSONArray(values).toString()
+        val safeRegions = runCatching { JSONArray(regionsJson).toString() }.getOrDefault("[]")
         val script = FridaCustomScripts.SEARCH_SCRIPT
-            .replace("__SEARCH_TYPE__", searchType)
-            .replace("__SEARCH_VALUES__", "[$valuesJson]")
-            .replace("__COMPARE__", compare)
-            .replace("__RANGE_MIN__", rangeMin)
-            .replace("__RANGE_MAX__", rangeMax)
-            .replace("__PROTECTION__", protection)
-            .replace("__REGIONS_JSON__", regionsJson)
-            .replace("__MAX_RESULTS__", maxResults.toString())
+            .replace("__SEARCH_TYPE__", JSONObject.quote(searchType))
+            .replace("__SEARCH_VALUES__", valuesJson)
+            .replace("__COMPARE__", JSONObject.quote(compare))
+            .replace("__RANGE_MIN__", JSONObject.quote(rangeMin))
+            .replace("__RANGE_MAX__", JSONObject.quote(rangeMax))
+            .replace("__PROTECTION__", JSONObject.quote(protection))
+            .replace("__REGIONS_JSON__", safeRegions)
+            .replace("__MAX_RESULTS__", maxResults.coerceAtLeast(1).toString())
         val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
@@ -107,17 +117,15 @@ class R2FridaRepository {
         rangeMin: String, rangeMax: String, expression: String,
         timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
-        val addrJson = addrs.joinToString(",") { "\"$it\"" }
-        val oldValJson = oldValues.joinToString(",") { "\"${escapeJs(it)}\"" }
         val script = FridaCustomScripts.FILTER_SEARCH_SCRIPT
-            .replace("__ADDRESS_LIST__", "[$addrJson]")
-            .replace("__OLD_VALUES__", "[$oldValJson]")
-            .replace("__SEARCH_TYPE__", searchType)
-            .replace("__FILTER_MODE__", filterMode)
-            .replace("__TARGET_VAL__", escapeJs(targetVal))
-            .replace("__RANGE_MIN__", rangeMin)
-            .replace("__RANGE_MAX__", rangeMax)
-            .replace("__EXPRESSION__", escapeJs(expression))
+            .replace("__ADDRESS_LIST__", JSONArray(addrs).toString())
+            .replace("__OLD_VALUES__", JSONArray(oldValues).toString())
+            .replace("__SEARCH_TYPE__", JSONObject.quote(searchType))
+            .replace("__FILTER_MODE__", JSONObject.quote(filterMode))
+            .replace("__TARGET_VAL__", JSONObject.quote(targetVal))
+            .replace("__RANGE_MIN__", JSONObject.quote(rangeMin))
+            .replace("__RANGE_MAX__", JSONObject.quote(rangeMax))
+            .replace("__EXPRESSION__", JSONObject.quote(expression))
         val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
@@ -127,26 +135,33 @@ class R2FridaRepository {
         cacheDir: String, address: String, type: String, value: String
     ): Result<Unit> = runCatching {
         val script = FridaCustomScripts.WRITE_VALUE_SCRIPT
-            .replace("__ADDRESS__", address)
-            .replace("__WRITE_TYPE__", type)
-            .replace("__WRITE_VALUE__", escapeJs(value))
-        val file = java.io.File(cacheDir, "frida_write.js")
-        file.writeText(script)
-        executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+            .replace("__ADDRESS__", JSONObject.quote(address))
+            .replace("__WRITE_TYPE__", JSONObject.quote(type))
+            .replace("__WRITE_VALUE__", JSONObject.quote(value))
+        val file = java.io.File(cacheDir, "frida_write_${java.util.UUID.randomUUID()}.js")
+        try {
+            file.writeText(script)
+            executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+        } finally {
+            file.delete()
+        }
     }
 
     /** Batch write the same value to multiple addresses. */
     suspend fun batchWriteMemory(
         cacheDir: String, addresses: List<String>, type: String, value: String
     ): Result<Unit> = runCatching {
-        val addrJson = addresses.joinToString(",") { "\"$it\"" }
         val script = FridaCustomScripts.BATCH_WRITE_SCRIPT
-            .replace("__ADDRESS_LIST__", "[$addrJson]")
-            .replace("__WRITE_TYPE__", type)
-            .replace("__WRITE_VALUE__", escapeJs(value))
-        val file = java.io.File(cacheDir, "frida_batch_write.js")
-        file.writeText(script)
-        executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+            .replace("__ADDRESS_LIST__", JSONArray(addresses).toString())
+            .replace("__WRITE_TYPE__", JSONObject.quote(type))
+            .replace("__WRITE_VALUE__", JSONObject.quote(value))
+        val file = java.io.File(cacheDir, "frida_batch_${java.util.UUID.randomUUID()}.js")
+        try {
+            file.writeText(script)
+            executeR2Frida(":. ${file.absolutePath}").getOrThrow()
+        } finally {
+            file.delete()
+        }
     }
 
     /** Re-read current values at all result addresses. */
@@ -155,44 +170,56 @@ class R2FridaRepository {
         addrs: List<String>, searchType: String,
         timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): Result<List<FridaSearchResult>> = runCatching {
-        val addrJson = addrs.joinToString(",") { "\"$it\"" }
         val script = FridaCustomScripts.REFRESH_VALUES_SCRIPT
-            .replace("__ADDRESS_LIST__", "[$addrJson]")
-            .replace("__SEARCH_TYPE__", searchType)
+            .replace("__ADDRESS_LIST__", JSONArray(addrs).toString())
+            .replace("__SEARCH_TYPE__", JSONObject.quote(searchType))
         val json = runCustomScript(script, scriptDir, resultDir, timeoutMs)
         parseSearchResults(json)
     }
 
+    private fun checkErrorPayload(json: String) {
+        val trimmed = json.trim()
+        if (trimmed.startsWith("{")) {
+            val obj = runCatching { JSONObject(trimmed) }.getOrNull()
+            if (obj != null && obj.has("error")) {
+                throw IllegalStateException(obj.optString("error", "Frida script error"))
+            }
+        }
+    }
+
     private fun parseSearchResults(json: String): List<FridaSearchResult> {
+        checkErrorPayload(json)
         val arr = JSONArray(json)
         return (0 until arr.length()).map { FridaSearchResult.fromJson(arr.getJSONObject(it)) }
     }
 
-    private fun escapeJs(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-
     suspend fun startMonitor(scriptDir: String, resultDir: String, address: String, size: Int, monitorId: String): String {
-        val ts = System.currentTimeMillis()
+        val uid = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
         val stopKey = "__mon_stop_${monitorId}__"
-        val resultFile = java.io.File(resultDir, "frida_monitor_${monitorId}_${ts}.jsonl")
+        val resultFile = java.io.File(resultDir, "frida_monitor_${monitorId}_${uid}.jsonl")
+        resultFile.parentFile?.mkdirs()
         resultFile.delete()
 
         val scriptContent = FridaCustomScripts.START_MONITOR_SCRIPT
-            .replace("__STOP_KEY__", stopKey)
-            .replace("__ADDRESS__", address)
-            .replace("__SIZE__", size.toString())
-            .replace("__RESULT_FILE__", resultFile.absolutePath.replace("\\", "/"))
+            .replace("__STOP_KEY__", JSONObject.quote(stopKey))
+            .replace("__ADDRESS__", JSONObject.quote(address))
+            .replace("__SIZE__", size.coerceAtLeast(1).toString())
+            .replace("__RESULT_FILE__", JSONObject.quote(resultFile.absolutePath.replace("\\", "/")))
 
-        val scriptFile = java.io.File(scriptDir, "frida_script_monitor_${monitorId}_${ts}.js")
-        scriptFile.writeText(scriptContent)
-        executeR2Frida(":. ${scriptFile.absolutePath}").getOrThrow()
+        val scriptFile = java.io.File(scriptDir, "frida_script_monitor_${monitorId}_${uid}.js")
+        try {
+            scriptFile.writeText(scriptContent)
+            executeR2Frida(":. ${scriptFile.absolutePath}").getOrThrow()
+        } finally {
+            scriptFile.delete()
+        }
 
         return resultFile.absolutePath
     }
 
     suspend fun stopMonitor(monitorId: String) {
         val stopKey = "__mon_stop_${monitorId}__"
-        executeR2Frida(":eval ${FridaCustomScripts.STOP_MONITOR_SET_FLAG.replace("__STOP_KEY__", stopKey)}")
+        executeR2Frida(":eval ${FridaCustomScripts.STOP_MONITOR_SET_FLAG.replace("__STOP_KEY__", JSONObject.quote(stopKey))}")
         executeR2Frida(":eval ${FridaCustomScripts.STOP_MONITOR_DISABLE}")
     }
 
@@ -202,44 +229,41 @@ class R2FridaRepository {
         resultDir: String,
         timeoutMs: Long = DEFAULT_SCRIPT_TIMEOUT_MS
     ): String {
-        val ts = System.currentTimeMillis()
-        val resultFile = java.io.File(resultDir, "frida_res_${ts}.json")
-        val doneFile = java.io.File(resultDir, "frida_res_${ts}.json.done")
-        
-        // Ensure result directory exists
-        resultFile.parentFile?.exists()?.let {
-            if (!it) {
-                resultFile.parentFile?.mkdirs()
-            }
-        }
-        
+        val uid = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
+        val resultFile = java.io.File(resultDir, "frida_res_${uid}.json")
+        val doneFile = java.io.File(resultDir, "frida_res_${uid}.json.done")
+
+        resultFile.parentFile?.mkdirs()
         resultFile.delete()
         doneFile.delete()
-        
-        val scriptContent = scriptTpl.replace("__RESULT_FILE__", resultFile.absolutePath.replace("\\", "/"))
-        val scriptFile = java.io.File(scriptDir, "frida_script_${ts}.js")
-        scriptFile.writeText(scriptContent)
-        
-        executeR2Frida(":. ${scriptFile.absolutePath}").getOrThrow()
-        
-        val effectiveTimeoutMs = timeoutMs.coerceAtLeast(SCRIPT_POLL_INTERVAL_MS)
-        var retries = ((effectiveTimeoutMs + SCRIPT_POLL_INTERVAL_MS - 1) / SCRIPT_POLL_INTERVAL_MS).toInt()
-        while (!doneFile.exists() && retries > 0) {
-            kotlinx.coroutines.delay(SCRIPT_POLL_INTERVAL_MS)
-            retries--
-        }
-        
-        scriptFile.delete()
-        
-        if (doneFile.exists()) {
-            doneFile.delete()
-            if (resultFile.exists()) {
-                val content = resultFile.readText()
-                resultFile.delete()
-                return content
+
+        val resultPath = resultFile.absolutePath.replace("\\", "/")
+        val donePath = doneFile.absolutePath.replace("\\", "/")
+        val scriptContent = scriptTpl
+            .replace("__RESULT_FILE__", JSONObject.quote(resultPath))
+            .replace("__RESULT_DONE_FILE__", JSONObject.quote(donePath))
+        val scriptFile = java.io.File(scriptDir, "frida_script_${uid}.js")
+
+        try {
+            scriptFile.writeText(scriptContent)
+            executeR2Frida(":. ${scriptFile.absolutePath}").getOrThrow()
+
+            val effectiveTimeoutMs = timeoutMs.coerceAtLeast(SCRIPT_POLL_INTERVAL_MS)
+            var retries = ((effectiveTimeoutMs + SCRIPT_POLL_INTERVAL_MS - 1) / SCRIPT_POLL_INTERVAL_MS).toInt()
+            while (!doneFile.exists() && retries > 0) {
+                kotlinx.coroutines.delay(SCRIPT_POLL_INTERVAL_MS)
+                retries--
             }
+
+            if (doneFile.exists() && resultFile.exists()) {
+                return resultFile.readText()
+            }
+            throw Exception("Script execution timed out after ${effectiveTimeoutMs / 1000} seconds or failed to write result file")
+        } finally {
+            scriptFile.delete()
+            doneFile.delete()
+            resultFile.delete()
         }
-        throw Exception("Script execution timed out after ${effectiveTimeoutMs / 1000} seconds or failed to write result file")
     }
 
     private suspend fun executeR2Frida(command: String): Result<String> {
@@ -251,8 +275,24 @@ class R2FridaRepository {
 
     private fun seekJson(raw: String): String {
         val trimmed = raw.trim()
-        val idx = trimmed.indexOfFirst { it == '[' || it == '{' }
-        return if (idx > 0) trimmed.substring(idx) else trimmed
+        var idx = 0
+        while (idx < trimmed.length) {
+            val start = trimmed.indexOfAny(charArrayOf('[', '{'), idx)
+            if (start < 0) break
+            val ch = trimmed[start]
+            val atLineStart = start == 0 || trimmed[start - 1] == '\n' || trimmed[start - 1] == '\r'
+            if (atLineStart) {
+                val slice = trimmed.substring(start)
+                val valid = runCatching {
+                    if (ch == '[') JSONArray(slice) else JSONObject(slice)
+                    true
+                }.getOrDefault(false)
+                if (valid) return slice
+            }
+            idx = start + 1
+        }
+        val first = trimmed.indexOfFirst { it == '[' || it == '{' }
+        return if (first > 0) trimmed.substring(first) else trimmed
     }
 
     private fun normalizeDemangleOutput(raw: String, original: String): String {

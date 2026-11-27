@@ -5,7 +5,7 @@ android {
     namespace "com.termux.emulator"
 
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
-    ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
+    ndkVersion = providers.environmentVariable("JITPACK_NDK_VERSION").orNull ?: project.properties.ndkVersion
 
     defaultConfig {
         minSdkVersion project.properties.minSdkVersion.toInteger()

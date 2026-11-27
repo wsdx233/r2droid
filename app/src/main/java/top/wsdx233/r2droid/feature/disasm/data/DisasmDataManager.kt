@@ -51,31 +51,47 @@ class DisasmDataManager internal constructor(
         fun coveredIndex(instructions: List<DisasmInstruction>, addr: Long): Int {
             // A cold scrollbar position is usually outside *every* LRU chunk. Reject it using
             // the endpoints instead of binary-searching the rows of each unrelated chunk.
-            if (instructions.isEmpty() || addr < instructions.first().addr) return -1
+            val target = addr.toULong()
+            if (instructions.isEmpty() || target < instructions.first().addr.toULong()) return -1
             val last = instructions.last()
-            if (addr >= last.addr) return if (covers(last, addr)) instructions.lastIndex else -1
-            val found = instructions.binarySearchBy(addr) { it.addr }
+            if (target >= last.addr.toULong()) return if (covers(last, addr)) instructions.lastIndex else -1
+            val found = instructions.binarySearchBy(target) { it.addr.toULong() }
             if (found >= 0) return found
             val index = -found - 2
             val previous = instructions.getOrNull(index) ?: return -1
             return if (covers(previous, addr)) index else -1
         }
 
-        // Called with addr >= instr.addr. Subtraction remains valid at Long.MAX_VALUE.
+        // Called with addr >= instr.addr in unsigned order. Subtraction remains valid across 64-bit space.
         private fun covers(instr: DisasmInstruction, addr: Long): Boolean =
             addr.toULong() - instr.addr.toULong() < instr.size.coerceAtLeast(1).toULong()
 
         /** Allocation-free binary lookup, also usable against the exact snapshot rendered by UI. */
         fun findClosestIndex(instructions: List<DisasmInstruction>, addr: Long): Int {
             if (instructions.isEmpty()) return -1
+            val firstAddr = instructions.first().addr
+            val lastAddr = instructions.last().addr
+            // Use unsigned 64-bit ordering for upper-half kernel ranges or unsigned-spanning ranges;
+            // preserve signed Long ordering when callers supply signed-ordered inputs (e.g. Long.MIN_VALUE..Long.MAX_VALUE).
+            val useUnsigned = lastAddr < 0L
+            if (useUnsigned) {
+                val target = addr.toULong()
+                val found = instructions.binarySearchBy(target) { it.addr.toULong() }
+                if (found >= 0) return found
+                val next = -found - 1
+                if (next == 0) return 0
+                if (next == instructions.size) return next - 1
+                val before = target - instructions[next - 1].addr.toULong()
+                val after = instructions[next].addr.toULong() - target
+                return if (before < after) next - 1 else next
+            }
             val found = instructions.binarySearchBy(addr) { it.addr }
             if (found >= 0) return found
             val next = -found - 1
             if (next == 0) return 0
             if (next == instructions.size) return next - 1
-            // Unsigned subtraction also handles distances spanning the signed Long boundary.
-            val before = addr.toULong() - instructions[next - 1].addr.toULong()
-            val after = instructions[next].addr.toULong() - addr.toULong()
+            val before = (addr - instructions[next - 1].addr).toULong()
+            val after = (instructions[next].addr - addr).toULong()
             return if (before < after) next - 1 else next
         }
     }
@@ -95,9 +111,13 @@ class DisasmDataManager internal constructor(
 
     val estimatedTotalInstructions: Int
         get() {
-            val range = (endAddress - startAddress).coerceAtLeast(0)
-            return (range / AVG_INSTRUCTION_SIZE + if (range % AVG_INSTRUCTION_SIZE == 0L) 0 else 1)
-                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val uStart = startAddress.toULong()
+            val uEnd = endAddress.toULong()
+            if (uEnd <= uStart) return 0
+            val range = uEnd - uStart
+            val step = AVG_INSTRUCTION_SIZE.toULong()
+            val count = range / step + if (range % step == 0UL) 0UL else 1UL
+            return count.coerceAtMost(Int.MAX_VALUE.toULong()).toInt()
         }
     val viewStartAddress: Long get() = startAddress
     val viewEndAddress: Long get() = endAddress
@@ -109,17 +129,22 @@ class DisasmDataManager internal constructor(
     fun getSnapshot(): List<DisasmInstruction> = data.instructions
     fun getInstructionAt(index: Int): DisasmInstruction? = data.instructions.getOrNull(index)
     fun getAddressAt(index: Int): Long? = getInstructionAt(index)?.addr
-    fun findIndexByAddress(addr: Long): Int = data.instructions.binarySearchBy(addr) { it.addr }.let {
+    fun findIndexByAddress(addr: Long): Int = data.instructions.binarySearchBy(addr.toULong()) { it.addr.toULong() }.let {
         if (it >= 0) it else -1
     }
     fun getInstructionAtAddress(addr: Long): DisasmInstruction? {
         val snapshot = data.instructions
-        return snapshot.getOrNull(snapshot.binarySearchBy(addr) { it.addr })
+        return snapshot.getOrNull(snapshot.binarySearchBy(addr.toULong()) { it.addr.toULong() })
     }
     fun findClosestIndex(addr: Long): Int = findClosestIndex(data.instructions, addr)
     fun estimateIndexForAddress(addr: Long): Int = findClosestIndex(addr).coerceAtLeast(0)
-    fun estimateAddressForIndex(index: Int): Long = getAddressAt(index)
-        ?: (startAddress + index.coerceAtLeast(0).toLong() * AVG_INSTRUCTION_SIZE).coerceIn(startAddress, endAddress)
+    fun estimateAddressForIndex(index: Int): Long = getAddressAt(index) ?: run {
+        val uStart = startAddress.toULong()
+        val uEnd = endAddress.toULong()
+        val offset = index.coerceAtLeast(0).toULong() * AVG_INSTRUCTION_SIZE.toULong()
+        val candidate = if (offset > ULong.MAX_VALUE - uStart) uEnd else uStart + offset
+        candidate.coerceIn(uStart, maxOf(uStart, uEnd)).toLong()
+    }
 
     /** A nearby instruction alone is not enough: the address must actually be covered. */
     fun isAddressRangeLoaded(addr: Long): Boolean = coveredIndex(data.instructions, addr) >= 0
@@ -166,7 +191,7 @@ class DisasmDataManager internal constructor(
         }
         try {
             val instructions = cached?.instructions ?: fetchInstructions(startAddr, INSTRUCTIONS_PER_CHUNK).getOrThrow()
-                .distinctBy { it.addr }.sortedBy { it.addr }
+                .distinctBy { it.addr }.sortedBy { it.addr.toULong() }
             currentCoroutineContext().ensureActive()
             if (instructions.isEmpty()) return@withContext
             // These model properties are lazy. Warm them here so first appearance of a row
@@ -234,21 +259,51 @@ class DisasmDataManager internal constructor(
         if (snapshot.isEmpty()) return
         if (forward) {
             val last = snapshot.last()
-            val next = last.addr + last.size.coerceAtLeast(1)
-            if (next < endAddress) loadFromAddress(next, gen, replace = false)
+            val step = last.size.coerceAtLeast(1).toULong()
+            val lastU = last.addr.toULong()
+            if (step <= ULong.MAX_VALUE - lastU) {
+                val next = (lastU + step).toLong()
+                if (next.toULong() < endAddress.toULong()) loadFromAddress(next, gen, replace = false)
+            }
         } else {
             val first = snapshot.first().addr
-            if (first <= startAddress) return
-            val previous = (first - INSTRUCTIONS_PER_CHUNK * AVG_INSTRUCTION_SIZE).coerceAtLeast(startAddress)
+            if (first.toULong() <= startAddress.toULong()) return
+            val backSpan = INSTRUCTIONS_PER_CHUNK.toLong() * AVG_INSTRUCTION_SIZE
+            val previous = if (first.toULong() > startAddress.toULong() + backSpan.toULong()) {
+                first - backSpan
+            } else {
+                startAddress
+            }
             loadFromAddress(previous, gen, replace = false)
+            // On x86/Thumb, 100 instructions can span fewer than 400 bytes, leaving a hole before `first`.
+            // Bridge any remaining gap iteratively so scrolling backward never drops instructions.
+            var bridgeAttempts = 0
+            while (generation == gen && bridgeAttempts < 6) {
+                val window = data.instructions
+                val gapIdx = window.indexOfFirst { it.addr == first }
+                if (gapIdx <= 0) break
+                val prevInstr = window[gapIdx - 1]
+                val nextAddr = prevInstr.addr + prevInstr.size.coerceAtLeast(1)
+                if (nextAddr.toULong() >= first.toULong()) break
+                val beforeSize = window.size
+                loadFromAddress(nextAddr, gen, replace = false)
+                if (data.instructions.size == beforeSize) break
+                bridgeAttempts++
+            }
         }
     }
 
     /** O(n + m) merge; existing decoded instructions win at duplicate addresses. */
     private fun mergeInstructions(current: List<DisasmInstruction>, incoming: List<DisasmInstruction>): List<DisasmInstruction> {
         if (current.isEmpty()) return if (incoming.size <= MAX_LOADED_INSTRUCTIONS) incoming else incoming.take(MAX_LOADED_INSTRUCTIONS)
-        val gap = INSTRUCTIONS_PER_CHUNK.toLong() * AVG_INSTRUCTION_SIZE * 2
-        if (incoming.last().addr < current.first().addr - gap || incoming.first().addr > current.last().addr + gap) {
+        val gap = (INSTRUCTIONS_PER_CHUNK.toULong() * AVG_INSTRUCTION_SIZE.toULong() * 2UL)
+        val curFirst = current.first().addr.toULong()
+        val curLast = current.last().addr.toULong()
+        val incFirst = incoming.first().addr.toULong()
+        val incLast = incoming.last().addr.toULong()
+        val tooFarBefore = curFirst > gap && incLast < curFirst - gap
+        val tooFarAfter = curLast < ULong.MAX_VALUE - gap && incFirst > curLast + gap
+        if (tooFarBefore || tooFarAfter) {
             return if (incoming.size <= MAX_LOADED_INSTRUCTIONS) incoming else incoming.take(MAX_LOADED_INSTRUCTIONS)
         }
         val merged = ArrayList<DisasmInstruction>(current.size + incoming.size)
@@ -259,14 +314,14 @@ class DisasmDataManager internal constructor(
             when {
                 new == incoming.size -> merged.add(current[old++])
                 old == current.size -> { merged.add(incoming[new++]); added = true }
-                current[old].addr < incoming[new].addr -> merged.add(current[old++])
-                current[old].addr > incoming[new].addr -> { merged.add(incoming[new++]); added = true }
+                current[old].addr.toULong() < incoming[new].addr.toULong() -> merged.add(current[old++])
+                current[old].addr.toULong() > incoming[new].addr.toULong() -> { merged.add(incoming[new++]); added = true }
                 else -> { merged.add(current[old++]); new++ }
             }
         }
         if (!added) return current
         return if (merged.size <= MAX_LOADED_INSTRUCTIONS) merged
-        else if (incoming.first().addr < current.first().addr) merged.take(MAX_LOADED_INSTRUCTIONS)
+        else if (incFirst < curFirst) merged.take(MAX_LOADED_INSTRUCTIONS)
         else merged.takeLast(MAX_LOADED_INSTRUCTIONS)
     }
 
@@ -276,7 +331,9 @@ class DisasmDataManager internal constructor(
         var counter = 1
         for (instr in instructions) {
             val isJump = instr.type == "jmp" || instr.type == "cjmp" || instr.type == "ujmp"
-            if (isJump && instr.jump != null && instr.fcnAddr > 0 && instr.jump in instr.fcnAddr..instr.fcnLast) {
+            if (isJump && instr.jump != null && instr.fcnAddr != 0L &&
+                instr.jump.toULong() in instr.fcnAddr.toULong()..instr.fcnLast.toULong()
+            ) {
                 jumps[instr.addr] = counter
                 targets[instr.jump] = counter++
             }
@@ -298,8 +355,11 @@ class DisasmDataManager internal constructor(
         if (preloadPrevious && isAddressRangeLoaded(addr)) {
             // Centered navigation wants preceding rows; the scrollbar publishes its top row
             // first and preloads both neighbors separately after releasing the UI target.
-            val previous = (addr - INSTRUCTIONS_PER_CHUNK * AVG_INSTRUCTION_SIZE / 2).coerceAtLeast(startAddress)
-            if (previous < addr) loadFromAddress(previous, gen, replace = false)
+            val backSpan = (INSTRUCTIONS_PER_CHUNK * AVG_INSTRUCTION_SIZE / 2).toULong()
+            val addrU = addr.toULong()
+            val startU = startAddress.toULong()
+            val previousU = if (addrU > startU + backSpan) addrU - backSpan else startU
+            if (previousU < addrU) loadFromAddress(previousU.toLong(), gen, replace = false)
         }
         return if (generation == gen && isAddressRangeLoaded(addr)) findClosestIndex(addr) else -1
     }

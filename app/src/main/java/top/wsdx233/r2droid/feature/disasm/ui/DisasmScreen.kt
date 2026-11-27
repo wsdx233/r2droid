@@ -635,7 +635,8 @@ fun DisassemblyViewer(
             if (showModifyDialog && menuTargetAddress != null && modifyInitialValue == null) {
                 when (modifyType) {
                     "string" -> {
-                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute("ps @ ${menuTargetAddress}")
+                        val addrHex = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(menuTargetAddress!!)
+                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute("ps @ $addrHex")
                         modifyInitialValue = result.getOrDefault("").trim()
                     }
                     "comment" -> {

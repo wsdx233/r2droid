@@ -178,8 +178,7 @@ fun AboutScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp)
-                    .hazeSource(state = hazeState),
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 
@@ -204,6 +203,14 @@ fun AboutScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                fun openSafeUri(url: String) {
+                    val trimmed = url.trim()
+                    val scheme = android.net.Uri.parse(trimmed).scheme?.lowercase()
+                    if (scheme == "https" || scheme == "http") {
+                        runCatching { uriHandler.openUri(trimmed) }
+                    }
+                }
+
                 // Staggered Items as Code Blocks
                 StaggeredCodeCard(
                     index = 0,
@@ -212,7 +219,7 @@ fun AboutScreen(
                     comment = stringResource(R.string.about_author_comment),
                     icon = Icons.Rounded.Person,
                     onClick = {
-                        uriHandler.openUri("https://github.com/wsdx233")
+                        openSafeUri("https://github.com/wsdx233")
                     }
                 )
 
@@ -224,7 +231,7 @@ fun AboutScreen(
                     comment = stringResource(R.string.about_contact_comment),
                     icon = Icons.Rounded.Commit, // Use distinct icon
                     onClick = {
-                        uriHandler.openUri(contactUrl)
+                        openSafeUri(contactUrl)
                     }
                 )
 
@@ -235,7 +242,7 @@ fun AboutScreen(
                     comment = stringResource(R.string.about_repo_comment),
                     icon = Icons.Rounded.Code,
                     onClick = {
-                        uriHandler.openUri("https://github.com/wsdx233/r2droid")
+                        openSafeUri("https://github.com/wsdx233/r2droid")
                     }
                 )
 
@@ -254,7 +261,7 @@ fun AboutScreen(
 
                 ContributorsCodeCard(
                     index = 4,
-                    onOpenProfile = { uriHandler.openUri(it) }
+                    onOpenProfile = { openSafeUri(it) }
                 )
                 
                 Spacer(modifier = Modifier.height(50.dp))

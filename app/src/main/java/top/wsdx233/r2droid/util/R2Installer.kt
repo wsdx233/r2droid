@@ -20,7 +20,8 @@ import java.io.InputStream
 data class InstallState(
     val isInstalling: Boolean = false, // 是否正在安装
     val statusText: String = "",       // 当前状态文字 (如: "正在解压核心组件...")
-    val progress: Float = 0f           // 进度 (0.0 - 1.0)
+    val progress: Float = 0f,          // 进度 (0.0 - 1.0)
+    val isError: Boolean = false       // 是否发生安装错误（允许用户重试）
 )
 
 object R2Installer {
@@ -35,6 +36,7 @@ object R2Installer {
     private val _installState = MutableStateFlow(InstallState())
     val installState = _installState.asStateFlow()
 
+    @Volatile
     var initialized = false
 
     /**
@@ -82,9 +84,9 @@ object R2Installer {
             if (isUpdate) Log.d(TAG, "Radare2 bundle changed or is incomplete; reinstalling")
             installationStarted = true
             getR2Marker(context).delete()
-            targetDir.deleteRecursively()
-            File(context.filesDir, R2_DATA_DIR_NAME).deleteRecursively()
-            File(context.filesDir, "libs").deleteRecursively()
+            SafeFileOps.deleteRecursivelyNoFollow(targetDir)
+            SafeFileOps.deleteRecursivelyNoFollow(File(context.filesDir, R2_DATA_DIR_NAME))
+            SafeFileOps.deleteRecursivelyNoFollow(File(context.filesDir, "libs"))
 
             _installState.value = InstallState(true, context.getString(R.string.install_checking_version), 0f)
             installFromAssets(
@@ -131,14 +133,15 @@ object R2Installer {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to ${if (isUpdate) "update" else "install"} Radare2", e)
             _installState.value = InstallState(
-                true,
-                if (isUpdate) context.getString(R.string.install_update_failed, e.message ?: "unknown")
+                isInstalling = true,
+                statusText = if (isUpdate) context.getString(R.string.install_update_failed, e.message ?: "unknown")
                 else "安装失败: ${e.message}",
-                0f
+                progress = 0f,
+                isError = true
             )
             if (installationStarted) {
                 getR2Marker(context).delete()
-                targetDir.deleteRecursively()
+                SafeFileOps.deleteRecursivelyNoFollow(targetDir)
                 if (configBackup.isFile) {
                     try {
                         config.parentFile?.mkdirs()
@@ -204,63 +207,64 @@ object R2Installer {
     ) {
         // 获取 Asset 总大小用于计算进度
         val totalBytes = try {
-            context.assets.openFd(assetName).length
+            context.assets.openFd(assetName).use { it.length }
         } catch (e: Exception) {
             -1L // 无法获取大小时
         }
         var bytesReadTotal = 0L
         val progressRange = progressEnd - progressStart
-        val rawInputStream = context.assets.open(assetName)
-        val countingInput = object : InputStream() {
-            override fun read(): Int {
-                val b = rawInputStream.read()
-                if (b != -1) updateProgress(1)
-                return b
-            }
-            override fun read(b: ByteArray, off: Int, len: Int): Int {
-                val read = rawInputStream.read(b, off, len)
-                if (read != -1) updateProgress(read.toLong())
-                return read
-            }
-            private var lastUpdateBytes = 0L
-            private fun updateProgress(bytesRead: Long) {
-                bytesReadTotal += bytesRead
-                if (bytesReadTotal - lastUpdateBytes > 1024 * 100 || bytesReadTotal == totalBytes) {
-                    lastUpdateBytes = bytesReadTotal
-                    if (totalBytes > 0) {
-                        val currentPercent = bytesReadTotal.toFloat() / totalBytes
-                        val globalProgress = progressStart + (currentPercent * progressRange)
-                        _installState.value = InstallState(true, taskName, globalProgress.coerceAtMost(progressEnd))
-                    } else {
-                        _installState.value = InstallState(true, taskName, progressStart)
+        context.assets.open(assetName).use { rawInputStream ->
+            val countingInput = object : InputStream() {
+                override fun read(): Int {
+                    val b = rawInputStream.read()
+                    if (b != -1) updateProgress(1)
+                    return b
+                }
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val read = rawInputStream.read(b, off, len)
+                    if (read != -1) updateProgress(read.toLong())
+                    return read
+                }
+                private var lastUpdateBytes = 0L
+                private fun updateProgress(bytesRead: Long) {
+                    bytesReadTotal += bytesRead
+                    if (bytesReadTotal - lastUpdateBytes > 1024 * 100 || bytesReadTotal == totalBytes) {
+                        lastUpdateBytes = bytesReadTotal
+                        if (totalBytes > 0) {
+                            val currentPercent = bytesReadTotal.toFloat() / totalBytes
+                            val globalProgress = progressStart + (currentPercent * progressRange)
+                            _installState.value = InstallState(true, taskName, globalProgress.coerceAtMost(progressEnd))
+                        } else {
+                            _installState.value = InstallState(true, taskName, progressStart)
+                        }
                     }
                 }
+                override fun close() = rawInputStream.close()
             }
-            override fun close() = rawInputStream.close()
+            val tarSource = if (assetName.endsWith(".gz")) GzipCompressorInputStream(countingInput) else countingInput
+            TarArchiveInputStream(tarSource).use { tarIn ->
+                var entry: TarArchiveEntry?
+                while (tarIn.nextEntry.also { entry = it } != null) {
+                    val currentEntry = entry!!
+                    val outputFile = File(outputDir, currentEntry.name)
+                    val baseCanonical = outputDir.canonicalFile
+                    val outCanonical = outputFile.canonicalFile
+                    val basePath = baseCanonical.path
+                    val outPath = outCanonical.path
+                    if (!(outPath == basePath || outPath.startsWith(basePath + File.separator))) {
+                        throw SecurityException("Zip Slip vulnerability detected: ${currentEntry.name}")
+                    }
+                    if (currentEntry.isDirectory) {
+                        if (!outputFile.exists()) outputFile.mkdirs()
+                    } else if (currentEntry.isSymbolicLink) {
+                        handleSymlink(outputFile, currentEntry.linkName)
+                    } else {
+                        handleRegularFile(tarIn, outputFile)
+                    }
+                    if (!currentEntry.isSymbolicLink) setFilePermissions(outputFile, currentEntry.mode)
+                }
+            }
         }
-        val tarSource = if (assetName.endsWith(".gz")) GzipCompressorInputStream(countingInput) else countingInput
-        val tarIn = TarArchiveInputStream(tarSource)
-        var entry: TarArchiveEntry?
-        while (tarIn.nextEntry.also { entry = it } != null) {
-            val currentEntry = entry!!
-            val outputFile = File(outputDir, currentEntry.name)
-            val baseCanonical = outputDir.canonicalFile
-            val outCanonical = outputFile.canonicalFile
-            val basePath = baseCanonical.path
-            val outPath = outCanonical.path
-            if (!(outPath == basePath || outPath.startsWith(basePath + File.separator))) {
-                throw SecurityException("Zip Slip vulnerability detected: ${currentEntry.name}")
-            }
-            if (currentEntry.isDirectory) {
-                if (!outputFile.exists()) outputFile.mkdirs()
-            } else if (currentEntry.isSymbolicLink) {
-                handleSymlink(outputFile, currentEntry.linkName)
-            } else {
-                handleRegularFile(tarIn, outputFile)
-            }
-            if (!currentEntry.isSymbolicLink) setFilePermissions(outputFile, currentEntry.mode)
-        }
-        tarIn.close()
     }
 
     private fun resolveAssetName(context: Context, candidates: List<String>): String {

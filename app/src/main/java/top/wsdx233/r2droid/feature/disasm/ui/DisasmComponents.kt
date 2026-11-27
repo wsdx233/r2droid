@@ -118,7 +118,7 @@ internal fun DisasmRow(
         if (instr.fcnAddr > 0 && instr.addr == instr.fcnAddr) {
             val funcSize = if (instr.fcnLast > instr.fcnAddr) instr.fcnLast - instr.fcnAddr else 0
             val funcName = instr.flags.firstOrNull { !it.startsWith("section.") && !it.startsWith("reloc.") }
-                ?: "fcn.${"%%08x".format(instr.addr)}"
+                ?: "fcn.${instr.addr.toULong().toString(16).padStart(8, '0')}"
             val header = Modifier.fillMaxWidth()
             Row((if (highlighted) header else header.background(style.headerBg))
                 .padding(start = DisasmRowLayout.AnnotationIndent, top = 2.dp, bottom = 1.dp),

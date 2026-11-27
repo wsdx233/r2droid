@@ -1,6 +1,7 @@
 package top.wsdx233.r2droid.core.data.model
 
 import org.json.JSONObject
+import top.wsdx233.r2droid.util.optUnsignedLong
 
 data class SearchResult(
     val addr: Long,
@@ -11,7 +12,7 @@ data class SearchResult(
     companion object {
         fun fromJson(json: JSONObject): SearchResult {
             return SearchResult(
-                addr = json.optLong("addr", 0),
+                addr = json.optUnsignedLong("addr", 0L),
                 type = json.optString("type", ""),
                 data = json.optString("data", json.optString("opstr", "")),
                 size = json.optInt("size", 0)

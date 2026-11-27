@@ -689,10 +689,23 @@ class DisasmViewModel @Inject constructor(
             val capabilities = debuggerRepository.probe(config.backend)
             if (!ownsDebugSession(session)) return@runDebugOperation Result.failure(IllegalStateException("Debug session changed"))
             _debugCapabilities.value = capabilities.getOrDefault(_debugCapabilities.value)
-            session.started = true
-            session.esilMayBeActive = config.backend == DebugBackend.ESIL
+            val wasStarted = session.started
+            val prevEsil = session.esilMayBeActive
             session.openingConfig = config
-            if (reset) debuggerRepository.reset(config) else debuggerRepository.start(config)
+            if (config.backend == DebugBackend.ESIL) {
+                session.esilMayBeActive = true
+            }
+            val res = if (reset) debuggerRepository.reset(config) else debuggerRepository.start(config)
+            if (res.isSuccess) {
+                session.started = true
+                session.esilMayBeActive = config.backend == DebugBackend.ESIL
+            } else {
+                session.started = wasStarted
+                if (config.backend == DebugBackend.ESIL && !R2PipeManager.esilOwnsActivePipe) {
+                    session.esilMayBeActive = prevEsil && R2PipeManager.esilOwnsActivePipe
+                }
+            }
+            res
         }
     }
 
@@ -1152,10 +1165,12 @@ class DisasmViewModel @Inject constructor(
         // Preserve the other backends' interrupt path, without replacing a stop already published.
         viewModelScope.launch {
             delay(150L)
-            if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@launch
-            val result = debuggerRepository.pause(backend)
-            if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@launch
-            result.onSuccess { applyDebugSnapshot(session, it, "pause") }
+            session.mutations.withLock {
+                if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@withLock
+                val result = debuggerRepository.pause(backend)
+                if (!ownsDebugSession(session) || session.operation != operation || _debugStatus.value != DebugStatus.RUNNING) return@withLock
+                result.onSuccess { applyDebugSnapshot(session, it, "pause") }
+            }
         }
     }
 
@@ -1315,8 +1330,13 @@ class DisasmViewModel @Inject constructor(
 
     fun writeComment(addr: Long, comment: String) {
         viewModelScope.launch {
-            val sanitized = comment.replace("\r", " ").replace("\n", " ").replace("\"", "\\\"")
-            top.wsdx233.r2droid.util.R2PipeManager.execute("CCu \"$sanitized\" @ 0x${addr.toULong().toString(16)}")
+            val hexAddr = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)
+            if (comment.isEmpty()) {
+                top.wsdx233.r2droid.util.R2PipeManager.execute("CC- @ $hexAddr")
+            } else {
+                val encoded = top.wsdx233.r2droid.util.R2Sanitizer.encodeBase64Comment(comment)
+                top.wsdx233.r2droid.util.R2PipeManager.execute("CCu base64:$encoded @ $hexAddr")
+            }
             resetAndScrollTo(addr)
             _dataModifiedEvent.value = System.currentTimeMillis()
         }
@@ -1373,27 +1393,33 @@ class DisasmViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val cmd = "afij @ ${state.startAddr}"
+            val cmd = "afij @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(state.startAddr)}"
             android.util.Log.d("DisasmMS", "extendToFunction: cmd=$cmd")
             val output = R2PipeManager.executeJson(cmd).getOrDefault("[]")
             android.util.Log.d("DisasmMS", "extendToFunction: output=$output")
             try {
-                val arr = JSONArray(output)
+                val arr = top.wsdx233.r2droid.util.R2Sanitizer.parseJsonArray(output)
                 if (arr.length() > 0) {
                     val obj = arr.getJSONObject(0)
-                    val funcStart = obj.getLong("addr")
-                    val funcSize = obj.getLong("realsz")
-                    val funcEnd = funcStart + funcSize
-                    android.util.Log.d("DisasmMS", "extendToFunction: funcStart=0x${funcStart.toString(16)} size=$funcSize end=0x${funcEnd.toString(16)}")
+                    val funcStart = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("addr"))
+                        ?: top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("offset"))
+                        ?: return@launch
+                    val funcSize = top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("realsz"))
+                        ?: top.wsdx233.r2droid.util.R2Sanitizer.toUnsignedLongOrNull(obj.opt("size"))
+                        ?: 0L
+                    if (funcSize <= 0L) return@launch
+                    val funcStartU = funcStart.toULong()
+                    val funcEndU = if (funcSize.toULong() > ULong.MAX_VALUE - funcStartU) ULong.MAX_VALUE else funcStartU + funcSize.toULong()
+                    android.util.Log.d("DisasmMS", "extendToFunction: funcStart=0x${funcStartU.toString(16)} size=$funcSize end=0x${funcEndU.toString(16)}")
                     val snapshot = disasmDataManager?.getSnapshot()
                     if (snapshot == null) {
                         android.util.Log.d("DisasmMS", "extendToFunction: snapshot is null")
                         return@launch
                     }
-                    val inRange = snapshot.filter { it.addr in funcStart..<funcEnd }
+                    val inRange = snapshot.filter { it.addr.toULong() >= funcStartU && it.addr.toULong() < funcEndU }
                     android.util.Log.d("DisasmMS", "extendToFunction: ${inRange.size} instrs in range")
-                    val lastAddr = inRange.lastOrNull()?.addr ?: (funcEnd - 1)
-                    android.util.Log.d("DisasmMS", "extendToFunction: lastAddr=0x${lastAddr.toString(16)}")
+                    val lastAddr = inRange.lastOrNull()?.addr ?: (funcEndU - 1UL).toLong()
+                    android.util.Log.d("DisasmMS", "extendToFunction: lastAddr=0x${lastAddr.toULong().toString(16)}")
                     _multiSelectState.value = state.copy(
                         startAddr = funcStart, endAddr = lastAddr
                     )
@@ -1419,18 +1445,21 @@ class DisasmViewModel @Inject constructor(
             val totalBytes = instrsInRange.sumOf { it.bytes.length / 2 }
             if (totalBytes <= 0) return@launch
 
-            val clean = value.replace(" ", "")
-            val isHex = clean.isNotEmpty() && clean.all { it in "0123456789abcdefABCDEF" }
+            val trimmed = value.trim()
+            val hexCandidate = trimmed.removePrefix("0x").removePrefix("0X").replace(" ", "")
+            // Only treat input as raw hex if it is explicit 0x..., contains spaces separating byte pairs,
+            // or is an even-length hex string that is NOT a known bare mnemonic like "add"/"adc"/"daa".
+            val bareMnemonics = setOf("add", "adc", "daa", "dad", "baa", "cb")
+            val isHex = hexCandidate.isNotEmpty() &&
+                hexCandidate.length % 2 == 0 &&
+                hexCandidate.all { it in "0123456789abcdefABCDEF" } &&
+                (trimmed.startsWith("0x", ignoreCase = true) || trimmed.lowercase() !in bareMnemonics)
             if (isHex) {
-                val unitLen = (clean.length / 2).coerceAtLeast(1)
-                val repeated = clean.repeat((totalBytes + unitLen - 1) / unitLen).take(totalBytes * 2)
+                val unitLen = (hexCandidate.length / 2).coerceAtLeast(1)
+                val repeated = hexCandidate.repeat((totalBytes + unitLen - 1) / unitLen).take(totalBytes * 2)
                 if (!session.writeViewerBytes(ViewerByteEdit.HEX, repeated, listOf(start))) return@launch
-            } else if (session.writeCacheEnabled) {
-                if (!session.writeViewerBytes(ViewerByteEdit.ASSEMBLY, value, instrsInRange.map { it.addr })) return@launch
             } else {
-                for (instr in instrsInRange) {
-                    R2PipeManager.execute(session, "wa $value @ ${instr.addr}")
-                }
+                if (!session.writeViewerBytes(ViewerByteEdit.ASSEMBLY, trimmed, instrsInRange.map { it.addr })) return@launch
             }
             if (R2PipeManager.activeSessionPipe !== session.pipe) return@launch
             resetAndScrollTo(start)
@@ -1683,17 +1712,18 @@ class DisasmViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 val inFunction = isAddressInFunction(addr)
+                val hexAddr = top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)
                 val source = if (inFunction) {
-                    R2PipeManager.execute("pdf @ $addr").getOrDefault("")
+                    R2PipeManager.execute("pdf @ $hexAddr").getOrDefault("")
                 } else {
-                    R2PipeManager.execute("pd 120 @ $addr").getOrDefault("")
+                    R2PipeManager.execute("pd 120 @ $hexAddr").getOrDefault("")
                 }.trim().ifBlank {
                     throw IllegalStateException("No disassembly output for explanation")
                 }
 
                 val userPrompt = buildString {
                     appendLine("Explain the following disassembly in a reverse-engineering friendly way.")
-                    appendLine("Target address: 0x${addr.toString(16).uppercase()}")
+                    appendLine("Target address: ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddressUpper(addr)}")
                     appendLine("Context source: ${if (inFunction) "pdf (function)" else "pd (linear disassembly)"}")
                     appendLine()
                     appendLine("Disassembly Source:")
@@ -1773,7 +1803,7 @@ class DisasmViewModel @Inject constructor(
 
     private suspend fun isAddressInFunction(addr: Long): Boolean {
         return runCatching {
-            val output = R2PipeManager.executeJson("afij @ $addr").getOrDefault("[]")
+            val output = R2PipeManager.executeJson("afij @ ${top.wsdx233.r2droid.util.R2Sanitizer.formatHexAddress(addr)}").getOrDefault("[]")
             if (output.isBlank() || output == "[]") {
                 false
             } else {

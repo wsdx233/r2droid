@@ -10,7 +10,11 @@ interface ProcessKiller {
     fun terminate(process: Process, force: Boolean) {
         try {
             if (force) {
-                process.destroyForcibly()
+                try {
+                    process.destroyForcibly()
+                } catch (_: NoSuchMethodError) {
+                    process.destroy()
+                }
             } else {
                 process.destroy()
             }

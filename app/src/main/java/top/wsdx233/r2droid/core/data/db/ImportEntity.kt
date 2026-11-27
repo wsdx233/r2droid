@@ -23,7 +23,7 @@ interface ImportDao {
     @Query("SELECT * FROM imports ORDER BY id ASC")
     fun getPagingSource(): PagingSource<Int, ImportEntity>
 
-    @Query("SELECT * FROM imports WHERE name LIKE '%' || :query || '%' ORDER BY id ASC")
+    @Query("SELECT * FROM imports WHERE name LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY id ASC")
     fun search(query: String): PagingSource<Int, ImportEntity>
 
     @Query("DELETE FROM imports")

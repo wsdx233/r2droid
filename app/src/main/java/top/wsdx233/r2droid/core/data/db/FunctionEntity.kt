@@ -27,13 +27,13 @@ interface FunctionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<FunctionEntity>)
 
-    @Query("SELECT * FROM functions ORDER BY addr ASC")
+    @Query("SELECT * FROM functions ORDER BY (addr < 0) ASC, addr ASC")
     fun getPagingSource(): PagingSource<Int, FunctionEntity>
 
-    @Query("SELECT * FROM functions WHERE name LIKE '%' || :query || '%' ORDER BY addr ASC")
+    @Query("SELECT * FROM functions WHERE name LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY (addr < 0) ASC, addr ASC")
     fun search(query: String): PagingSource<Int, FunctionEntity>
 
-    @Query("SELECT addr, size, name, nbbs FROM functions ORDER BY addr ASC")
+    @Query("SELECT addr, size, name, nbbs FROM functions ORDER BY (addr < 0) ASC, addr ASC")
     suspend fun getOverviewRows(): List<FunctionOverviewRow>
 
     @Query("DELETE FROM functions")

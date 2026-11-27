@@ -5,15 +5,23 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="sharedpref" path="r2droid_ai_settings.xml"/>
+        <exclude domain="file" path="ai_chat_history"/>
+        <exclude domain="file" path="radare2"/>
+        <exclude domain="file" path="r2work"/>
+        <exclude domain="file" path="proot"/>
+        <exclude domain="file" path="plugin-proot"/>
+        <exclude domain="file" path="libs"/>
+        <exclude domain="file" path="plugins"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="r2droid_ai_settings.xml"/>
+        <exclude domain="file" path="ai_chat_history"/>
+        <exclude domain="file" path="radare2"/>
+        <exclude domain="file" path="r2work"/>
+        <exclude domain="file" path="proot"/>
+        <exclude domain="file" path="plugin-proot"/>
+        <exclude domain="file" path="libs"/>
+        <exclude domain="file" path="plugins"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

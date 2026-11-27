@@ -288,45 +288,84 @@ class SettingsViewModel : ViewModel() {
         _projectHome.value = path
     }
 
-    fun migrateProjects(context: Context, oldPath: String?, newPath: String) {
-        val oldDir = File(oldPath ?: context.filesDir.absolutePath, "projects")
-        val newDir = File(newPath, "projects")
-        if (oldDir.exists() && oldDir.isDirectory) {
-            oldDir.copyRecursively(newDir, overwrite = true)
-            oldDir.deleteRecursively()
-            // Update scriptPath in JSON files to reflect new directory
-            val oldPrefix = oldDir.absolutePath
-            val newPrefix = newDir.absolutePath
-            fun rewriteJson(file: File, isIndex: Boolean) {
-                if (!file.exists()) return
-                try {
-                    val text = file.readText()
-                    if (isIndex) {
-                        val arr = JSONArray(text)
-                        for (i in 0 until arr.length()) {
-                            val obj = arr.getJSONObject(i)
-                            val sp = obj.optString("scriptPath", "")
-                            if (sp.startsWith(oldPrefix)) {
-                                obj.put("scriptPath", sp.replace(oldPrefix, newPrefix))
+    suspend fun migrateProjects(context: Context, oldPath: String?, newPath: String): Result<Unit> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val appContext = context.applicationContext
+                val oldDir = File(oldPath ?: appContext.filesDir.absolutePath, "projects").canonicalFile
+                val newDir = File(newPath, "projects").canonicalFile
+                if (!oldDir.exists() || !oldDir.isDirectory) return@runCatching
+                if (oldDir == newDir) return@runCatching
+
+                val oldPrefix = oldDir.path
+                val newPrefix = newDir.path
+                require(!newPrefix.startsWith(oldPrefix + File.separator)) {
+                    "Destination directory cannot be inside the current projects directory"
+                }
+                require(!oldPrefix.startsWith(newPrefix + File.separator)) {
+                    "Current projects directory cannot be inside the destination directory"
+                }
+
+                if (!newDir.exists() && !newDir.mkdirs()) {
+                    throw java.io.IOException("Failed to create target projects directory: $newPrefix")
+                }
+
+                var copyFailed = false
+                val copied = oldDir.copyRecursively(newDir, overwrite = true) { _, _ ->
+                    copyFailed = true
+                    OnErrorAction.TERMINATE
+                }
+                if (!copied || copyFailed) {
+                    throw java.io.IOException("Failed to copy projects to $newPrefix; original projects were preserved")
+                }
+
+                fun rewritePathPrefix(raw: String): String {
+                    return when {
+                        raw == oldPrefix -> newPrefix
+                        raw.startsWith(oldPrefix + File.separator) -> newPrefix + raw.removePrefix(oldPrefix)
+                        else -> raw
+                    }
+                }
+
+                fun rewriteObject(obj: JSONObject) {
+                    for (key in listOf("scriptPath", "binaryPath")) {
+                        val value = obj.optString(key, "")
+                        if (value.isNotEmpty()) {
+                            val rewritten = rewritePathPrefix(value)
+                            if (rewritten != value) {
+                                obj.put(key, rewritten)
                             }
                         }
-                        file.writeText(arr.toString(2))
-                    } else {
-                        val obj = JSONObject(text)
-                        val sp = obj.optString("scriptPath", "")
-                        if (sp.startsWith(oldPrefix)) {
-                            obj.put("scriptPath", sp.replace(oldPrefix, newPrefix))
-                        }
-                        file.writeText(obj.toString(2))
                     }
-                } catch (_: Exception) {}
-            }
-            rewriteJson(File(newDir, "index.json"), true)
-            newDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
-                rewriteJson(File(dir, "project.json"), false)
+                }
+
+                fun rewriteJson(file: File, isIndex: Boolean) {
+                    if (!file.exists()) return
+                    try {
+                        val text = file.readText()
+                        if (isIndex) {
+                            val arr = JSONArray(text)
+                            for (i in 0 until arr.length()) {
+                                rewriteObject(arr.getJSONObject(i))
+                            }
+                            file.writeText(arr.toString(2))
+                        } else {
+                            val obj = JSONObject(text)
+                            rewriteObject(obj)
+                            file.writeText(obj.toString(2))
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+
+                rewriteJson(File(newDir, "index.json"), true)
+                newDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+                    rewriteJson(File(dir, "project.json"), false)
+                }
+
+                top.wsdx233.r2droid.util.SafeFileOps.deleteRecursivelyNoFollow(oldDir)
             }
         }
-    }
 
     fun setDarkMode(mode: String) {
         SettingsManager.darkMode = mode
@@ -461,6 +500,7 @@ class SettingsViewModel : ViewModel() {
         SettingsManager.menuAtTouch = true
         SettingsManager.aiEnabled = true
         SettingsManager.aiOutputTruncateLimit = 100000
+        SettingsManager.aiMaxToolRounds = 0
         SettingsManager.useHttpMode = false
         SettingsManager.useProotMode = false
         SettingsManager.terminalLaunchMode = SettingsManager.TERMINAL_LAUNCH_MODE_PROOT
@@ -486,6 +526,7 @@ class SettingsViewModel : ViewModel() {
         _menuAtTouch.value = true
         _aiEnabled.value = true
         _aiOutputTruncateLimit.value = 100000
+        _aiMaxToolRounds.value = 0
         _useHttpMode.value = SettingsManager.useHttpMode
         _useProotMode.value = SettingsManager.useProotMode
         _terminalLaunchMode.value = SettingsManager.terminalLaunchMode
@@ -494,6 +535,7 @@ class SettingsViewModel : ViewModel() {
         _prootRootfsAlias.value = SettingsManager.prootRootfsAlias
         _httpPort.value = SettingsManager.httpPort
         _defaultJumpTarget.value = SettingsManager.defaultJumpTarget
+        KeepAliveService.start(context)
         loadPersistedTreeAccess(context)
     }
 }
@@ -979,7 +1021,17 @@ fun SettingsScreen(
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                             data = "package:${context.packageName}".toUri()
                         }
-                        context.startActivity(intent)
+                        runCatching {
+                            context.startActivity(intent)
+                        }.recoverCatching {
+                            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                        }.onFailure { e ->
+                            Toast.makeText(
+                                context,
+                                e.message ?: context.getString(R.string.common_error),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 )
             }
@@ -990,7 +1042,15 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_dontkillmyapp_desc),
                     icon = Icons.AutoMirrored.Filled.OpenInNew,
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://dontkillmyapp.com/".toUri()))
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, "https://dontkillmyapp.com/".toUri()))
+                        }.onFailure { e ->
+                            Toast.makeText(
+                                context,
+                                e.message ?: context.getString(R.string.common_error),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 )
             }
@@ -1236,18 +1296,28 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = {
                 showMigrateDialog = false
-                viewModel.setProjectHome(pendingNewProjectHome)
                 pendingNewProjectHome = null
             },
             title = { Text(stringResource(R.string.settings_migrate_title)) },
             text = { Text(stringResource(R.string.settings_migrate_message)) },
             confirmButton = {
                 TextButton(onClick = {
+                    val newPath = pendingNewProjectHome ?: return@TextButton
+                    val previousPath = oldProjectHome
                     showMigrateDialog = false
-                    val newPath = pendingNewProjectHome!!
-                    viewModel.migrateProjects(context, oldProjectHome, newPath)
-                    viewModel.setProjectHome(newPath)
                     pendingNewProjectHome = null
+                    coroutineScope.launch {
+                        val result = viewModel.migrateProjects(context, previousPath, newPath)
+                        result.onSuccess {
+                            viewModel.setProjectHome(newPath)
+                        }.onFailure { err ->
+                            Toast.makeText(
+                                context,
+                                err.message ?: "Migration failed",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 }) {
                     Text(stringResource(R.string.settings_migrate_yes))
                 }

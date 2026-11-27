@@ -14,10 +14,13 @@ on:
 
 jobs:
   build:
-    name: Build Signed APKs
+    name: Test and Build Unsigned APKs
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 允许 Action 上传 Release 文件
+      contents: read
+    outputs:
+      stable_tag: ${{ steps.package.outputs.stable_tag }}
+      notes_path: ${{ steps.package.outputs.notes_path }}
 
     steps:
       - name: Checkout code
@@ -60,20 +63,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-native-runtime-${{ hashFiles('tools/build_native_runtime.py', 'tools/native_*.py') }}-ndk-28.2.13676358-
 
-      - name: Decode Keystore
-        env:
-          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          printf '%s' "$ENCODED_STRING" | base64 --decode > app/release-keystore.jks
-
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Test and build release APKs
+      - name: Test and build unsigned release APKs
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JAVA_TOOL_OPTIONS: '-Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2'
         run: |
@@ -82,17 +76,16 @@ jobs:
           unset GITHUB_TOKEN
           ./gradlew \
             --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4g \
-            :r2pipe-kotlin:test :app:testFullDebugUnitTest :app:testProotOnlyDebugUnitTest \
+            :r2pipe-kotlin:test \
+            :terminal-emulator:testDebugUnitTest \
+            :app:testFullDebugUnitTest \
+            :app:testProotOnlyDebugUnitTest \
             :app:assembleFullRelease \
             :app:assembleProotOnlyRelease \
-            -PKEYSTORE_FILE=release-keystore.jks \
-            -PKEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
-            -PKEY_ALIAS="$KEY_ALIAS" \
-            -PKEY_PASSWORD="$KEY_PASSWORD" \
             -PnativeRuntimePython="$PWD/.native-runtime-venv/bin/python" \
             -PnativeRuntimeGithubToken="$NATIVE_RUNTIME_GITHUB_TOKEN"
 
-      - name: Check packaged versions and collect artifacts
+      - name: Check packaged versions and stage unsigned artifacts
         id: package
         env:
           EXPECTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.source_tag }}
@@ -112,17 +105,88 @@ jobs:
           if [[ -s .github/release-notes/$tag.md ]]; then
             echo "notes_path=.github/release-notes/$tag.md" >> "$GITHUB_OUTPUT"
           fi
-          dist=build/release-artifacts
+          full_apk="$full/app-full-release-unsigned.apk"
+          [[ -f "$full_apk" ]] || full_apk="$full/app-full-release.apk"
+          proot_apk="$proot/app-prootOnly-release-unsigned.apk"
+          [[ -f "$proot_apk" ]] || proot_apk="$proot/app-prootOnly-release.apk"
+          dist=build/unsigned-artifacts
           runtime=app/build/generated/nativeRuntime
           mkdir -p "$dist"
-          cp "$full/app-full-release.apk" "$dist/R2Droid-$tag.apk"
-          cp "$proot/app-prootOnly-release.apk" "$dist/R2Droid-Proot-$tag.apk"
+          cp "$full_apk" "$dist/R2Droid-$tag-unsigned.apk"
+          cp "$proot_apk" "$dist/R2Droid-Proot-$tag-unsigned.apk"
           cp "$runtime/source-lock.json" "$dist/native-runtime-source-lock-$tag.json"
           cp "$runtime/fullRelease/runtime-manifest.json" "$dist/native-runtime-manifest-full-$tag.json"
           cp "$runtime/prootOnlyRelease/runtime-manifest.json" "$dist/native-runtime-manifest-proot-$tag.json"
 
+      - name: Upload unsigned build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2droid-unsigned-${{ github.run_id }}
+          path: build/unsigned-artifacts/
+          retention-days: 1
+          if-no-files-found: error
+
+  sign-and-release:
+    name: Sign APKs and Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.source_tag && format('refs/tags/{0}', inputs.source_tag) || '' }}
+
+      - name: Set up Android Build Tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: build-tools;36.0.0
+
+      - name: Download unsigned artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: r2droid-unsigned-${{ github.run_id }}
+          path: build/unsigned-artifacts
+
+      - name: Sign release APKs
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STABLE_TAG: ${{ needs.build.outputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          apksigner="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools/36.0.0/apksigner"
+          keystore="$(mktemp)"
+          trap 'rm -f "$keystore"' EXIT
+          chmod 600 "$keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+
+          dist=build/release-artifacts
+          mkdir -p "$dist"
+          cp build/unsigned-artifacts/*.json "$dist/"
+
+          for pair in \
+            "R2Droid-${STABLE_TAG}-unsigned.apk:R2Droid-${STABLE_TAG}.apk" \
+            "R2Droid-Proot-${STABLE_TAG}-unsigned.apk:R2Droid-Proot-${STABLE_TAG}.apk"; do
+            src="build/unsigned-artifacts/${pair%%:*}"
+            dst="$dist/${pair##*:}"
+            "$apksigner" sign \
+              --ks "$keystore" \
+              --ks-pass env:KEYSTORE_PASSWORD \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass env:KEY_PASSWORD \
+              --out "$dst" \
+              "$src"
+            "$apksigner" verify --verbose "$dst"
+          done
+
       - name: Upload candidate for review (no GitHub Release)
-        if: github.event_name != 'push' || github.ref_name != steps.package.outputs.stable_tag
+        if: github.event_name != 'push' || github.ref_name != needs.build.outputs.stable_tag
         uses: actions/upload-artifact@v4
         with:
           name: r2droid-candidate-${{ github.run_id }}
@@ -131,7 +195,7 @@ jobs:
 
       - name: Build Changelog
         id: build_changelog
-        if: github.event_name == 'push' && github.ref_name == steps.package.outputs.stable_tag && steps.package.outputs.notes_path == ''
+        if: github.event_name == 'push' && github.ref_name == needs.build.outputs.stable_tag && needs.build.outputs.notes_path == ''
         uses: mikepenz/release-changelog-builder-action@v6
         with:
           mode: "COMMIT"
@@ -141,10 +205,10 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: github.event_name == 'push' && github.ref_name == steps.package.outputs.stable_tag
+        if: github.event_name == 'push' && github.ref_name == needs.build.outputs.stable_tag
         with:
           body: ${{ steps.build_changelog.outputs.changelog }}
-          body_path: ${{ steps.package.outputs.notes_path }}
+          body_path: ${{ needs.build.outputs.notes_path }}
           fail_on_unmatched_files: true
           files: build/release-artifacts/*
           draft: false

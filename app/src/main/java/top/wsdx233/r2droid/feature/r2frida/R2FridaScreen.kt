@@ -424,21 +424,73 @@ private fun buildFridaConnectCommand(
     host: String,
     port: String,
     target: String
-): String = "\"frida://${mode.scheme}/remote/$host:$port/$target\""
+): String {
+    val cleanHost = host.trim()
+    val cleanPort = port.trim()
+    require(top.wsdx233.r2droid.util.R2Sanitizer.isSafeHost(cleanHost)) { "Invalid host: $host" }
+    require(top.wsdx233.r2droid.util.R2Sanitizer.isValidPort(cleanPort)) { "Invalid port: $port" }
+    val uri = "frida://${mode.scheme}/remote/$cleanHost:$cleanPort/$target"
+    return R2Runtime.shellEscape(uri)
+}
 
 private suspend fun fetchFridaProcesses(context: android.content.Context, host: String, port: String): Result<List<FridaProcess>> {
     return withContext(Dispatchers.IO) {
+        var proc: Process? = null
         try {
-            val uri = "frida://attach/remote/$host:$port/"
+            val cleanHost = host.trim()
+            val cleanPort = port.trim()
+            require(top.wsdx233.r2droid.util.R2Sanitizer.isSafeHost(cleanHost)) { "Invalid host: $host" }
+            require(top.wsdx233.r2droid.util.R2Sanitizer.isValidPort(cleanPort)) { "Invalid port: $port" }
+            val uri = R2Runtime.shellEscape("frida://attach/remote/$cleanHost:$cleanPort/")
             val launchSpec = R2Runtime.buildStdioLaunch(context, filePath = null, flags = "", rawArgs = uri)
             val pb = ProcessBuilder(launchSpec.command)
             pb.directory(launchSpec.workingDirectory)
             pb.environment().putAll(launchSpec.environment)
             pb.redirectErrorStream(true)
-            val proc = pb.start()
-            val output = proc.inputStream.bufferedReader().readText()
-            proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-            proc.destroyForcibly()
+            val started = pb.start()
+            proc = started
+            val outputBuilder = StringBuilder()
+            val readerThread = Thread({
+                runCatching {
+                    started.inputStream.bufferedReader().use { reader ->
+                        val buffer = CharArray(4096)
+                        var read: Int
+                        while (reader.read(buffer).also { read = it } != -1) {
+                            outputBuilder.append(buffer, 0, read)
+                        }
+                    }
+                }
+            }, "frida-proc-reader").apply {
+                isDaemon = true
+                start()
+            }
+
+            val finished = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                while (true) {
+                    val exited = try {
+                        started.exitValue()
+                        true
+                    } catch (_: IllegalThreadStateException) {
+                        false
+                    }
+                    if (exited) break
+                    kotlinx.coroutines.delay(50L)
+                }
+                true
+            } ?: false
+
+            if (!finished) {
+                runCatching {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        started.destroyForcibly()
+                    } else {
+                        started.destroy()
+                    }
+                }
+                throw java.util.concurrent.TimeoutException("Timed out listing remote Frida processes")
+            }
+            readerThread.join(1_000L)
+            val output = outputBuilder.toString()
 
             val processes = output.lines()
                 .map { it.trim() }
@@ -448,8 +500,20 @@ private suspend fun fetchFridaProcesses(context: android.content.Context, host: 
                     if (parts.size == 2) FridaProcess(parts[0], parts[1]) else null
                 }
             Result.success(processes)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            proc?.let { p ->
+                runCatching {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        p.destroyForcibly()
+                    } else {
+                        p.destroy()
+                    }
+                }
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ package top.wsdx233.r2droid.feature.debug.data
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.util.R2PipeManager
+import top.wsdx233.r2droid.util.R2Sanitizer
 import top.wsdx233.r2droid.util.suspendRunCatching
 import java.util.Locale
 import javax.inject.Inject
@@ -75,13 +76,13 @@ class R2DebugCommandRunner @Inject constructor() {
     fun parseJsonArray(raw: String): JSONArray {
         val trimmed = extractJsonPayload(raw.trim(), '[', ']')
         if (trimmed.isEmpty()) return JSONArray()
-        return JSONArray(trimmed)
+        return R2Sanitizer.parseJsonArray(trimmed)
     }
 
     fun parseJsonObject(raw: String): JSONObject {
         val trimmed = extractJsonPayload(raw.trim(), '{', '}')
         if (trimmed.isEmpty()) return JSONObject()
-        return JSONObject(trimmed)
+        return R2Sanitizer.parseJsonObject(trimmed)
     }
 
     fun parseFridaRegisterOutput(raw: String): JSONObject {
@@ -284,7 +285,7 @@ class R2DebugCommandRunner @Inject constructor() {
     }
 
     fun parseLongFlexible(value: Any?): Long? = when (value) {
-        is Number -> value.toLong()
+        is Number -> R2Sanitizer.toUnsignedLongOrNull(value)
         is String -> parseLongFlexible(value)
         else -> null
     }
@@ -440,8 +441,27 @@ class R2DebugCommandRunner @Inject constructor() {
         if (raw.isEmpty()) return ""
         if (raw.firstOrNull() == open && raw.lastOrNull() == close) return raw
 
-        val start = raw.indexOf(open)
         val end = raw.lastIndexOf(close)
+        if (end <= 0) throw IllegalArgumentException("Invalid JSON output: ${raw.take(120)}")
+
+        // Prefer a line-anchored JSON payload so log prefixes like `[INFO]` or `[debug]` don't trip parsing.
+        var searchIdx = 0
+        while (searchIdx < end) {
+            val candidateStart = raw.indexOf(open, searchIdx)
+            if (candidateStart < 0 || candidateStart >= end) break
+            val atLineStart = candidateStart == 0 || raw[candidateStart - 1] == '\n' || raw[candidateStart - 1] == '\r'
+            if (atLineStart) {
+                val slice = raw.substring(candidateStart, end + 1)
+                val valid = runCatching {
+                    if (open == '[') JSONArray(slice) else JSONObject(slice)
+                    true
+                }.getOrDefault(false)
+                if (valid) return slice
+            }
+            searchIdx = candidateStart + 1
+        }
+
+        val start = raw.indexOf(open)
         if (start >= 0 && end > start) return raw.substring(start, end + 1)
         throw IllegalArgumentException("Invalid JSON output: ${raw.take(120)}")
     }

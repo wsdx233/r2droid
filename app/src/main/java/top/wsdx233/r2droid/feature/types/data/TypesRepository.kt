@@ -40,8 +40,8 @@ interface TypesCommandSession {
 
 object TypesRepository {
 
-    private val typeNamePattern = Regex("^[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,256}$")
-    private val deleteTargetPattern = Regex("^[^;@~|`'\"\\r\\n\\u0000-\\u001f]{1,256}$")
+    private val typeNamePattern = Regex("^[^;@~|`'\"<>\\$()#\\r\\n\\u0000-\\u001f\\u007f]{1,256}$")
+    private val deleteTargetPattern = Regex("^[^;@~|`'\"<>\\$()#\\*\\r\\n\\u0000-\\u001f\\u007f]{1,256}$")
     private val whitespaceRuns = Regex("\\s+")
 
     suspend fun loadSnapshot(session: TypesCommandSession): LocalTypesSnapshot =

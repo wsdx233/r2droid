@@ -355,7 +355,7 @@ private fun SearchResultItem(
     UnifiedListItemWrapper(
         title = result.data,
         address = result.addr,
-        fullText = "Addr: 0x${result.addr.toString(16)}, Type: ${result.type}, Data: ${result.data}",
+        fullText = "Addr: 0x${result.addr.toULong().toString(16)}, Type: ${result.type}, Data: ${result.data}",
         actions = actions
     ) {
         Card(
@@ -381,7 +381,7 @@ private fun SearchResultItem(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "0x${result.addr.toString(16)}",
+                        text = "0x${result.addr.toULong().toString(16)}",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = LocalAppFont.current,
                         color = MaterialTheme.colorScheme.primary

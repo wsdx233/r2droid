@@ -25,7 +25,7 @@ interface SymbolDao {
     @Query("SELECT * FROM symbols ORDER BY id ASC")
     fun getPagingSource(): PagingSource<Int, SymbolEntity>
 
-    @Query("SELECT * FROM symbols WHERE name LIKE '%' || :query || '%' OR realname LIKE '%' || :query || '%' ORDER BY id ASC")
+    @Query("SELECT * FROM symbols WHERE name LIKE '%' || :query || '%' ESCAPE '\\' OR realname LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY id ASC")
     fun search(query: String): PagingSource<Int, SymbolEntity>
 
     @Query("DELETE FROM symbols")

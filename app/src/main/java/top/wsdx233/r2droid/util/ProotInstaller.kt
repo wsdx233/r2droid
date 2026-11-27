@@ -8,6 +8,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -355,7 +356,7 @@ object ProotInstaller {
 
         if (forceReinstall) {
             appendLog("Force reinstall requested, clearing existing rootfs and completed-stage markers.")
-            getRootfsDir(context).deleteRecursively()
+            SafeFileOps.deleteRecursivelyNoFollow(getRootfsDir(context))
             getExtractMarker(context).delete()
             clearStageMarkers(context)
             getRootfsDir(context).mkdirs()
@@ -451,7 +452,7 @@ object ProotInstaller {
             appendLog("Rootfs extraction failed: ${firstError.message ?: firstError::class.java.simpleName}")
             appendLog("The cached archive may be incomplete or corrupted; re-downloading rootfs and retrying extraction once.")
             getArchiveFile(context, option).delete()
-            rootfsDir.deleteRecursively()
+            SafeFileOps.deleteRecursivelyNoFollow(rootfsDir)
             getExtractMarker(context).delete()
             clearStageMarkers(context)
             downloadRootfsIfNeeded(context, option, forceRedownload = true)
@@ -469,7 +470,7 @@ object ProotInstaller {
         updateState(ProotInstallState.Status.EXTRACTING, 0.38f, "Extracting ${option.displayName} rootfs...")
         appendLog("Extracting rootfs to ${rootfsDir.absolutePath}")
 
-        rootfsDir.deleteRecursively()
+        SafeFileOps.deleteRecursivelyNoFollow(rootfsDir)
         rootfsDir.mkdirs()
         getExtractMarker(context).delete()
         clearStageMarkers(context)
@@ -775,30 +776,36 @@ object ProotInstaller {
 
         return keys.mapNotNull { key ->
             val value = runCatching {
-                ProcessBuilder("/system/bin/getprop", key)
+                val process = ProcessBuilder("/system/bin/getprop", key)
                     .redirectErrorStream(true)
                     .start()
-                    .inputStream
-                    .bufferedReader()
-                    .readText()
-                    .trim()
+                try {
+                    process.outputStream.close()
+                    process.inputStream.bufferedReader().use { it.readText().trim() }
+                } finally {
+                    runCatching { process.waitFor() }
+                    runCatching { process.destroy() }
+                }
             }.getOrNull()
             value?.takeIf { it.matches(Regex("^[0-9a-fA-F:.]+$")) }
         }.distinct()
     }
 
     private fun updateState(status: ProotInstallState.Status, progress: Float, message: String) {
-        _state.value = _state.value.copy(
-            status = status,
-            progress = progress,
-            message = message,
-            canRetryCurrentStage = false
-        )
+        _state.update { current ->
+            current.copy(
+                status = status,
+                progress = progress,
+                message = message,
+                canRetryCurrentStage = false
+            )
+        }
     }
 
     private fun appendLog(line: String) {
-        val logs = (_state.value.logs + line).takeLast(MAX_LOG_LINES)
-        _state.value = _state.value.copy(logs = logs)
+        _state.update { current ->
+            current.copy(logs = (current.logs + line).takeLast(MAX_LOG_LINES))
+        }
     }
 
     private fun getArchiveFile(context: Context, option: ProotRootfsOption): File {

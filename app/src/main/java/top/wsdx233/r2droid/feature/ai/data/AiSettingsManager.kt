@@ -28,11 +28,23 @@ object AiSettingsManager {
     private val _sessionsFlow = MutableStateFlow<List<ChatSessionMetadata>>(emptyList())
     val sessionsFlow = _sessionsFlow.asStateFlow()
 
+    private val _systemPromptFlow = MutableStateFlow(DEFAULT_SYSTEM_PROMPT)
+    val systemPromptFlow = _systemPromptFlow.asStateFlow()
+
     @Synchronized
-    fun initialize(context: Context) {
+    fun initialize(context: Context, loadSessionsImmediately: Boolean = true) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         chatHistoryStore = AiChatHistoryStore(context)
         _configFlow.value = loadConfig()
+        _systemPromptFlow.value = prefs.getString(KEY_SYSTEM_PROMPT, null) ?: DEFAULT_SYSTEM_PROMPT
+        if (loadSessionsImmediately) {
+            _sessionsFlow.value = loadSessions()
+        }
+    }
+
+    @Synchronized
+    fun reloadSessions() {
+        if (!::prefs.isInitialized || !::chatHistoryStore.isInitialized) return
         _sessionsFlow.value = loadSessions()
     }
 
@@ -45,11 +57,13 @@ object AiSettingsManager {
         }
     }
 
+    @Synchronized
     private fun saveConfig(config: AiProviderConfig) {
         prefs.edit { putString(KEY_PROVIDER_CONFIG, json.encodeToString(config)) }
         _configFlow.value = config
     }
 
+    @Synchronized
     fun addProvider(provider: AiProvider) {
         val config = _configFlow.value
         val updated = config.copy(providers = config.providers + provider)
@@ -63,6 +77,7 @@ object AiSettingsManager {
         saveConfig(activated)
     }
 
+    @Synchronized
     fun updateProvider(provider: AiProvider) {
         val config = _configFlow.value
         val updated = config.copy(
@@ -77,6 +92,7 @@ object AiSettingsManager {
         saveConfig(activated)
     }
 
+    @Synchronized
     fun deleteProvider(id: String) {
         val config = _configFlow.value
         val remaining = config.providers.filter { it.id != id }
@@ -92,11 +108,13 @@ object AiSettingsManager {
         saveConfig(updated)
     }
 
+    @Synchronized
     fun setActiveProvider(providerId: String, modelName: String) {
         val config = _configFlow.value
         saveConfig(config.copy(activeProviderId = providerId, activeModelName = modelName))
     }
 
+    @Synchronized
     fun setActiveModel(modelName: String) {
         val config = _configFlow.value
         saveConfig(config.copy(activeModelName = modelName))
@@ -119,6 +137,8 @@ object AiSettingsManager {
                 // A failed preference write can be retried; importing again preserves file data.
                 if (!prefs.edit().remove(KEY_CHAT_SESSIONS).commit()) {
                     Log.w(TAG, "Could not remove migrated chat preference")
+                } else {
+                    chatHistoryStore.pruneDeletedTombstones()
                 }
                 return migrated
             }
@@ -126,13 +146,15 @@ object AiSettingsManager {
             return chatHistoryStore.recoverIndex() ?: existing
         }
 
-        return indexedSessions ?: chatHistoryStore.recoverIndex()?.also { recovered ->
+        val sessions = indexedSessions ?: chatHistoryStore.recoverIndex()?.also { recovered ->
             try {
                 chatHistoryStore.saveIndex(recovered)
             } catch (e: Exception) {
                 Log.w(TAG, "Could not persist recovered chat index", e)
             }
         }.orEmpty()
+        chatHistoryStore.pruneDeletedTombstones()
+        return sessions
     }
 
     private fun saveSessions(sessions: List<ChatSessionMetadata>) {
@@ -174,6 +196,7 @@ object AiSettingsManager {
         get() = prefs.getString(KEY_SYSTEM_PROMPT, null) ?: DEFAULT_SYSTEM_PROMPT
         set(value) {
             prefs.edit { putString(KEY_SYSTEM_PROMPT, value) }
+            _systemPromptFlow.value = value
         }
 
     var instrExplainPrompt: String

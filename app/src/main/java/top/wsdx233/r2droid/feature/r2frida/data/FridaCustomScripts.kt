@@ -35,18 +35,18 @@ object FridaCustomScripts {
                     }
                 }
             }
-            var file = new File("__RESULT_FILE__", "w");
+            var file = new File(__RESULT_FILE__, "w");
             file.write(JSON.stringify(results));
             file.flush();
             file.close();
-            var done = new File("__RESULT_FILE__.done", "w");
+            var done = new File(__RESULT_DONE_FILE__, "w");
             done.close();
         } catch(e) {
-            var file = new File("__RESULT_FILE__", "w");
+            var file = new File(__RESULT_FILE__, "w");
             file.write(JSON.stringify({error: e.message}));
             file.flush();
             file.close();
-            var done = new File("__RESULT_FILE__.done", "w");
+            var done = new File(__RESULT_DONE_FILE__, "w");
             done.close();
         }
     """.trimIndent()
@@ -147,17 +147,17 @@ object FridaCustomScripts {
 
     private const val WRITE_RESULT_FN = """
             function writeResult(results) {
-                var file = new File("__RESULT_FILE__", "w");
+                var file = new File(__RESULT_FILE__, "w");
                 file.write(JSON.stringify(results));
                 file.flush(); file.close();
-                var done = new File("__RESULT_FILE__.done", "w");
+                var done = new File(__RESULT_DONE_FILE__, "w");
                 done.close();
             }
             function writeError(msg) {
-                var file = new File("__RESULT_FILE__", "w");
+                var file = new File(__RESULT_FILE__, "w");
                 file.write(JSON.stringify({error: msg}));
                 file.flush(); file.close();
-                var done = new File("__RESULT_FILE__.done", "w");
+                var done = new File(__RESULT_DONE_FILE__, "w");
                 done.close();
             }
     """
@@ -176,12 +176,12 @@ $NUM_TO_PATTERN_FN
 $ENCODE_PATTERN_FNS
 $WRITE_RESULT_FN
             var results = [];
-            var searchType = "__SEARCH_TYPE__";
+            var searchType = __SEARCH_TYPE__;
             var searchValues = __SEARCH_VALUES__;
-            var compare = "__COMPARE__";
-            var rangeMin = "__RANGE_MIN__";
-            var rangeMax = "__RANGE_MAX__";
-            var protection = "__PROTECTION__";
+            var compare = __COMPARE__;
+            var rangeMin = __RANGE_MIN__;
+            var rangeMax = __RANGE_MAX__;
+            var protection = __PROTECTION__;
             var customRegions = __REGIONS_JSON__;
             var maxResults = __MAX_RESULTS__;
             var isWildcard = (searchValues.length === 1 && searchValues[0] === '*');
@@ -302,32 +302,51 @@ $WRITE_RESULT_FN
             var results = [];
             var addrs = __ADDRESS_LIST__;
             var oldVals = __OLD_VALUES__;
-            var type = "__SEARCH_TYPE__";
-            var mode = "__FILTER_MODE__";
-            var targetVal = "__TARGET_VAL__";
-            var rangeMin = "__RANGE_MIN__";
-            var rangeMax = "__RANGE_MAX__";
-            var expression = "__EXPRESSION__";
+            var type = __SEARCH_TYPE__;
+            var mode = __FILTER_MODE__;
+            var targetVal = __TARGET_VAL__;
+            var rangeMin = __RANGE_MIN__;
+            var rangeMax = __RANGE_MAX__;
+            var expression = __EXPRESSION__;
+
+            function readTypedVal(p, t, oldStr) {
+                if (t === 'utf8') {
+                    var len = Math.max(oldStr ? oldStr.length + 16 : 64, 64);
+                    return p.readUtf8String(len) || "";
+                }
+                if (t === 'utf16') {
+                    var len16 = Math.max(oldStr ? oldStr.length + 16 : 64, 64);
+                    return p.readUtf16String(len16) || "";
+                }
+                if (t === 'hex') {
+                    var byteLen = Math.max(1, (oldStr || "").replace(/[^0-9a-fA-F]/g, '').length / 2);
+                    var bytes = new Uint8Array(p.readByteArray(Math.floor(byteLen)));
+                    return Array.from(bytes).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(' ');
+                }
+                return readVal(p, t);
+            }
 
             for (var i = 0; i < addrs.length; i++) {
                 try {
                     var p = ptr(addrs[i]);
-                    var v = readVal(p, type);
-                    var oldV = (i < oldVals.length) ? parseFloat(oldVals[i]) : 0;
+                    var oldStr = (i < oldVals.length) ? String(oldVals[i]) : "";
+                    var isTextOrHex = (type === 'utf8' || type === 'utf16' || type === 'hex');
+                    var v = readTypedVal(p, type, oldStr);
+                    var oldV = isTextOrHex ? oldStr : parseFloat(oldStr);
                     var pass = false;
                     if (mode === 'exact') {
-                        if (type === 'utf8' || type === 'utf16') {
-                            pass = (v.toString().indexOf(targetVal) !== -1);
+                        if (isTextOrHex) {
+                            pass = (String(v).toLowerCase().indexOf(String(targetVal).toLowerCase()) !== -1);
                         } else { pass = (v == parseFloat(targetVal)); }
-                    } else if (mode === 'increased') { pass = (v > oldV);
-                    } else if (mode === 'decreased') { pass = (v < oldV);
-                    } else if (mode === 'unchanged') { pass = (v == oldV);
+                    } else if (mode === 'increased') { pass = !isTextOrHex && (v > oldV);
+                    } else if (mode === 'decreased') { pass = !isTextOrHex && (v < oldV);
+                    } else if (mode === 'unchanged') { pass = isTextOrHex ? (String(v) === oldStr) : (v == oldV);
                     } else if (mode === 'range') {
-                        pass = (v >= parseFloat(rangeMin) && v <= parseFloat(rangeMax));
+                        pass = !isTextOrHex && (v >= parseFloat(rangeMin) && v <= parseFloat(rangeMax));
                     } else if (mode === 'expression') {
-                        try { var old = oldV; pass = eval(expression); } catch(ee) { pass = false; }
+                        try { var old = oldV; pass = Boolean(eval(expression)); } catch(ee) { pass = false; }
                     }
-                    if (pass) results.push({ address: addrs[i], value: v.toString(), type: type.toUpperCase() });
+                    if (pass) results.push({ address: addrs[i], value: String(v), type: type.toUpperCase() });
                 } catch(e) {}
             }
             writeResult(results);
@@ -337,9 +356,9 @@ $WRITE_RESULT_FN
     /** Write a value to a single memory address. */
     val WRITE_VALUE_SCRIPT = """
         try {
-            var addr = ptr("__ADDRESS__");
-            var type = "__WRITE_TYPE__";
-            var val_str = "__WRITE_VALUE__";
+            var addr = ptr(__ADDRESS__);
+            var type = __WRITE_TYPE__;
+            var val_str = __WRITE_VALUE__;
             if (type === 'u8') addr.writeU8(parseInt(val_str));
             else if (type === 'u16') addr.writeU16(parseInt(val_str));
             else if (type === 'u32') addr.writeU32(parseInt(val_str) >>> 0);
@@ -355,7 +374,7 @@ $WRITE_RESULT_FN
     val REFRESH_VALUES_SCRIPT = """
         try {
             var addrs = __ADDRESS_LIST__;
-            var type = "__SEARCH_TYPE__";
+            var type = __SEARCH_TYPE__;
             var results = [];
             for (var i = 0; i < addrs.length; i++) {
                 try {
@@ -370,23 +389,23 @@ $WRITE_RESULT_FN
                     else if (type === 'utf8') v = addr.readUtf8String();
                     else if (type === 'utf16') v = addr.readUtf16String();
                     else v = addr.readU32();
-                    results.push({ address: addrs[i], value: String(v) });
+                    results.push({ address: addrs[i], value: String(v), type: type.toUpperCase() });
                 } catch(e) {
-                    results.push({ address: addrs[i], value: "?" });
+                    results.push({ address: addrs[i], value: "?", type: type.toUpperCase() });
                 }
             }
-            var file = new File("__RESULT_FILE__", "w");
+            var file = new File(__RESULT_FILE__, "w");
             file.write(JSON.stringify(results));
             file.flush();
             file.close();
-            var done = new File("__RESULT_FILE__.done", "w");
+            var done = new File(__RESULT_DONE_FILE__, "w");
             done.close();
         } catch(e) {
-            var file = new File("__RESULT_FILE__", "w");
-            file.write("[]");
+            var file = new File(__RESULT_FILE__, "w");
+            file.write(JSON.stringify({error: e.message}));
             file.flush();
             file.close();
-            var done = new File("__RESULT_FILE__.done", "w");
+            var done = new File(__RESULT_DONE_FILE__, "w");
             done.close();
         }
     """.trimIndent()
@@ -395,8 +414,8 @@ $WRITE_RESULT_FN
     val BATCH_WRITE_SCRIPT = """
         try {
             var addrs = __ADDRESS_LIST__;
-            var type = "__WRITE_TYPE__";
-            var val_str = "__WRITE_VALUE__";
+            var type = __WRITE_TYPE__;
+            var val_str = __WRITE_VALUE__;
             for (var i = 0; i < addrs.length; i++) {
                 try {
                     var addr = ptr(addrs[i]);
@@ -415,18 +434,19 @@ $WRITE_RESULT_FN
 
     val START_MONITOR_SCRIPT = """
         try {
-            var targetAddress = ptr("__ADDRESS__");
+            var targetAddress = ptr(__ADDRESS__);
             var size = __SIZE__;
             var range = [{ base: targetAddress, size: size }];
-            var stopKey = "__STOP_KEY__";
-            Java[stopKey] = 0;
+            var stopKey = __STOP_KEY__;
+            var store = (typeof globalThis !== 'undefined') ? globalThis : ((typeof Java !== 'undefined') ? Java : this);
+            store[stopKey] = 0;
             function startMonitor() {
-                if (Java[stopKey]) return;
+                if (store[stopKey]) return;
                 MemoryAccessMonitor.enable(range, {
                     onAccess: function (details) {
-                        if (Java[stopKey]) return;
+                        if (store[stopKey]) return;
                         try {
-                            var file = new File("__RESULT_FILE__", "a");
+                            var file = new File(__RESULT_FILE__, "a");
                             var event = {
                                 id: Math.random().toString(),
                                 operation: details.operation,
@@ -448,6 +468,6 @@ $WRITE_RESULT_FN
         } catch(e) {}
     """.trimIndent()
 
-    const val STOP_MONITOR_SET_FLAG = """Java["__STOP_KEY__"] = 1"""
+    const val STOP_MONITOR_SET_FLAG = """(typeof globalThis !== 'undefined' ? globalThis : (typeof Java !== 'undefined' ? Java : this))[__STOP_KEY__] = 1"""
     const val STOP_MONITOR_DISABLE = """MemoryAccessMonitor.disable()"""
 }

@@ -31,15 +31,29 @@ Download = Callable[[str, Path, str | None], object]
 
 def _extract(archive: Path, destination: Path) -> Path:
     """Extract an upstream tarball and return its one top-level directory."""
+    destination = destination.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     # Archives are fetched over HTTPS and are fixed by checksum, but reject
-    # traversal nevertheless because this is build infrastructure.
+    # traversal, symlinks/hardlinks escaping destination, and special files nevertheless.
     with tarfile.open(archive, mode="r:gz") as tar:
         root: str | None = None
         for member in tar.getmembers():
             name = Path(member.name)
-            if name.is_absolute() or ".." in name.parts:
+            if not member.name or name.is_absolute() or ".." in name.parts:
                 raise RuntimeError(f"unsafe dependency archive member: {member.name}")
+            if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+                raise RuntimeError(f"unsafe special dependency archive member: {member.name}")
+            member_dest = (destination / name).resolve()
+            if member_dest != destination and destination not in member_dest.parents:
+                raise RuntimeError(f"dependency archive member escapes destination: {member.name}")
+            if member.issym() or member.islnk():
+                target = Path(member.linkname)
+                if not member.linkname or target.is_absolute() or ".." in target.parts:
+                    raise RuntimeError(f"unsafe dependency archive link: {member.name}")
+                link_base = member_dest.parent if member.issym() else destination
+                resolved_target = (link_base / target).resolve()
+                if resolved_target != destination and destination not in resolved_target.parents:
+                    raise RuntimeError(f"dependency archive link escapes destination: {member.name}")
             first = name.parts[0] if name.parts else ""
             if first and root is None:
                 root = first

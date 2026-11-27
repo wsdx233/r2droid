@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -148,32 +149,36 @@ private fun WebViewPluginPage(
         return
     }
 
+    val scope = rememberCoroutineScope()
     var pendingFileRequestId by remember(pluginId) { mutableStateOf<String?>(null) }
     var pendingDirRequestId by remember(pluginId) { mutableStateOf<String?>(null) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val requestId = pendingFileRequestId
         if (requestId != null) {
-            val pathResult = uri?.let { resolveUriToAbsolutePath(context, it) }
-            PluginRuntime.completeFilePicker(pluginId, requestId, pathResult)
             pendingFileRequestId = null
+            scope.launch(Dispatchers.IO) {
+                val pathResult = uri?.let { resolveUriToAbsolutePath(context, it) }
+                PluginRuntime.completeFilePicker(pluginId, requestId, pathResult)
+            }
         }
     }
 
     val dirPickerLauncher = rememberLauncherForActivityResult(DocumentsUiOpenDocumentTreeContract()) { uri ->
         val requestId = pendingDirRequestId
         if (requestId != null) {
-            val pathResult = uri?.let { UriUtils.getTreePath(context, it) }
-            PluginRuntime.completeDirPicker(pluginId, requestId, pathResult)
             pendingDirRequestId = null
+            scope.launch(Dispatchers.IO) {
+                val pathResult = uri?.let { UriUtils.getTreePath(context, it) }
+                PluginRuntime.completeDirPicker(pluginId, requestId, pathResult)
+            }
         }
     }
 
-    val scope = rememberCoroutineScope()
     var showPluginProotDialog by remember(pluginId) { mutableStateOf(false) }
     val bridge = remember(pluginId, context, onJumpToDisasm) {
         PluginWebBridge(
-            context = context,
+            context = context.applicationContext,
             pluginId = pluginId,
             onPickFileRequest = { requestId ->
                 pendingFileRequestId = requestId
@@ -196,6 +201,15 @@ private fun WebViewPluginPage(
     val plugin = remember(pluginId) { PluginManager.findInstalledPlugin(pluginId) }
     val prootConfig = plugin?.manifest?.proot
     val pluginProotState by PluginProotInstaller.state.collectAsState()
+
+    DisposableEffect(pluginId) {
+        onDispose {
+            pendingFileRequestId?.let { PluginRuntime.completeFilePicker(pluginId, it, null) }
+            pendingDirRequestId?.let { PluginRuntime.completeDirPicker(pluginId, it, null) }
+            PluginRuntime.cancelPendingPickers(pluginId)
+            PluginAndroidBridge.releaseAll(pluginId)
+        }
+    }
 
     LaunchedEffect(pluginId, prootConfig) {
         val config = prootConfig ?: return@LaunchedEffect
@@ -236,6 +250,15 @@ private fun WebViewPluginPage(
             update = { webView ->
                 if (webView.url != targetUrl) {
                     webView.loadUrl(targetUrl)
+                }
+            },
+            onRelease = { webView ->
+                runCatching {
+                    webView.stopLoading()
+                    webView.removeJavascriptInterface("R2PluginHost")
+                    webView.webViewClient = WebViewClient()
+                    webView.webChromeClient = null
+                    webView.destroy()
                 }
             }
         )
@@ -359,8 +382,11 @@ private fun RenderSchemaWidget(
     pluginId: String,
     widget: PluginSchemaWidget,
     script: String?,
-    onOutput: (String) -> Unit
+    onOutput: (String) -> Unit,
+    depth: Int = 0
 ) {
+    if (depth > 24) return
+    val scope = rememberCoroutineScope()
     val baseModifier = applyScrollModifier(
         modifier = applySizeModifier(
             modifier = Modifier,
@@ -383,7 +409,9 @@ private fun RenderSchemaWidget(
             val label = widget.text ?: "Run"
             Button(
                 onClick = {
-                    onOutput(runSchemaAction(pluginId, widget, script))
+                    scope.launch {
+                        onOutput(runSchemaAction(pluginId, widget, script))
+                    }
                 },
                 modifier = baseModifier
             ) {
@@ -395,7 +423,9 @@ private fun RenderSchemaWidget(
             val label = widget.text ?: "Run"
             OutlinedButton(
                 onClick = {
-                    onOutput(runSchemaAction(pluginId, widget, script))
+                    scope.launch {
+                        onOutput(runSchemaAction(pluginId, widget, script))
+                    }
                 },
                 modifier = baseModifier
             ) {
@@ -409,11 +439,11 @@ private fun RenderSchemaWidget(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(widget.spacing.dp),
+                    verticalArrangement = Arrangement.spacedBy(widget.spacing.takeIf { it.isFinite() }?.coerceAtLeast(0f)?.dp ?: 0.dp),
                     horizontalAlignment = parseHorizontalAlignment(widget.align)
                 ) {
                     widget.children.forEach { child ->
-                        RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput)
+                        RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput, depth = depth + 1)
                     }
                 }
             }
@@ -426,11 +456,11 @@ private fun RenderSchemaWidget(
         "row" -> {
             Row(
                 modifier = baseModifier,
-                horizontalArrangement = Arrangement.spacedBy(widget.spacing.dp),
+                horizontalArrangement = Arrangement.spacedBy(widget.spacing.takeIf { it.isFinite() }?.coerceAtLeast(0f)?.dp ?: 0.dp),
                 verticalAlignment = parseVerticalAlignment(widget.align)
             ) {
                 widget.children.forEach { child ->
-                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput)
+                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput, depth = depth + 1)
                 }
             }
         }
@@ -441,7 +471,7 @@ private fun RenderSchemaWidget(
                 contentAlignment = parseContentAlignment(widget.align)
             ) {
                 widget.children.forEach { child ->
-                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput)
+                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput, depth = depth + 1)
                 }
             }
         }
@@ -459,33 +489,33 @@ private fun RenderSchemaWidget(
         else -> {
             Column(
                 modifier = baseModifier,
-                verticalArrangement = Arrangement.spacedBy(widget.spacing.dp),
+                verticalArrangement = Arrangement.spacedBy(widget.spacing.takeIf { it.isFinite() }?.coerceAtLeast(0f)?.dp ?: 0.dp),
                 horizontalAlignment = parseHorizontalAlignment(widget.align)
             ) {
                 widget.children.forEach { child ->
-                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput)
+                    RenderSchemaWidget(pluginId = pluginId, widget = child, script = script, onOutput = onOutput, depth = depth + 1)
                 }
             }
         }
     }
 }
 
-private fun runSchemaAction(pluginId: String, widget: PluginSchemaWidget, script: String?): String {
+private suspend fun runSchemaAction(pluginId: String, widget: PluginSchemaWidget, script: String?): String = withContext(Dispatchers.IO) {
     val action = widget.action
         ?.trim()
         ?.lowercase()
         ?.takeIf { it.isNotBlank() }
         ?: widget.function?.takeIf { it.isNotBlank() }?.let { "script.call" }
-        ?: return "Unsupported action"
-    return when (action) {
+        ?: return@withContext "Unsupported action"
+    when (action) {
         "r2" -> {
             val cmd = widget.command ?: ""
-            runBlocking { R2PipeManager.execute(cmd).getOrElse { "Error: ${it.message}" } }
+            R2PipeManager.execute(cmd).getOrElse { "Error: ${it.message}" }
         }
 
         "script" -> {
             val code = PluginManager.resolvePluginTextReference(pluginId, widget.script) ?: ""
-            runBlocking { PluginRuntime.runPluginScript(pluginId, code).getOrElse { "Error: ${it.message}" } }
+            PluginRuntime.runPluginScript(pluginId, code).getOrElse { "Error: ${it.message}" }
         }
 
         "script.call" -> {
@@ -493,7 +523,7 @@ private fun runSchemaAction(pluginId: String, widget: PluginSchemaWidget, script
             val scriptCode = PluginManager.resolvePluginTextReference(pluginId, widget.script)
                 ?.takeIf { it.isNotBlank() }
                 ?: script.orEmpty()
-            runBlocking { PluginRuntime.runPluginScriptFunction(pluginId, scriptCode, fn).getOrElse { "Error: ${it.message}" } }
+            PluginRuntime.runPluginScriptFunction(pluginId, scriptCode, fn).getOrElse { "Error: ${it.message}" }
         }
 
         "frida" -> {
@@ -632,7 +662,7 @@ private fun applySizeModifier(modifier: Modifier, widthSpec: String?, heightSpec
 
 private fun parseDp(spec: String?): Float? {
     if (spec.isNullOrBlank()) return null
-    return spec.trim().removeSuffix("dp").toFloatOrNull()
+    return spec.trim().removeSuffix("dp").toFloatOrNull()?.takeIf { it.isFinite() && it >= 0f }
 }
 
 private fun parseHorizontalAlignment(value: String?): Alignment.Horizontal {

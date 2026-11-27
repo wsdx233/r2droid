@@ -84,12 +84,17 @@ fun CustomCommandDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            if (command.isNotBlank()) {
+                            val cmd = command.trim()
+                            if (cmd.isNotBlank()) {
                                 isExecuting = true
                                 scope.launch {
-                                    val result = top.wsdx233.r2droid.util.R2PipeManager.execute(command, includeStderr = true)
-                                    output = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
-                                    isExecuting = false
+                                    try {
+                                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmd, includeStderr = true)
+                                        output = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
+                                        onConfirm(cmd)
+                                    } finally {
+                                        isExecuting = false
+                                    }
                                 }
                             }
                         },

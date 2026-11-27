@@ -79,7 +79,9 @@ class CrashActivity : ComponentActivity() {
                     onOpenIssue = {
                         val browserIntent = Intent(Intent.ACTION_VIEW,
                             "https://github.com/wsdx233/R2droid/issues".toUri())
-                        startActivity(browserIntent)
+                        runCatching { startActivity(browserIntent) }.onFailure {
+                            Toast.makeText(this, it.message ?: "No browser available", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }

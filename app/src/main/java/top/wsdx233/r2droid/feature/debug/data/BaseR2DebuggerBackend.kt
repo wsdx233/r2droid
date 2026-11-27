@@ -9,12 +9,14 @@ abstract class BaseR2DebuggerBackend(
 ) : DebuggerBackend {
 
     protected var lastRegisters: Map<String, Long> = emptyMap()
+    private var lastRegistersPipe: java.lang.ref.WeakReference<org.radare.r2pipe.kotlin.R2PipeSession>? = null
 
     protected abstract val registerCommands: List<String>
     protected abstract val breakpointListCommand: String
     protected abstract val seekCommand: String
 
     protected open suspend fun query(command: String): Result<String> = runner.executeForBackend(type, command)
+    protected open suspend fun queryR2(command: String): Result<String> = query(command)
     protected open fun registerRole(name: String): RegisterRole = registerRoleForName(name)
 
     override suspend fun refresh(): Result<DebugStateSnapshot> = suspendRunCatching {
@@ -64,7 +66,7 @@ abstract class BaseR2DebuggerBackend(
     }
 
     protected suspend fun readSeekAddress(): Result<Long> = suspendRunCatching {
-        runner.parseAddress(query(seekCommand).getOrThrow())
+        runner.parseAddress(queryR2(seekCommand).getOrThrow())
             ?: throw IllegalStateException("Unable to determine current seek address")
     }
 
@@ -83,6 +85,11 @@ abstract class BaseR2DebuggerBackend(
         parseRegisters(extractRegisterValues(registers))
 
     private fun parseRegisters(current: Map<String, Long>): List<DebugRegister> {
+        val activePipe = top.wsdx233.r2droid.util.R2PipeManager.activeSessionPipe
+        if (activePipe !== lastRegistersPipe?.get()) {
+            lastRegisters = emptyMap()
+            lastRegistersPipe = activePipe?.let { java.lang.ref.WeakReference(it) }
+        }
         val parsed = current.map { (name, value) ->
             DebugRegister(
                 name = name,
@@ -99,7 +106,7 @@ abstract class BaseR2DebuggerBackend(
     override suspend fun readMemory(address: Long, size: Int): Result<ByteArray> = suspendRunCatching {
         val safeSize = size.coerceIn(1, 4096)
         val addrHex = formatHexAddress(address)
-        val raw = query("pxj $safeSize @ $addrHex").getOrThrow()
+        val raw = queryR2("pxj $safeSize @ $addrHex").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         ByteArray(arr.length()) { index ->
             (runner.parseLongFlexible(arr.opt(index)) ?: 0L).toInt().toByte()
@@ -111,17 +118,17 @@ abstract class BaseR2DebuggerBackend(
         require(bytes.size <= 4096) { "Memory write exceeds 4096-byte limit" }
         val hex = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
         val addrHex = formatHexAddress(address)
-        query("wx $hex @ $addrHex").getOrThrow()
+        queryR2("wx $hex @ $addrHex").getOrThrow()
     }
 
     override suspend fun resolveExpression(expression: String): Result<Long> = suspendRunCatching {
         val trimmed = expression.trim()
         require(trimmed.isNotEmpty()) { "Expression cannot be empty" }
         parseExplicitLiteral(trimmed)?.let { return@suspendRunCatching it }
-        require('\n' !in trimmed && '\r' !in trimmed && ';' !in trimmed) {
+        require(!top.wsdx233.r2droid.util.R2Sanitizer.hasCommandInjection(trimmed)) {
             "Invalid characters in expression"
         }
-        val output = query("?v $trimmed").getOrThrow()
+        val output = queryR2("?v $trimmed").getOrThrow()
         runner.parseAddress(output)
             ?: throw IllegalArgumentException("Unable to evaluate expression: $trimmed")
     }
@@ -143,18 +150,18 @@ abstract class BaseR2DebuggerBackend(
         if (wordBytes in setOf(4, 8)) {
             val pxrJsonCandidates = listOf("pxr${wordBytes}j $bytes @ $spHex", "pxrj $bytes @ $spHex")
             for (cmd in pxrJsonCandidates) {
-                val parsed = query(cmd).mapCatching { runner.parseStackJson(it) }.getOrNull()
+                val parsed = queryR2(cmd).mapCatching { runner.parseStackJson(it) }.getOrNull()
                 if (!parsed.isNullOrEmpty()) return parsed.take(count)
             }
             val pxrTextCandidates = listOf("pxr$wordBytes $bytes @ $spHex", "pxr $bytes @ $spHex")
             for (cmd in pxrTextCandidates) {
-                val parsed = query(cmd).mapCatching { runner.parseStackText(it) }.getOrNull()
+                val parsed = queryR2(cmd).mapCatching { runner.parseStackText(it) }.getOrNull()
                 if (!parsed.isNullOrEmpty()) return parsed.take(count)
             }
         }
 
         val format = when (wordBytes) { 1 -> "pxj"; 2 -> "pxhj"; 4 -> "pxwj"; 8 -> "pxqj"; else -> error("Invalid stack word size") }
-        val raw = query("$format $bytes @ $spHex").getOrThrow()
+        val raw = queryR2("$format $bytes @ $spHex").getOrThrow()
         val arr = runner.parseJsonArray(raw)
         val entries = mutableListOf<DebugStackEntry>()
         for (i in 0 until arr.length()) {

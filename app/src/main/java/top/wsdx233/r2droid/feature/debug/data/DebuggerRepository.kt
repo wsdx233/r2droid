@@ -164,17 +164,21 @@ class DebuggerRepository @Inject constructor(
                     false
                 }
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
-                val result = target.continueRun()
-                val removed = if (pipe === R2PipeManager.activeSessionPipe) {
-                    when {
-                        addedTemp -> target.removeBreakpoint(address).isSuccess
-                        existing != null && !existing.enabled -> {
-                            target.setBreakpointEnabled(address, false)
-                            false
+                var removed = false
+                val result = try {
+                    target.continueRun()
+                } finally {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        if (pipe === R2PipeManager.activeSessionPipe) {
+                            when {
+                                addedTemp -> removed = target.removeBreakpoint(address).isSuccess
+                                existing != null && !existing.enabled -> {
+                                    target.setBreakpointEnabled(address, false)
+                                }
+                            }
                         }
-                        else -> false
                     }
-                } else false
+                }
                 val snapshot = result.getOrThrow()
                 if (removed) snapshot.copy(breakpoints = snapshot.breakpoints.filterNot { it.address == address })
                 else snapshot
@@ -192,7 +196,11 @@ class DebuggerRepository @Inject constructor(
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
                 target.writeRegister(pcName, address).getOrThrow()
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
-                runner.executeForBackend(backend, "s 0x${address.toULong().toString(16)}").getOrThrow()
+                if (backend == DebugBackend.FRIDA) {
+                    runner.execute("s 0x${address.toULong().toString(16)}").getOrThrow()
+                } else {
+                    runner.executeForBackend(backend, "s 0x${address.toULong().toString(16)}").getOrThrow()
+                }
                 check(pipe === R2PipeManager.activeSessionPipe) { "Debug session changed" }
                 target.refresh().getOrThrow()
             }

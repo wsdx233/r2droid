@@ -3,9 +3,12 @@ package top.wsdx233.r2droid.util
 import android.content.Context
 import android.system.Os
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -20,6 +23,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 data class R2FridaInstallState(
     val status: Status = Status.IDLE,
@@ -37,6 +41,7 @@ object R2FridaInstaller {
     private const val GITEE_API = "https://gitee.com/api/v5/repos/$RELEASE_REPO/releases/tags"
     private const val PLUGIN_FILE_NAME = "io_frida.so"
     private val jsonParser = Json { ignoreUnknownKeys = true }
+    private val installMutex = Mutex()
 
     private val _state = MutableStateFlow(R2FridaInstallState())
     val state = _state.asStateFlow()
@@ -56,19 +61,23 @@ object R2FridaInstaller {
         _state.value = R2FridaInstallState()
     }
 
-    suspend fun install(context: Context, useChinaSource: Boolean) = withContext(Dispatchers.IO) {
-        try {
-            if (SettingsManager.useProotMode) {
-                installInProot(context)
-            } else {
-                installHostPlugin(context, useChinaSource)
+    suspend fun install(context: Context, useChinaSource: Boolean) = installMutex.withLock {
+        withContext(Dispatchers.IO) {
+            try {
+                if (SettingsManager.useProotMode) {
+                    installInProot(context.applicationContext)
+                } else {
+                    installHostPlugin(context.applicationContext, useChinaSource)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Install failed", e)
+                _state.value = R2FridaInstallState(
+                    R2FridaInstallState.Status.ERROR,
+                    message = e.message ?: "Unknown error"
+                )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Install failed", e)
-            _state.value = R2FridaInstallState(
-                R2FridaInstallState.Status.ERROR,
-                message = e.message ?: "Unknown error"
-            )
         }
     }
 
@@ -158,6 +167,7 @@ object R2FridaInstaller {
         try {
             _state.value = R2FridaInstallState(R2FridaInstallState.Status.DOWNLOADING, version = version)
             downloadFile(asset.downloadUrl, temporary)
+            verifyDownloadedPlugin(temporary, asset.checksumUrl)
             _state.value = _state.value.copy(status = R2FridaInstallState.Status.INSTALLING, progress = 0.95f)
             Os.chmod(temporary.absolutePath, 493)
             Os.rename(temporary.absolutePath, target.absolutePath)
@@ -168,7 +178,11 @@ object R2FridaInstaller {
         _state.value = R2FridaInstallState(R2FridaInstallState.Status.DONE, progress = 1f, version = version)
     }
 
-    internal data class HostAsset(val version: String, val downloadUrl: String)
+    internal data class HostAsset(
+        val version: String,
+        val downloadUrl: String,
+        val checksumUrl: String? = null
+    )
 
     internal fun resolveHostAsset(
         runtimeVersion: String,
@@ -193,7 +207,18 @@ object R2FridaInstaller {
                     asset.stringValue("browser_download_url") == downloadUrl
             }
             if (!hasMatchingAsset) return null
-            return HostAsset(release.stringValue("name").orEmpty().ifBlank { runtimeVersion }, downloadUrl)
+            val checksumUrl = assets.firstNotNullOfOrNull { asset ->
+                val obj = asset as? JsonObject ?: return@firstNotNullOfOrNull null
+                val name = obj.stringValue("name")
+                if (name == "SHA256SUMS" || name == "$PLUGIN_FILE_NAME.sha256") {
+                    obj.stringValue("browser_download_url")
+                } else null
+            }
+            return HostAsset(
+                version = release.stringValue("name").orEmpty().ifBlank { runtimeVersion },
+                downloadUrl = downloadUrl,
+                checksumUrl = checksumUrl
+            )
         }
 
         if (useChinaSource) findAsset(GITEE_API, "gitee.com")?.let { return it }
@@ -226,6 +251,50 @@ object R2FridaInstaller {
         }
     }
 
+    private fun verifyDownloadedPlugin(file: File, checksumUrl: String?) {
+        val header = ByteArray(4)
+        val read = file.inputStream().use { it.read(header) }
+        check(
+            read == 4 &&
+                header[0] == 0x7f.toByte() &&
+                header[1] == 'E'.code.toByte() &&
+                header[2] == 'L'.code.toByte() &&
+                header[3] == 'F'.code.toByte()
+        ) { "Downloaded $PLUGIN_FILE_NAME is not a valid ELF shared library" }
+
+        if (!checksumUrl.isNullOrBlank()) {
+            val checksumText = fetchRelease(checksumUrl)
+                ?: error("Failed to fetch $PLUGIN_FILE_NAME checksum from $checksumUrl")
+            val expected = checksumText.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .firstNotNullOfOrNull { line ->
+                    val parts = line.split(Regex("\\s+"), limit = 2)
+                    val hash = parts.firstOrNull()?.lowercase().orEmpty()
+                    val name = parts.getOrNull(1)?.removePrefix("*")?.trim().orEmpty()
+                    if (hash.length == 64 && hash.all { it in "0123456789abcdef" } &&
+                        (name.isEmpty() || name == PLUGIN_FILE_NAME || name.endsWith("/$PLUGIN_FILE_NAME"))
+                    ) hash else null
+                } ?: error("Invalid checksum file format for $PLUGIN_FILE_NAME")
+            val actual = sha256(file)
+            check(actual.equals(expected, ignoreCase = true)) {
+                "SHA-256 mismatch for $PLUGIN_FILE_NAME"
+            }
+        }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buf = ByteArray(8192)
+            var n: Int
+            while (input.read(buf).also { n = it } != -1) {
+                digest.update(buf, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun downloadFile(url: String, target: File) {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000
@@ -233,6 +302,8 @@ object R2FridaInstaller {
         conn.instanceFollowRedirects = true
         var downloaded = 0L
         try {
+            val status = conn.responseCode
+            check(status in 200..299) { "r2frida download failed with HTTP $status" }
             val totalBytes = conn.contentLengthLong
             BufferedInputStream(conn.inputStream).use { input ->
                 FileOutputStream(target).use { output ->

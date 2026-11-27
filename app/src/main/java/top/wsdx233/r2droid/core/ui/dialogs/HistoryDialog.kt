@@ -123,7 +123,7 @@ private fun HistoryItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "0x${entry.address.toString(16).uppercase()}",
+                    text = "0x${entry.address.toULong().toString(16).uppercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.Bold,

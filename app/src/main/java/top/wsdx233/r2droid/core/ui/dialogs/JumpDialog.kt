@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,6 +30,7 @@ fun JumpDialog(
     var text by remember { mutableStateOf(initialAddress) }
     var error by remember { mutableStateOf<String?>(null) }
     var isResolving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val title = stringResource(R.string.dialog_jump_title)
     val addressLabel = stringResource(R.string.dialog_jump_address_label)
@@ -74,33 +76,39 @@ fun JumpDialog(
                         return@TextButton
                     }
 
-                    // 尝试解析输入的表达式
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    scope.launch {
                         isResolving = true
                         error = null
-
                         try {
-                            // 首先尝试直接解析为十六进制地址
-                            val addrStr = input.removePrefix("0x").trim()
-                            val addr = addrStr.toLong(16)
-                            onJump(addr)
-                            onDismiss()
-                            return@launch
-                        } catch (e: NumberFormatException) {
-                            // 如果不是有效的十六进制地址，尝试解析为表达式
-                        }
+                            // Explicit 0x/0X prefix: parse directly as unsigned 64-bit hex address.
+                            if (input.startsWith("0x", ignoreCase = true)) {
+                                val parsed = input.drop(2).trim().toULongOrNull(16)?.toLong()
+                                if (parsed != null) {
+                                    onJump(parsed)
+                                    onDismiss()
+                                    return@launch
+                                }
+                            }
 
-                        // 尝试解析为函数名、符号或表达式
-                        val result = onResolveExpression(input)
-                        if (result.isSuccess) {
-                            val addr = result.getOrThrow()
-                            onJump(addr)
-                            onDismiss()
-                        } else {
-                            error = errorResolve
-                        }
+                            // Try resolving symbol/expression first so names like `add` or `dead` work properly.
+                            val result = onResolveExpression(input)
+                            if (result.isSuccess) {
+                                onJump(result.getOrThrow())
+                                onDismiss()
+                                return@launch
+                            }
 
-                        isResolving = false
+                            // Fallback to bare unsigned hex address (e.g. "401000").
+                            val bareHex = input.toULongOrNull(16)?.toLong()
+                            if (bareHex != null) {
+                                onJump(bareHex)
+                                onDismiss()
+                            } else {
+                                error = errorResolve
+                            }
+                        } finally {
+                            isResolving = false
+                        }
                     }
                 },
                 enabled = !isResolving

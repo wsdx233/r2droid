@@ -5,10 +5,11 @@ import androidx.room.*
 
 @Entity(
     tableName = "sections",
-    indices = [Index(value = ["name"])]
+    indices = [Index(value = ["name"]), Index(value = ["vAddr"])]
 )
 data class SectionEntity(
-    @PrimaryKey val vAddr: Long,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val vAddr: Long,
     val name: String,
     val size: Long,
     val vSize: Long,
@@ -21,10 +22,10 @@ interface SectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<SectionEntity>)
 
-    @Query("SELECT * FROM sections ORDER BY vAddr ASC")
+    @Query("SELECT * FROM sections ORDER BY (vAddr < 0) ASC, vAddr ASC, id ASC")
     fun getPagingSource(): PagingSource<Int, SectionEntity>
 
-    @Query("SELECT * FROM sections WHERE name LIKE '%' || :query || '%' ORDER BY vAddr ASC")
+    @Query("SELECT * FROM sections WHERE name LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY (vAddr < 0) ASC, vAddr ASC, id ASC")
     fun search(query: String): PagingSource<Int, SectionEntity>
 
     @Query("DELETE FROM sections")

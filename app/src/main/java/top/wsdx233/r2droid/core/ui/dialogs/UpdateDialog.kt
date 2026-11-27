@@ -70,8 +70,19 @@ fun UpdateDialog(
                 }
                 TextButton(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
-                        context.startActivity(intent)
+                        val uri = Uri.parse(updateInfo.downloadUrl.trim())
+                        val scheme = uri.scheme?.lowercase()
+                        if (scheme == "https" || scheme == "http") {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            }.onFailure {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    it.message ?: "No browser available",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                         onDismiss()
                     }
                 ) {

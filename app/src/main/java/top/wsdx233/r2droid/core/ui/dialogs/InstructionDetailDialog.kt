@@ -49,7 +49,7 @@ fun InstructionDetailDialog(
             Column {
                 Text(stringResource(R.string.instr_detail_title))
                 Text(
-                    text = "@ 0x${targetAddress.toString(16).uppercase()}",
+                    text = "@ 0x${targetAddress.toULong().toString(16).uppercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = LocalAppFont.current,
                     color = MaterialTheme.colorScheme.primary
@@ -137,7 +137,7 @@ private fun InstructionDetailContent(
         DetailRow(stringResource(R.string.instr_detail_mnemonic), detail.mnemonic)
         DetailRow(
             stringResource(R.string.instr_detail_address),
-            "0x${detail.addr.toString(16).uppercase()}"
+            "0x${detail.addr.toULong().toString(16).uppercase()}"
         )
         DetailRow(stringResource(R.string.instr_detail_bytes), detail.bytes.uppercase())
         DetailRow(stringResource(R.string.instr_detail_size), "${detail.size} bytes")
@@ -302,14 +302,14 @@ private fun DetailAddressRow(
         if (onJump != null) {
             TextButton(onClick = { onJump(address) }) {
                 Text(
-                    text = "0x${address.toString(16).uppercase()}",
+                    text = "0x${address.toULong().toString(16).uppercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = LocalAppFont.current
                 )
             }
         } else {
             Text(
-                text = "0x${address.toString(16).uppercase()}",
+                text = "0x${address.toULong().toString(16).uppercase()}",
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = LocalAppFont.current,
                 color = MaterialTheme.colorScheme.primary,

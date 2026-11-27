@@ -19,8 +19,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
@@ -181,7 +187,12 @@ fun TerminalScreen() {
                                 val clip = clipboard.primaryClip
                                 if (clip != null && clip.itemCount > 0) {
                                     val pasteText = clip.getItemAt(0).coerceToText(ctx).toString()
-                                    session?.write(pasteText)
+                                    val emulator = session?.emulator
+                                    if (emulator != null) {
+                                        emulator.paste(pasteText)
+                                    } else {
+                                        session?.write(pasteText)
+                                    }
                                 }
                             }
 
@@ -213,7 +224,16 @@ fun TerminalScreen() {
 
         // Extra keys bar
         ExtraKeysBar(
-            onSendKey = { seq -> terminalSession?.write(seq) },
+            onSendKey = { seq ->
+                val transformed = top.wsdx233.r2droid.activity.TerminalActivity.applyExtraKeyModifiers(
+                    seq, ctrlPressed, altPressed
+                )
+                if (ctrlPressed || altPressed) {
+                    ctrlPressed = false
+                    altPressed = false
+                }
+                terminalSession?.write(transformed)
+            },
             ctrlActive = ctrlPressed,
             altActive = altPressed,
             onCtrlToggle = { ctrlPressed = !ctrlPressed },
@@ -221,6 +241,9 @@ fun TerminalScreen() {
         )
     }
 }
+
+private const val MAX_COMMAND_OUTPUT_CHARS = 65_536
+private const val MAX_COMMAND_HISTORY_ITEMS = 200
 
 /**
  * Command Screen for executing custom r2 commands.
@@ -233,22 +256,57 @@ fun CommandScreen(
     commandHistory: List<Pair<String, String>>,
     onCommandHistoryChange: (List<Pair<String, String>>) -> Unit
 ) {
-    var output by remember { mutableStateOf("") }
     var isExecuting by remember { mutableStateOf(false) }
     var showSuggestions by remember { mutableStateOf(false) }
 
+    val latestHistory by rememberUpdatedState(commandHistory)
+    val latestOnHistoryChange by rememberUpdatedState(onCommandHistoryChange)
     val scope = rememberCoroutineScope()
-    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val listState = rememberLazyListState()
 
     // Auto-scroll to bottom when history changes
     LaunchedEffect(commandHistory.size) {
-        scrollState.animateScrollTo(scrollState.maxValue)
+        if (commandHistory.isNotEmpty()) {
+            listState.animateScrollToItem(commandHistory.lastIndex)
+        }
     }
-    
+
+    val executeCurrentCommand: () -> Unit = {
+        if (command.isNotBlank() && !isExecuting) {
+            val cmdToExecute = command.trim()
+            onCommandChange("")
+
+            // Handle cls/clear locally
+            if (cmdToExecute.equals("cls", ignoreCase = true) ||
+                cmdToExecute.equals("clear", ignoreCase = true)
+            ) {
+                latestOnHistoryChange(emptyList())
+            } else {
+                isExecuting = true
+                scope.launch {
+                    try {
+                        val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmdToExecute, includeStderr = true)
+                        val rawText = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
+                        val resultText = if (rawText.length > MAX_COMMAND_OUTPUT_CHARS) {
+                            rawText.take(MAX_COMMAND_OUTPUT_CHARS) + "\n... [truncated ${rawText.length - MAX_COMMAND_OUTPUT_CHARS} chars]"
+                        } else {
+                            rawText
+                        }
+                        val updated = (latestHistory + (cmdToExecute to resultText)).takeLast(MAX_COMMAND_HISTORY_ITEMS)
+                        latestOnHistoryChange(updated)
+                    } finally {
+                        isExecuting = false
+                    }
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color(0xFF1E1E1E))
+            .imePadding()
     ) {
         // Command history and output area
         Box(
@@ -256,23 +314,23 @@ fun CommandScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            Box(
+            SelectionContainer(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(8.dp)
-                    .verticalScroll(scrollState)
             ) {
-                SelectionContainer {
-                    Column {
-                        commandHistory.forEach { (cmd, result) ->
-                            // Command
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    itemsIndexed(commandHistory) { _, (cmd, result) ->
+                        Column {
                             Text(
                                 text = "$ $cmd",
                                 color = MaterialTheme.colorScheme.primary,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 style = MaterialTheme.typography.bodySmall
                             )
-                            // Result
                             if (result.isNotEmpty()) {
                                 Text(
                                     text = result,
@@ -282,16 +340,6 @@ fun CommandScreen(
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
-                        }
-
-                        // Current output (if executing)
-                        if (output.isNotEmpty()) {
-                            Text(
-                                text = output,
-                                color = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                style = MaterialTheme.typography.bodySmall
-                            )
                         }
                     }
                 }
@@ -350,6 +398,8 @@ fun CommandScreen(
                     ) 
                 },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { executeCurrentCommand() }),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -364,30 +414,7 @@ fun CommandScreen(
             
             // Execute button
             FilledIconButton(
-                onClick = {
-                    if (command.isNotBlank() && !isExecuting) {
-                        val cmdToExecute = command.trim()
-                        onCommandChange("")
-
-                        // Handle cls/clear locally
-                        if (cmdToExecute.equals("cls", ignoreCase = true) ||
-                            cmdToExecute.equals("clear", ignoreCase = true)
-                        ) {
-                            onCommandHistoryChange(emptyList())
-                            output = ""
-                            return@FilledIconButton
-                        }
-
-                        isExecuting = true
-                        scope.launch {
-                            val result = top.wsdx233.r2droid.util.R2PipeManager.execute(cmdToExecute, includeStderr = true)
-                            val resultText = result.getOrDefault("Error: ${result.exceptionOrNull()?.message}")
-                            onCommandHistoryChange(commandHistory + (cmdToExecute to resultText))
-                            output = ""
-                            isExecuting = false
-                        }
-                    }
-                },
+                onClick = executeCurrentCommand,
                 enabled = command.isNotBlank() && !isExecuting
             ) {
                 if (isExecuting) {

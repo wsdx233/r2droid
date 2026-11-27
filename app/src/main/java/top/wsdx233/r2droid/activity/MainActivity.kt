@@ -14,8 +14,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -27,7 +29,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.feature.project.ProjectScreen
 import top.wsdx233.r2droid.feature.about.AboutScreen
@@ -49,6 +53,7 @@ import top.wsdx233.r2droid.util.R2PipeManager
 class MainActivity : ComponentActivity() {
 
     private val pendingFileUri = mutableStateOf<Uri?>(null)
+    private val pendingFileNonce = mutableIntStateOf(0)
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(SettingsManager.withAppLanguage(newBase))
@@ -59,7 +64,13 @@ class MainActivity : ComponentActivity() {
 
         // Initialize SettingsManager
         SettingsManager.initialize(applicationContext)
-        top.wsdx233.r2droid.feature.ai.data.AiSettingsManager.initialize(applicationContext)
+        top.wsdx233.r2droid.feature.ai.data.AiSettingsManager.initialize(
+            applicationContext,
+            loadSessionsImmediately = false
+        )
+        lifecycleScope.launch(Dispatchers.IO) {
+            top.wsdx233.r2droid.feature.ai.data.AiSettingsManager.reloadSessions()
+        }
 
         // 启动常驻通知保活服务
         if (SettingsManager.keepAliveNotification) {
@@ -78,8 +89,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 处理外部 Intent 传入的文件 URI
-        pendingFileUri.value = extractFileUri(intent)
+        // 处理外部 Intent 传入的文件 URI（仅首次创建时消费，避免配置变更/重建后重复打开）
+        if (savedInstanceState == null) {
+            extractFileUri(intent)?.let { uri ->
+                pendingFileUri.value = uri
+                pendingFileNonce.intValue++
+            }
+        }
 
         enableEdgeToEdge()
         setContent {
@@ -105,10 +121,18 @@ class MainActivity : ComponentActivity() {
                     val installState by R2Installer.installState.collectAsState()
 
                     if (installState.isInstalling) {
-                        InstallScreen(installState = installState)
+                        InstallScreen(
+                            installState = installState,
+                            onRetry = {
+                                lifecycleScope.launch {
+                                    R2Installer.checkAndInstall(applicationContext)
+                                }
+                            }
+                        )
                     } else {
                         MainAppContent(
                             pendingFileUri = pendingFileUri.value,
+                            pendingFileNonce = pendingFileNonce.intValue,
                             onPendingFileUriConsumed = { pendingFileUri.value = null }
                         )
                     }
@@ -119,7 +143,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pendingFileUri.value = extractFileUri(intent)
+        setIntent(intent)
+        extractFileUri(intent)?.let { uri ->
+            pendingFileUri.value = uri
+            pendingFileNonce.intValue++
+        }
     }
 
     private fun extractFileUri(intent: Intent): Uri? {
@@ -146,6 +174,7 @@ enum class AppScreen {
 @Composable
 fun MainAppContent(
     pendingFileUri: Uri? = null,
+    pendingFileNonce: Int = 0,
     onPendingFileUriConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -189,6 +218,7 @@ fun MainAppContent(
     } else {
         MainAppNavigation(
             pendingFileUri = pendingFileUri,
+            pendingFileNonce = pendingFileNonce,
             onPendingFileUriConsumed = onPendingFileUriConsumed
         )
     }
@@ -197,9 +227,12 @@ fun MainAppContent(
 @Composable
 fun MainAppNavigation(
     pendingFileUri: Uri? = null,
+    pendingFileNonce: Int = 0,
     onPendingFileUriConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val navScope = rememberCoroutineScope()
+    var externalOpenTrigger by rememberSaveable { mutableIntStateOf(0) }
     var currentScreen by rememberSaveable {
         mutableStateOf(
             when {
@@ -232,19 +265,25 @@ fun MainAppNavigation(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val result = OnboardingTutorial.start(context)
+                        val appContext = context.applicationContext
                         showTutorialPrompt = false
-                        result.onSuccess {
-                            currentScreen = AppScreen.Project
-                        }.onFailure { error ->
-                            Toast.makeText(
-                                context,
-                                context.getString(
-                                    top.wsdx233.r2droid.R.string.tutorial_unavailable,
-                                    error.message ?: "unknown"
-                                ),
-                                Toast.LENGTH_LONG
-                            ).show()
+                        navScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                OnboardingTutorial.start(appContext)
+                            }
+                            result.onSuccess {
+                                currentScreen = AppScreen.Project
+                                externalOpenTrigger++
+                            }.onFailure { error ->
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        top.wsdx233.r2droid.R.string.tutorial_unavailable,
+                                        error.message ?: "unknown"
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     }
                 ) {
@@ -284,18 +323,20 @@ fun MainAppNavigation(
         }
     }
 
-    LaunchedEffect(pendingFileUri) {
+    LaunchedEffect(pendingFileUri, pendingFileNonce) {
         if (pendingFileUri != null) {
             val filePath = IntentFileResolver.resolve(context, pendingFileUri)
             if (filePath != null) {
                 R2PipeManager.pendingFilePath = filePath
+                R2PipeManager.pendingCustomCommand = null
                 R2PipeManager.pendingProjectRestore = null
                 R2PipeManager.pendingAutoSaveProject = null
-                currentScreen = if (AppVariant.shouldGuideProotInstall(context)) {
+                if (AppVariant.shouldGuideProotInstall(context)) {
                     Toast.makeText(context, context.getString(top.wsdx233.r2droid.R.string.proot_setup_required_message), Toast.LENGTH_SHORT).show()
-                    AppScreen.ProotSetup
+                    currentScreen = AppScreen.ProotSetup
                 } else {
-                    AppScreen.Project
+                    currentScreen = AppScreen.Project
+                    externalOpenTrigger++
                 }
             }
             onPendingFileUriConsumed()
@@ -327,18 +368,24 @@ fun MainAppNavigation(
             SettingsScreen(
                 onBackClick = { currentScreen = AppScreen.Home },
                 onStartTutorial = {
-                    val result = OnboardingTutorial.start(context)
-                    result.onSuccess {
-                        currentScreen = AppScreen.Project
-                    }.onFailure { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                top.wsdx233.r2droid.R.string.tutorial_unavailable,
-                                error.message ?: "unknown"
-                            ),
-                            Toast.LENGTH_LONG
-                        ).show()
+                    val appContext = context.applicationContext
+                    navScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            OnboardingTutorial.start(appContext)
+                        }
+                        result.onSuccess {
+                            currentScreen = AppScreen.Project
+                            externalOpenTrigger++
+                        }.onFailure { error ->
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    top.wsdx233.r2droid.R.string.tutorial_unavailable,
+                                    error.message ?: "unknown"
+                                ),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 }
             )
@@ -410,7 +457,8 @@ fun MainAppNavigation(
                 currentScreen = AppScreen.Home
             }
             ProjectScreen(
-                onNavigateBack = { currentScreen = AppScreen.Home }
+                onNavigateBack = { currentScreen = AppScreen.Home },
+                externalOpenTrigger = externalOpenTrigger
             )
         }
         AppScreen.ProotSetup -> {

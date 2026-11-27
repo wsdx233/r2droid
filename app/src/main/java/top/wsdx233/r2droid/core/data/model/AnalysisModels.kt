@@ -4,6 +4,9 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.core.data.parser.CLexer
+import top.wsdx233.r2droid.util.R2Sanitizer
+import top.wsdx233.r2droid.util.optUnsignedLong
+import top.wsdx233.r2droid.util.optUnsignedLongOrNull
 
 data class InfoField(
     val label: String,
@@ -128,11 +131,24 @@ data class BinInfo(
                     if (value.length() == 0) emptyList()
                     else listOf(InfoField(label = key, value = value.toString()))
                 }
-                is String -> value.takeIf { it.isNotBlank() }?.let { listOf(InfoField(label = key, value = it)) }.orEmpty()
+                is String -> {
+                    val trimmed = value.trim()
+                    if (trimmed.isEmpty()) emptyList()
+                    else if (isAddressLike(sectionName, key)) {
+                        val parsed = R2Sanitizer.parseUnsignedAddress(trimmed)
+                        if (parsed != null) {
+                            listOf(InfoField(label = key, value = R2Sanitizer.formatHexAddress(parsed), address = parsed))
+                        } else {
+                            listOf(InfoField(label = key, value = value))
+                        }
+                    } else {
+                        listOf(InfoField(label = key, value = value))
+                    }
+                }
                 is Boolean -> listOf(InfoField(label = key, value = value.toString(), booleanValue = value))
                 is Number -> {
-                    val address = if (isAddressLike(sectionName, key)) value.toLong() else null
-                    val formattedValue = address?.let { "0x${it.toString(16)}" } ?: value.toString()
+                    val address = if (isAddressLike(sectionName, key)) R2Sanitizer.toUnsignedLongOrNull(value) else null
+                    val formattedValue = address?.let { R2Sanitizer.formatHexAddress(it) } ?: value.toString()
                     listOf(InfoField(label = key, value = formattedValue, address = address))
                 }
                 else -> listOf(InfoField(label = key, value = value.toString()))
@@ -165,13 +181,13 @@ data class Section(
         fun fromJson(json: JSONObject): Section {
             return Section(
                 name = json.optString("name", ""),
-                size = json.optLong("size", 0),
-                vSize = json.optLong("vsize", 0),
+                size = json.optUnsignedLong("size", 0L),
+                vSize = json.optUnsignedLong("vsize", 0L),
                 perm = json.optString("perm", ""),
-                vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0),
+                vAddr = json.optUnsignedLong("vaddr", 0L),
+                pAddr = json.optUnsignedLong("paddr", 0L),
                 type = json.optString("type", ""),
-                flags = if (json.isNull("flags")) null else json.optLong("flags")
+                flags = json.optUnsignedLongOrNull("flags")
             )
         }
     }
@@ -190,8 +206,8 @@ data class Symbol(
             return Symbol(
                 name = json.optString("name", ""),
                 type = json.optString("type", ""),
-                vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0),
+                vAddr = json.optUnsignedLong("vaddr", 0L),
+                pAddr = json.optUnsignedLong("paddr", 0L),
                 isImported = json.optBoolean("is_imported", false),
                 realname = json.optString("realname", "").ifEmpty { null }
             )
@@ -212,7 +228,7 @@ data class ImportInfo(
                 name = json.optString("name", ""),
                 ordinal = json.optInt("ordinal", 0),
                 type = json.optString("type", ""),
-                plt = json.optLong("plt", 0)
+                plt = json.optUnsignedLong("plt", 0L)
             )
         }
     }
@@ -238,10 +254,10 @@ data class ExportInfo(
                 realname = json.optString("realname", "").ifEmpty { null },
                 ordinal = json.optInt("ordinal", 0),
                 bind = json.optString("bind", ""),
-                size = json.optLong("size", 0),
+                size = json.optUnsignedLong("size", 0L),
                 type = json.optString("type", ""),
-                vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0),
+                vAddr = json.optUnsignedLong("vaddr", 0L),
+                pAddr = json.optUnsignedLong("paddr", 0L),
                 isImported = json.optBoolean("is_imported", false)
             )
         }
@@ -259,8 +275,8 @@ data class Relocation(
             return Relocation(
                 name = json.optString("name", ""),
                 type = json.optString("type", ""),
-                vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0)
+                vAddr = json.optUnsignedLong("vaddr", 0L),
+                pAddr = json.optUnsignedLong("paddr", 0L)
             )
         }
     }
@@ -276,7 +292,7 @@ data class StringInfo(
         fun fromJson(json: JSONObject): StringInfo {
             return StringInfo(
                 string = json.optString("string", ""),
-                vAddr = json.optLong("vaddr", 0),
+                vAddr = json.optUnsignedLong("vaddr", 0L),
                 section = json.optString("section", ""),
                 type = json.optString("type", "")
             )
@@ -295,8 +311,8 @@ data class FunctionInfo(
         fun fromJson(json: JSONObject): FunctionInfo {
             return FunctionInfo(
                 name = json.optString("name", ""),
-                addr = json.optLong("addr", json.optLong("offset", 0)),
-                size = json.optLong("size", 0),
+                addr = json.optUnsignedLongOrNull("addr") ?: json.optUnsignedLong("offset", 0L),
+                size = json.optUnsignedLong("size", 0L),
                 nbbs = json.optInt("nbbs", 0),
                 signature = json.optString("signature", "")
             )
@@ -334,7 +350,7 @@ data class DecompilationData(
                 val start = sb.length
                 sb.append(line.optString("str", ""))
                 if (line.has("offset")) {
-                    offsetAnnotations.add(DecompilationAnnotation(start, sb.length, "syntax_highlight", offset = line.optLong("offset", 0)))
+                    offsetAnnotations.add(DecompilationAnnotation(start, sb.length, "syntax_highlight", offset = line.optUnsignedLong("offset", 0L)))
                 }
                 if (i < lines.length() - 1) sb.append("\n")
             }
@@ -359,7 +375,7 @@ data class DecompilationAnnotation(
                 end = json.optInt("end", 0),
                 type = json.optString("type", ""),
                 syntaxHighlight = json.optString("syntax_highlight").takeIf { it.isNotEmpty() },
-                offset = json.optLong("offset", 0)
+                offset = json.optUnsignedLong("offset", 0L)
             )
         }
     }
@@ -375,7 +391,7 @@ data class DisasmRef(
     companion object {
         fun fromJson(json: JSONObject): DisasmRef {
             return DisasmRef(
-                addr = json.optLong("addr", 0),
+                addr = json.optUnsignedLong("addr", 0L),
                 type = json.optString("type", "")
             )
         }
@@ -434,7 +450,7 @@ data class DisasmInstruction(
             }
             
             return DisasmInstruction(
-                addr = json.optLong("addr", json.optLong("offset", 0)),
+                addr = json.optUnsignedLongOrNull("addr") ?: json.optUnsignedLong("offset", 0L),
                 opcode = json.optString("opcode", ""),
                 bytes = json.optString("bytes", ""),
                 type = json.optString("type", ""),
@@ -443,11 +459,11 @@ data class DisasmInstruction(
                 family = json.optString("family", ""),
                 flags = flagsList,
                 comment = json.optString("comment").takeIf { it.isNotEmpty() }?.let { tryDecodeBase64(it) },
-                fcnAddr = json.optLong("fcn_addr", 0),
-                fcnLast = json.optLong("fcn_last", 0),
-                jump = if (json.has("jump")) json.optLong("jump") else null,
-                fail = if (json.has("fail")) json.optLong("fail") else null,
-                ptr = if (json.has("ptr")) json.optLong("ptr") else null,
+                fcnAddr = json.optUnsignedLong("fcn_addr", 0L),
+                fcnLast = json.optUnsignedLong("fcn_last", 0L),
+                jump = json.optUnsignedLongOrNull("jump"),
+                fail = json.optUnsignedLongOrNull("fail"),
+                ptr = json.optUnsignedLongOrNull("ptr"),
                 refptr = json.optBoolean("refptr", false),
                 refs = refsList,
                 xrefs = xrefsList,
@@ -462,7 +478,7 @@ data class DisasmInstruction(
     fun isJumpOut(): Boolean {
         if (fcnAddr == 0L || fcnLast == 0L) return false
         val target = jump ?: return false
-        return target !in fcnAddr..fcnLast
+        return target.toULong() !in fcnAddr.toULong()..fcnLast.toULong()
     }
     
     /**
@@ -471,8 +487,9 @@ data class DisasmInstruction(
      */
     fun hasJumpIn(): Boolean {
         if (fcnAddr == 0L || fcnLast == 0L) return false
+        val fcnRange = fcnAddr.toULong()..fcnLast.toULong()
         return xrefs.any { xref ->
-            xref.type == "CODE" && (xref.addr !in fcnAddr..fcnLast)
+            xref.type == "CODE" && (xref.addr.toULong() !in fcnRange)
         }
     }
 
@@ -530,11 +547,11 @@ data class EntryPoint(
     companion object {
         fun fromJson(json: JSONObject): EntryPoint {
             return EntryPoint(
-                vAddr = json.optLong("vaddr", 0),
-                pAddr = json.optLong("paddr", 0),
-                bAddr = json.optLong("baddr", 0),
-                lAddr = json.optLong("laddr", 0),
-                hAddr = json.optLong("haddr", 0),
+                vAddr = json.optUnsignedLong("vaddr", 0L),
+                pAddr = json.optUnsignedLong("paddr", 0L),
+                bAddr = json.optUnsignedLong("baddr", 0L),
+                lAddr = json.optUnsignedLong("laddr", 0L),
+                hAddr = json.optUnsignedLong("haddr", 0L),
                 type = json.optString("type", "")
             )
         }
@@ -556,13 +573,13 @@ data class EntropyData(
             if (entropyArr != null) {
                 for (i in 0 until entropyArr.length()) {
                     val e = entropyArr.getJSONObject(i)
-                    list.add(EntropyBlock(e.optLong("addr"), e.optInt("value")))
+                    list.add(EntropyBlock(e.optUnsignedLong("addr"), e.optInt("value")))
                 }
             }
             return EntropyData(
                 json.optInt("blocksize"),
-                json.optLong("address"),
-                json.optLong("size"),
+                json.optUnsignedLong("address"),
+                json.optUnsignedLong("size"),
                 list
             )
         }
@@ -593,7 +610,7 @@ data class BlockStatsData(
                 for (i in 0 until blocksArr.length()) {
                     val b = blocksArr.getJSONObject(i)
                     list.add(BlockStat(
-                        b.optLong("offset"),
+                        b.optUnsignedLong("offset"),
                         b.optInt("size"),
                         b.optInt("flags", 0),
                         b.optInt("comments", 0),
@@ -604,8 +621,8 @@ data class BlockStatsData(
                 }
             }
             return BlockStatsData(
-                json.optLong("from"),
-                json.optLong("to"),
+                json.optUnsignedLong("from"),
+                json.optUnsignedLong("to"),
                 json.optInt("blocksize"),
                 list
             )
@@ -629,8 +646,8 @@ data class ArchInfo(
                 list.add(ArchInfo(
                     b.optString("arch"),
                     b.optInt("bits"),
-                    b.optLong("offset"),
-                    b.optLong("size"),
+                    b.optUnsignedLong("offset"),
+                    b.optUnsignedLong("size"),
                     b.optString("machine")
                 ))
             }
@@ -654,10 +671,10 @@ data class HeaderInfo(
                 val h = jsonArray.getJSONObject(i)
                 list.add(HeaderInfo(
                     h.optString("name"),
-                    h.optLong("vaddr"),
-                    h.optLong("paddr"),
+                    h.optUnsignedLong("vaddr"),
+                    h.optUnsignedLong("paddr"),
                     h.optInt("size"),
-                    h.optLong("value"),
+                    h.optUnsignedLong("value"),
                     h.optString("format")
                 ))
             }
@@ -682,8 +699,8 @@ data class MainAddressInfo(val vaddr: Long, val paddr: Long) {
     companion object {
         fun fromJson(json: JSONObject): MainAddressInfo {
             return MainAddressInfo(
-                json.optLong("vaddr"),
-                json.optLong("paddr")
+                json.optUnsignedLong("vaddr"),
+                json.optUnsignedLong("paddr")
             )
         }
     }
@@ -707,8 +724,8 @@ data class Xref(
         fun fromJson(json: JSONObject): Xref {
             return Xref(
                 type = json.optString("type", ""),
-                from = json.optLong("from", 0),
-                to = json.optLong("to", 0),
+                from = json.optUnsignedLong("from", 0L),
+                to = json.optUnsignedLong("to", 0L),
                 opcode = json.optString("opcode", ""),
                 fcnName = json.optString("fcn_name", ""),
                 refName = json.optString("refname", "")
@@ -779,9 +796,9 @@ data class FunctionDetailInfo(
         fun fromJson(json: JSONObject): FunctionDetailInfo {
             return FunctionDetailInfo(
                 name = json.optString("name", ""),
-                addr = json.optLong("addr", json.optLong("offset", 0)),
-                size = json.optLong("size", 0),
-                realSize = json.optLong("realsz", 0),
+                addr = json.optUnsignedLongOrNull("addr") ?: json.optUnsignedLong("offset", 0L),
+                size = json.optUnsignedLong("size", 0L),
+                realSize = json.optUnsignedLong("realsz", 0L),
                 noReturn = json.optBoolean("noreturn", false),
                 stackFrame = json.optInt("stackframe", 0),
                 callType = json.optString("calltype", ""),
@@ -793,8 +810,8 @@ data class FunctionDetailInfo(
                 ninstrs = json.optInt("ninstrs", 0),
                 edges = json.optInt("edges", 0),
                 signature = json.optString("signature", ""),
-                minAddr = json.optLong("minaddr", 0),
-                maxAddr = json.optLong("maxaddr", 0),
+                minAddr = json.optUnsignedLong("minaddr", 0L),
+                maxAddr = json.optUnsignedLong("maxaddr", 0L),
                 nlocals = json.optInt("nlocals", 0),
                 nargs = json.optInt("nargs", 0),
                 isPure = json.optString("is-pure", "false") == "true",
@@ -819,8 +836,8 @@ data class FunctionXref(
         fun fromJson(json: JSONObject): FunctionXref {
             return FunctionXref(
                 type = json.optString("type", ""),
-                from = json.optLong("from", 0),
-                to = json.optLong("to", 0)
+                from = json.optUnsignedLong("from", 0L),
+                to = json.optUnsignedLong("to", 0L)
             )
         }
     }
@@ -902,13 +919,13 @@ data class InstructionDetail(
                 description = json.optString("description", ""),
                 pseudo = json.optString("pseudo", ""),
                 mnemonic = json.optString("mnemonic", ""),
-                addr = json.optLong("addr", 0),
+                addr = json.optUnsignedLong("addr", 0L),
                 bytes = json.optString("bytes", ""),
                 size = json.optInt("size", 0),
                 type = json.optString("type", ""),
                 family = json.optString("family", ""),
-                jump = if (json.has("jump")) json.optLong("jump") else null,
-                fail = if (json.has("fail")) json.optLong("fail") else null,
+                jump = json.optUnsignedLongOrNull("jump"),
+                fail = json.optUnsignedLongOrNull("fail"),
                 esil = json.optString("esil", ""),
                 cycles = json.optInt("cycles", 0),
                 sign = json.optBoolean("sign", false)
@@ -934,13 +951,13 @@ data class GraphBlockInstruction(
     companion object {
         fun fromJson(json: JSONObject): GraphBlockInstruction {
             return GraphBlockInstruction(
-                addr = json.optLong("addr", 0),
+                addr = json.optUnsignedLong("addr", 0L),
                 opcode = json.optString("opcode", ""),
                 disasm = json.optString("disasm", json.optString("opcode", "")),
                 type = json.optString("type", ""),
                 bytes = json.optString("bytes", ""),
-                jump = if (json.has("jump")) json.optLong("jump") else null,
-                fail = if (json.has("fail")) json.optLong("fail") else null
+                jump = json.optUnsignedLongOrNull("jump"),
+                fail = json.optUnsignedLongOrNull("fail")
             )
         }
     }
@@ -1061,8 +1078,8 @@ data class GraphData(
             val nodes = mutableListOf<GraphNode>()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                val name = obj.optString("name", "0x%X".format(obj.optLong("addr", 0)))
-                val addr = obj.optLong("addr", 0)
+                val addr = obj.optUnsignedLong("addr", 0L)
+                val name = obj.optString("name", R2Sanitizer.formatHexAddressUpper(addr))
                 nodes.add(GraphNode(
                     id = i,
                     title = name,
@@ -1088,25 +1105,21 @@ data class GraphData(
 
             for (i in 0 until blocksArray.length()) {
                 val block = blocksArray.getJSONObject(i)
-                val addr = block.optLong("addr", 0)
+                val addr = block.optUnsignedLong("addr", 0L)
                 blockAddrToId[addr] = i
             }
 
             // Second pass: build nodes with edges
             for (i in 0 until blocksArray.length()) {
                 val block = blocksArray.getJSONObject(i)
-                val addr = block.optLong("addr", 0)
+                val addr = block.optUnsignedLong("addr", 0L)
                 val opsArray = block.optJSONArray("ops")
                 val instructions = mutableListOf<GraphBlockInstruction>()
                 val jumpTargets = linkedSetOf<Long>()
 
                 // Prefer block-level control-flow first (covers agj switch blocks and explicit jump/fail)
-                if (block.has("jump")) {
-                    jumpTargets.add(block.optLong("jump"))
-                }
-                if (block.has("fail")) {
-                    jumpTargets.add(block.optLong("fail"))
-                }
+                block.optUnsignedLongOrNull("jump")?.let { jumpTargets.add(it) }
+                block.optUnsignedLongOrNull("fail")?.let { jumpTargets.add(it) }
 
                 // Parse switch cases from block.switchop.cases[*].jump
                 block.optJSONObject("switchop")
@@ -1114,9 +1127,7 @@ data class GraphData(
                     ?.let { cases ->
                         for (caseIndex in 0 until cases.length()) {
                             val caseObj = cases.optJSONObject(caseIndex) ?: continue
-                            if (caseObj.has("jump")) {
-                                jumpTargets.add(caseObj.optLong("jump"))
-                            }
+                            caseObj.optUnsignedLongOrNull("jump")?.let { jumpTargets.add(it) }
                         }
                     }
 
@@ -1135,7 +1146,7 @@ data class GraphData(
 
                 // Only add implicit fallthrough when block is not terminal.
                 if (jumpTargets.isEmpty() && !isTerminal && i + 1 < blocksArray.length()) {
-                    val nextAddr = blocksArray.getJSONObject(i + 1).optLong("addr", 0)
+                    val nextAddr = blocksArray.getJSONObject(i + 1).optUnsignedLong("addr", 0L)
                     jumpTargets.add(nextAddr)
                 }
 
@@ -1143,7 +1154,7 @@ data class GraphData(
 
                 nodes.add(GraphNode(
                     id = i,
-                    title = "0x%X".format(addr),
+                    title = R2Sanitizer.formatHexAddressUpper(addr),
                     address = addr,
                     instructions = instructions,
                     outNodes = outNodes

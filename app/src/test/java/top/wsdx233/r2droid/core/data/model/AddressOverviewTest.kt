@@ -53,4 +53,21 @@ class AddressOverviewTest {
         assertEquals(emptyList<OverviewBand>(), overview.rasterize(base + 1000, Long.MAX_VALUE, 8))
         assertNull(AddressRegion.fromSize(base, 2001, "invalid", "r-x"))
     }
+
+    @Test fun unsignedUpperHalfKernelAddressesWorkAcrossLookupAndRaster() {
+        val base = 0xffffffff81000000UL.toLong()
+        val text = AddressRegion.fromSize(base, 0x400, ".text", "r-x")!!
+        val data = AddressRegion.fromSize(base + 0x800, 0x400, ".data", "rw-")!!
+        val overview = AddressOverview.of(listOf(data, text))
+
+        assertEquals(base, overview.startAddress)
+        assertEquals(base + 0xC00, overview.endAddress)
+        assertEquals(text, overview.regionAt(base + 0x100))
+        assertNull(overview.regionAt(base + 0x500))
+        assertEquals(data, overview.regionAt(base + 0x900))
+        assertEquals(
+            listOf(OverviewBand(0, 2, EXECUTABLE, false), OverviewBand(4, 6, WRITABLE, false)),
+            overview.rasterize(base, base + 0xC00, 6)
+        )
+    }
 }

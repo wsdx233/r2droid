@@ -201,7 +201,9 @@ fun MemoryPanel(
                 ) {
                     IconButton(
                         onClick = {
-                            val prev = (address - MEMORY_PAGE_STEP).coerceAtLeast(0L)
+                            val step = MEMORY_PAGE_STEP.toULong()
+                            val cur = address.toULong()
+                            val prev = if (cur > step) (cur - step).toLong() else 0L
                             queryInput = formatDebugHex(prev)
                             onReadAddress(prev)
                         },
@@ -216,7 +218,9 @@ fun MemoryPanel(
                     }
                     IconButton(
                         onClick = {
-                            val next = address + MEMORY_PAGE_STEP
+                            val step = MEMORY_PAGE_STEP.toULong()
+                            val cur = address.toULong()
+                            val next = if (cur <= ULong.MAX_VALUE - step) (cur + step).toLong() else ULong.MAX_VALUE.toLong()
                             queryInput = formatDebugHex(next)
                             onReadAddress(next)
                         },

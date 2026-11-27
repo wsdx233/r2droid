@@ -48,6 +48,7 @@ static int create_subprocess(JNIEnv* env,
             ptsname_r(ptm, devname, sizeof(devname))
 #endif
        ) {
+        close(ptm);
         return throw_runtime_exception(env, "Cannot grantpt()/unlockpt()/ptsname_r() on /dev/ptmx");
     }
 
@@ -64,6 +65,7 @@ static int create_subprocess(JNIEnv* env,
 
     pid_t pid = fork();
     if (pid < 0) {
+        close(ptm);
         return throw_runtime_exception(env, "Fork failed");
     } else if (pid > 0) {
         *pProcessId = (int) pid;
@@ -162,7 +164,7 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
     char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
     int ptm = create_subprocess(env, cmd_utf8, cmd_cwd, argv, envp, &procId, rows, columns, cell_width, cell_height);
     (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
-    (*env)->ReleaseStringUTFChars(env, cmd, cmd_cwd);
+    (*env)->ReleaseStringUTFChars(env, cwd, cmd_cwd);
 
     if (argv) {
         for (char** tmp = argv; *tmp; ++tmp) free(*tmp);
@@ -171,6 +173,10 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
     if (envp) {
         for (char** tmp = envp; *tmp; ++tmp) free(*tmp);
         free(envp);
+    }
+
+    if (ptm < 0 || (*env)->ExceptionCheck(env)) {
+        return ptm;
     }
 
     int* pProcId = (int*) (*env)->GetPrimitiveArrayCritical(env, processIdArray, NULL);

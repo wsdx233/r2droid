@@ -281,6 +281,9 @@ fun FridaSearchScreen(
     onWriteValue: (address: String, value: String) -> Unit,
     onBatchWrite: (value: String) -> Unit,
     onToggleFreeze: (address: String, value: String) -> Unit,
+    onSetFreeze: (address: String, value: String, enabled: Boolean) -> Unit = { addr, v, enabled ->
+        if (enabled != frozenAddresses.containsKey(addr)) onToggleFreeze(addr, v)
+    },
     onValueTypeChange: (SearchValueType) -> Unit,
     onCompareChange: (SearchCompare) -> Unit,
     onRegionsChange: (Set<MemoryRegion>) -> Unit,
@@ -424,7 +427,7 @@ fun FridaSearchScreen(
             onDismiss = { editingResult = null },
             onSave = { newVal, freeze ->
                 onWriteValue(result.address, newVal)
-                if (freeze) onToggleFreeze(result.address, newVal)
+                onSetFreeze(result.address, newVal, freeze)
                 editingResult = null
             }
         )

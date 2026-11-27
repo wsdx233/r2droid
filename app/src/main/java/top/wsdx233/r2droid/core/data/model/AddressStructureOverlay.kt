@@ -13,7 +13,7 @@ data class FunctionSpan(
 ) {
     companion object {
         fun from(addr: Long, size: Long, name: String, nbbs: Int): FunctionSpan? {
-            if (addr < 0 || size <= 0 || size > Long.MAX_VALUE - addr) return null
+            if (size <= 0L || size.toULong() > ULong.MAX_VALUE - addr.toULong()) return null
             val lower = name.lowercase()
             val isImp = lower.startsWith("sym.imp.") ||
                 lower.startsWith("reloc.") ||
@@ -30,7 +30,7 @@ data class StringSpan(val start: Long, val endExclusive: Long) {
     companion object {
         fun from(addr: Long, byteLength: Int): StringSpan? {
             val len = byteLength.coerceAtLeast(1).toLong()
-            if (addr < 0 || len > Long.MAX_VALUE - addr) return null
+            if (len.toULong() > ULong.MAX_VALUE - addr.toULong()) return null
             return StringSpan(addr, addr + len)
         }
     }
@@ -59,20 +59,21 @@ class AddressStructureOverlay private constructor(
 
     fun functionAt(address: Long): FunctionSpan? {
         if (functions.isEmpty()) return null
+        val target = address.toULong()
         var lo = 0
         var hi = functions.lastIndex
         var candidate: FunctionSpan? = null
         while (lo <= hi) {
             val mid = (lo + hi).ushr(1)
             val fn = functions[mid]
-            if (fn.start <= address) {
+            if (fn.start.toULong() <= target) {
                 candidate = fn
                 lo = mid + 1
             } else {
                 hi = mid - 1
             }
         }
-        return candidate?.takeIf { address < it.endExclusive }
+        return candidate?.takeIf { target < it.endExclusive.toULong() }
     }
 
     /** Fast copy that preserves already-sorted function and string lists when only runtime markers change. */
@@ -94,11 +95,11 @@ class AddressStructureOverlay private constructor(
         ): AddressStructureOverlay {
             if (functions.isEmpty() && strings.isEmpty() && markers.isEmpty()) return Empty
             val sortedFunctions = functions
-                .filter { it.start >= 0 && it.endExclusive > it.start }
-                .sortedWith(compareBy<FunctionSpan> { it.start }.thenByDescending { it.endExclusive - it.start })
+                .filter { it.endExclusive.toULong() > it.start.toULong() }
+                .sortedWith(compareBy<FunctionSpan> { it.start.toULong() }.thenByDescending { it.endExclusive.toULong() - it.start.toULong() })
             val sortedStrings = strings
-                .filter { it.start >= 0 && it.endExclusive > it.start }
-                .sortedBy { it.start }
+                .filter { it.endExclusive.toULong() > it.start.toULong() }
+                .sortedBy { it.start.toULong() }
             return AddressStructureOverlay(sortedFunctions, sortedStrings, markers)
         }
     }
@@ -156,7 +157,9 @@ object OverviewRasterizer {
         byteProfile: BinaryByteProfile = BinaryByteProfile.Empty,
         overlay: AddressStructureOverlay = AddressStructureOverlay.Empty
     ): DetailedOverviewRaster {
-        if (rows <= 0 || start < 0 || endExclusive <= start) return DetailedOverviewRaster.Empty
+        val uStart = start.toULong()
+        val uEnd = endExclusive.toULong()
+        if (rows <= 0 || uEnd <= uStart) return DetailedOverviewRaster.Empty
         val hasOverview = overview !== AddressOverview.Empty && overview.startAddress != null
         val hasBytes = !byteProfile.isEmpty
         if (!hasOverview && !hasBytes && overlay.isEmpty) return DetailedOverviewRaster.Empty
@@ -175,7 +178,7 @@ object OverviewRasterizer {
             rowKinds.fill(RegionKind.READ_ONLY)
         }
 
-        val range = (endExclusive - 1 - start).coerceAtLeast(1).toDouble()
+        val range = (uEnd - 1UL - uStart).coerceAtLeast(1UL).toDouble()
         val hasFunctions = overlay.functions.isNotEmpty()
         val funcCoverage = if (hasFunctions) FloatArray(rows) else null
         val funcBestCov = if (hasFunctions) FloatArray(rows) else null
@@ -190,11 +193,13 @@ object OverviewRasterizer {
             val fImp = funcImport!!
             val fComp = funcComplexity!!
             overlay.functions.forEachIndexed { idx, fn ->
-                if (fn.endExclusive <= start) return@forEachIndexed
-                if (fn.start >= endExclusive) return@forEachIndexed
-                val top = ((maxOf(fn.start, start) - start) / range) * rows
-                val bottom = if (fn.endExclusive >= endExclusive) rows.toDouble()
-                else ((fn.endExclusive - start) / range) * rows
+                val fnStart = fn.start.toULong()
+                val fnEnd = fn.endExclusive.toULong()
+                if (fnEnd <= uStart) return@forEachIndexed
+                if (fnStart >= uEnd) return@forEachIndexed
+                val top = ((maxOf(fnStart, uStart) - uStart).toDouble() / range) * rows
+                val bottom = if (fnEnd >= uEnd) rows.toDouble()
+                else (((fnEnd - uStart).toDouble() / range) * rows).coerceAtMost(rows.toDouble())
                 val rowStart = top.toInt().coerceIn(0, rows - 1)
                 val rowEnd = ceil(bottom).toInt().coerceIn(rowStart + 1, rows)
                 val comp = (ln((1 + fn.nbbs).toFloat()) / COMPLEXITY_LOG_MAX).coerceIn(0f, 1f)
@@ -220,11 +225,13 @@ object OverviewRasterizer {
         if (hasStrings) {
             val sCov = stringCoverage!!
             for (str in overlay.strings) {
-                if (str.endExclusive <= start) continue
-                if (str.start >= endExclusive) break
-                val top = ((maxOf(str.start, start) - start) / range) * rows
-                val bottom = if (str.endExclusive >= endExclusive) rows.toDouble()
-                else ((str.endExclusive - start) / range) * rows
+                val sStart = str.start.toULong()
+                val sEnd = str.endExclusive.toULong()
+                if (sEnd <= uStart) continue
+                if (sStart >= uEnd) break
+                val top = ((maxOf(sStart, uStart) - uStart).toDouble() / range) * rows
+                val bottom = if (sEnd >= uEnd) rows.toDouble()
+                else (((sEnd - uStart).toDouble() / range) * rows).coerceAtMost(rows.toDouble())
                 val rowStart = top.toInt().coerceIn(0, rows - 1)
                 val rowEnd = ceil(bottom).toInt().coerceIn(rowStart + 1, rows)
                 for (r in rowStart until rowEnd) {
@@ -243,7 +250,7 @@ object OverviewRasterizer {
             var zero = 0f
             var ascii = 0f
             if (hasBytes) {
-                val addr = start + (((r + 0.5) / rows) * range).toLong()
+                val addr = (uStart + (((r + 0.5) / rows) * range).toULong()).toLong()
                 val bucket = byteProfile.bucketForAddress(addr)
                 if (bucket >= 0) {
                     ent = byteProfile.entropyAt(bucket) / 255f
@@ -363,8 +370,9 @@ object OverviewRasterizer {
         } else {
             val bestByRow = LinkedHashMap<Int, OverviewMarkerKind>()
             for (marker in overlay.markers) {
-                if (marker.address < start || marker.address >= endExclusive) continue
-                val row = (((marker.address - start).toDouble() / range) * rows)
+                val mAddr = marker.address.toULong()
+                if (mAddr < uStart || mAddr >= uEnd) continue
+                val row = (((mAddr - uStart).toDouble() / range) * rows)
                     .toInt()
                     .coerceIn(0, rows - 1)
                 val existing = bestByRow[row]

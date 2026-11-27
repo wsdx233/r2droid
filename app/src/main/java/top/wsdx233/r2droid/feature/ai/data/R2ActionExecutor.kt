@@ -9,6 +9,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import top.wsdx233.r2droid.util.R2PipeManager
@@ -105,41 +106,63 @@ class R2ActionExecutor(private val cacheDir: File? = null) {
         }
 
         private suspend fun executeJavaScript(code: String): String = withContext(Dispatchers.IO) {
-            val outputLines = mutableListOf<String>()
-            val quickJs = QuickJs.create(Dispatchers.IO)
-            quickJs.use { js ->
-                js.define("console") {
-                    function("log") { args ->
-                        outputLines.add(args.joinToString(" "))
-                        Unit
+            withTimeout(JS_EXECUTION_TIMEOUT_MS) {
+                val outputBuffer = StringBuilder()
+                var truncated = false
+                fun appendOutputLine(line: String) {
+                    if (truncated) return
+                    val needed = line.length + if (outputBuffer.isNotEmpty()) 1 else 0
+                    if (outputBuffer.length + needed > MAX_JS_OUTPUT_CHARS) {
+                        val remaining = (MAX_JS_OUTPUT_CHARS - outputBuffer.length).coerceAtLeast(0)
+                        if (remaining > 0) {
+                            if (outputBuffer.isNotEmpty()) outputBuffer.append('\n')
+                            outputBuffer.append(line.take((remaining - 1).coerceAtLeast(0)))
+                        }
+                        outputBuffer.append("\n[JS output truncated]")
+                        truncated = true
+                        return
                     }
-                    function("error") { args ->
-                        outputLines.add("ERROR: " + args.joinToString(" "))
-                        Unit
-                    }
+                    if (outputBuffer.isNotEmpty()) outputBuffer.append('\n')
+                    outputBuffer.append(line)
                 }
-                js.define("r2") {
-                    function<String, String>("cmd") { command ->
-                        check(isCurrent()) { STALE_TARGET }
-                        runBlocking { pinned.execute(command) }.getOrThrow()
+
+                val callerContext = currentCoroutineContext()
+                val quickJs = QuickJs.create(Dispatchers.IO)
+                quickJs.use { js ->
+                    js.define("console") {
+                        function("log") { args ->
+                            appendOutputLine(args.joinToString(" "))
+                            Unit
+                        }
+                        function("error") { args ->
+                            appendOutputLine("ERROR: " + args.joinToString(" "))
+                            Unit
+                        }
                     }
-                }
-                js.evaluate<Unit>(
-                    """
-                    r2.cmdj = function(command) {
-                        var raw = r2.cmd(command);
-                        if (raw === null || raw === undefined) return null;
-                        var trimmed = String(raw).trim();
-                        if (!trimmed) return null;
-                        return JSON.parse(trimmed);
-                    };
-                    """.trimIndent()
-                )
-                val result = js.evaluate<Any?>(code)
-                when {
-                    outputLines.isNotEmpty() -> outputLines.joinToString("\n")
-                    result != null && result != Unit -> result.toString()
-                    else -> ""
+                    js.define("r2") {
+                        function<String, String>("cmd") { command ->
+                            callerContext.ensureActive()
+                            check(isCurrent()) { STALE_TARGET }
+                            runBlocking { pinned.execute(command) }.getOrThrow()
+                        }
+                    }
+                    js.evaluate<Unit>(
+                        """
+                        r2.cmdj = function(command) {
+                            var raw = r2.cmd(command);
+                            if (raw === null || raw === undefined) return null;
+                            var trimmed = String(raw).trim();
+                            if (!trimmed) return null;
+                            return JSON.parse(trimmed);
+                        };
+                        """.trimIndent()
+                    )
+                    val result = js.evaluate<Any?>(code)
+                    when {
+                        outputBuffer.isNotEmpty() -> outputBuffer.toString()
+                        result != null && result != Unit -> result.toString().take(MAX_JS_OUTPUT_CHARS)
+                        else -> ""
+                    }
                 }
             }
         }
@@ -192,6 +215,8 @@ class R2ActionExecutor(private val cacheDir: File? = null) {
         const val RUN_JS = "run_js"
         const val RUN_FRIDA = "run_frida"
         private const val STALE_TARGET = "The active radare2 session changed or disconnected."
+        private const val MAX_JS_OUTPUT_CHARS = 512 * 1024
+        private const val JS_EXECUTION_TIMEOUT_MS = 60_000L
 
         private fun definition(
             name: String,

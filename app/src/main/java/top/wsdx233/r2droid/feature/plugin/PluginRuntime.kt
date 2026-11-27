@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import top.wsdx233.r2droid.core.data.model.SavedProject
@@ -59,6 +60,10 @@ object PluginRuntime {
         val process: Process,
         val outputQueue: LinkedBlockingQueue<String>
     )
+
+    private const val MAX_PROCESS_OUTPUT_QUEUE = 4096
+    private const val MAX_PLUGIN_LOG_CHARS = 512 * 1024
+    private const val PICKER_TIMEOUT_MS = 5 * 60_000L
 
     private val processSessions = ConcurrentHashMap<String, ProcessSession>()
     private val appContextRef = java.util.concurrent.atomic.AtomicReference<Context?>(null)
@@ -331,34 +336,44 @@ object PluginRuntime {
     }
 
     suspend fun pickFile(pluginId: String, requestId: String): Result<String> = withContext(Dispatchers.IO) {
+        val key = pickerKey(pluginId, requestId)
+        val deferred = CompletableDeferred<String>()
         runCatching {
             val context = createContext(pluginId)
             requirePermission(context, Permission.SAF_PICKER)
-            val key = pickerKey(pluginId, requestId)
-            check(!pendingFilePickers.containsKey(key)) { "picker request already pending" }
-            val deferred = CompletableDeferred<String>()
-            pendingFilePickers[key] = deferred
-            val result = deferred.await()
-            pendingFilePickers.remove(key)
-            result
-        }.onFailure {
-            pendingFilePickers.remove(pickerKey(pluginId, requestId))
+            check(pendingFilePickers.putIfAbsent(key, deferred) == null) { "picker request already pending" }
+            withTimeout(PICKER_TIMEOUT_MS) { deferred.await() }
+        }.also {
+            pendingFilePickers.remove(key, deferred)
         }
     }
 
     suspend fun pickDirectory(pluginId: String, requestId: String): Result<String> = withContext(Dispatchers.IO) {
+        val key = pickerKey(pluginId, requestId)
+        val deferred = CompletableDeferred<String>()
         runCatching {
             val context = createContext(pluginId)
             requirePermission(context, Permission.SAF_PICKER)
-            val key = pickerKey(pluginId, requestId)
-            check(!pendingDirPickers.containsKey(key)) { "picker request already pending" }
-            val deferred = CompletableDeferred<String>()
-            pendingDirPickers[key] = deferred
-            val result = deferred.await()
-            pendingDirPickers.remove(key)
-            result
-        }.onFailure {
-            pendingDirPickers.remove(pickerKey(pluginId, requestId))
+            check(pendingDirPickers.putIfAbsent(key, deferred) == null) { "picker request already pending" }
+            withTimeout(PICKER_TIMEOUT_MS) { deferred.await() }
+        }.also {
+            pendingDirPickers.remove(key, deferred)
+        }
+    }
+
+    fun cancelPendingPickers(pluginId: String) {
+        val prefix = "$pluginId#"
+        pendingFilePickers.entries.removeAll { (key, deferred) ->
+            if (key.startsWith(prefix)) {
+                deferred.completeExceptionally(IllegalStateException("file pick cancelled"))
+                true
+            } else false
+        }
+        pendingDirPickers.entries.removeAll { (key, deferred) ->
+            if (key.startsWith(prefix)) {
+                deferred.completeExceptionally(IllegalStateException("directory pick cancelled"))
+                true
+            } else false
         }
     }
 
@@ -500,16 +515,29 @@ object PluginRuntime {
     }
 
     private fun executePluginScript(context: RunContext, code: String): String {
-        val logs = mutableListOf<String>()
+        val logs = StringBuilder()
+        var logsTruncated = false
+        fun appendLog(line: String) {
+            if (logsTruncated) return
+            val extra = line.length + if (logs.isNotEmpty()) 1 else 0
+            if (logs.length + extra > MAX_PLUGIN_LOG_CHARS) {
+                if (logs.isNotEmpty()) logs.append('\n')
+                logs.append("[plugin log truncated]")
+                logsTruncated = true
+                return
+            }
+            if (logs.isNotEmpty()) logs.append('\n')
+            logs.append(line)
+        }
         val quickJs = QuickJs.create(Dispatchers.IO)
         quickJs.use { qjs ->
             qjs.define("console") {
                 function("log") { args ->
-                    logs += args.joinToString(" ")
+                    appendLog(args.joinToString(" "))
                     Unit
                 }
                 function("error") { args ->
-                    logs += "ERROR: " + args.joinToString(" ")
+                    appendLog("ERROR: " + args.joinToString(" "))
                     Unit
                 }
             }
@@ -723,7 +751,7 @@ object PluginRuntime {
                 function("emit") { args ->
                     val event = args.firstOrNull()?.toString() ?: "event"
                     val payload = args.drop(1).joinToString(" ")
-                    logs += "[emit] $event $payload"
+                    appendLog("[emit] $event $payload")
                     Unit
                 }
             }
@@ -738,7 +766,7 @@ object PluginRuntime {
             }
 
             val result = runBlocking { qjs.evaluate<Any?>(code) }?.toString().orEmpty()
-            val logText = logs.joinToString("\n")
+            val logText = logs.toString()
             return when {
                 logText.isNotBlank() && result.isNotBlank() -> "$logText\n$result"
                 logText.isNotBlank() -> logText
@@ -767,11 +795,7 @@ object PluginRuntime {
         val pathSep = File.pathSeparator
 
         // 对齐 r2pipe 关键运行环境，保证插件进程可找到 radare2 依赖库
-        val appFilesDir = context.installDir.parentFile
-            ?.parentFile
-            ?.parentFile
-            ?.takeIf { it.exists() }
-            ?: context.installDir
+        val appFilesDir = appContextRef.get()?.filesDir ?: context.installDir
 
         val r2LibDir = File(appFilesDir, "radare2/lib")
         val libsDir = File(appFilesDir, "libs")
@@ -806,25 +830,7 @@ object PluginRuntime {
         env["PATH"] = "$extraPath$pathSep$systemPath"
 
         val process = processBuilder.start()
-
-        val queue = LinkedBlockingQueue<String>()
-        val reader = Thread {
-            runCatching {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { queue.offer(it) }
-                }
-            }
-            queue.offer("[[exit:${process.exitValueOrMinusOne()}]]")
-        }
-        reader.isDaemon = true
-        reader.name = "PluginProc-${context.pluginId}-$sessionId"
-        reader.start()
-
-        processSessions[key] = ProcessSession(
-            key = key,
-            process = process,
-            outputQueue = queue
-        )
+        registerProcessReader(context.pluginId, sessionId, key, process)
         return "ok"
     }
 
@@ -854,6 +860,9 @@ object PluginRuntime {
         while (lines.size < maxLines) {
             val next = session.outputQueue.poll() ?: break
             lines += next
+        }
+        if (!session.process.isAlive && session.outputQueue.isEmpty()) {
+            processSessions.remove(key, session)
         }
         return lines.joinToString("\n")
     }
@@ -904,14 +913,19 @@ object PluginRuntime {
     }
 
     private fun registerProcessReader(pluginId: String, sessionId: String, key: String, process: Process) {
-        val queue = LinkedBlockingQueue<String>()
+        val queue = LinkedBlockingQueue<String>(MAX_PROCESS_OUTPUT_QUEUE)
+        fun enqueueBounded(line: String) {
+            while (!queue.offer(line)) {
+                queue.poll()
+            }
+        }
         val reader = Thread {
             runCatching {
                 process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { queue.offer(it) }
+                    lines.forEach { enqueueBounded(it) }
                 }
             }
-            queue.offer("[[exit:${process.exitValueOrMinusOne()}]]")
+            enqueueBounded("[[exit:${process.exitValueOrMinusOne()}]]")
         }
         reader.isDaemon = true
         reader.name = "PluginProc-$pluginId-$sessionId"
@@ -926,11 +940,14 @@ object PluginRuntime {
 
     private fun stopProcessByKey(key: String): Boolean {
         val session = processSessions.remove(key) ?: return false
+        runCatching { session.process.outputStream.close() }
+        runCatching { session.process.inputStream.close() }
+        runCatching { session.process.errorStream.close() }
         runCatching {
             if (session.process.isAlive) {
                 session.process.destroy()
                 Thread.sleep(80)
-                if (session.process.isAlive) {
+                if (session.process.isAlive && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     session.process.destroyForcibly()
                 }
             }
