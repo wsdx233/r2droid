@@ -7,7 +7,9 @@ import android.content.Context
 import android.graphics.Color
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.WindowManager.LayoutParams
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,12 +68,31 @@ import top.wsdx233.r2droid.core.ui.components.CommandSuggestButton
 import top.wsdx233.r2droid.core.ui.components.CommandSuggestionPanel
 import top.wsdx233.r2droid.util.R2Runtime
 
+@Composable
+private fun UseAdjustResizeSoftInput() {
+    // MainActivity uses adjustPan for other editors. Screens with imePadding() need ADJUST_RESIZE
+    // so the window does not pan top content off-screen or double-shift the input above the IME,
+    // while ProjectBottomBar stays stably anchored behind the IME.
+    val window = LocalActivity.current?.window
+    DisposableEffect(window) {
+        if (window == null) return@DisposableEffect onDispose {}
+        val original = window.attributes.softInputMode
+        @Suppress("DEPRECATION")
+        window.setSoftInputMode(
+            (original and LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        onDispose { window.setSoftInputMode(original) }
+    }
+}
+
 /**
  * Terminal Screen that embeds a TerminalView to display a shell session.
  * This is a Compose-based implementation based on TerminalActivity.
  */
 @Composable
 fun TerminalScreen() {
+    UseAdjustResizeSoftInput()
+
     val context = LocalContext.current
     val view = LocalView.current
     
@@ -256,6 +277,8 @@ fun CommandScreen(
     commandHistory: List<Pair<String, String>>,
     onCommandHistoryChange: (List<Pair<String, String>>) -> Unit
 ) {
+    UseAdjustResizeSoftInput()
+
     var isExecuting by remember { mutableStateOf(false) }
     var showSuggestions by remember { mutableStateOf(false) }
 
