@@ -1,0 +1,36 @@
+<resources>
+    <string name="annot_code">Código</string>
+    <string name="annot_byte">Byte (1 byte)</string>
+    <string name="annot_word">Word (2 bytes)</string>
+    <string name="annot_dword">Dword (4 bytes)</string>
+    <string name="annot_qword">Qword (8 bytes)</string>
+    <string name="annot_string">String</string>
+    <string name="annot_struct">Estrutura…</string>
+    <string name="annot_undefine">Remover definição…</string>
+    <string name="annot_hex">Hexadecimal</string>
+    <string name="annot_dec">Decimal</string>
+    <string name="annot_bin">Binário</string>
+    <string name="annot_char">Caractere</string>
+    <string name="annot_offset">Offset…</string>
+    <string name="annot_enum">Enum…</string>
+    <string name="annot_delete_function">Excluir função…</string>
+    <string name="annot_resize_function">Ajustar fim da função…</string>
+    <string name="annot_name">Nomear endereço…</string>
+    <string name="annot_bookmark">Alternar marcador</string>
+    <string name="annot_address">Endereço: %1$s</string>
+    <string name="annot_range">Função: %1$s a %2$s (fim exclusivo)</string>
+    <string name="annot_delete_warning">Excluir a função de análise? O radare2 também pode remover metadados dentro do seu intervalo. Os bytes do arquivo não serão alterados.</string>
+    <string name="annot_undefine_warning">Limpar a definição, comentários e formatação de operandos neste endereço? Flags, marcadores e bytes do arquivo serão mantidos.</string>
+    <string name="annot_end">Novo endereço final (exclusivo)</string>
+    <string name="annot_offset_target">Endereço de destino do ponteiro</string>
+    <string name="annot_name_new">Criar nova flag</string>
+    <string name="annot_name_existing">Renomear: %1$s</string>
+    <string name="annot_name_input">Nome da flag</string>
+    <string name="annot_name_invalid">Use um identificador de flag, ex.: input_buffer. Espaços e sintaxe de comando não são permitidos.</string>
+    <string name="annot_type_input">Buscar ou selecionar um tipo</string>
+    <string name="annot_no_structs">Nenhuma estrutura ou formato de impressão definido nesta sessão.</string>
+    <string name="annot_no_enums">Nenhum tipo enum definido nesta sessão.</string>
+    <string name="annot_applied">Anotação atualizada em %1$s</string>
+    <string name="annot_bookmarked">Marcador adicionado em %1$s</string>
+    <string name="annot_unbookmarked">Marcador removido em %1$s</string>
+</resources>

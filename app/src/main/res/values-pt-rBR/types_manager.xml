@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Project tab -->
+    <string name="proj_tab_types">Tipos</string>
+
+    <!-- Local Types Manager -->
+    <string name="types_title">Tipos Locais</string>
+    <string name="types_subtitle_summary">%1$d tipos · %2$d vínculos</string>
+    <string name="types_search_hint">Buscar tipos, campos, endereços…</string>
+    <string name="types_action_define_c">Declaração C</string>
+    <string name="types_action_import_header">Importar .h</string>
+    <string name="types_action_link_type">Vincular ao Endereço</string>
+    <string name="types_action_link_short">Vincular</string>
+    <string name="types_action_edit">Editar C</string>
+    <string name="types_action_copy_c">Copiar C</string>
+    <string name="types_action_delete">Excluir</string>
+    <string name="types_action_unlink">Desvincular</string>
+    <string name="types_action_preview_memory">Inspecionar Memória</string>
+    <string name="types_action_hide_memory">Ocultar Memória</string>
+    <string name="types_action_open_manager">Tipos Locais</string>
+
+    <!-- Categories -->
+    <string name="types_cat_all">Todos</string>
+    <string name="types_cat_structs">Structs</string>
+    <string name="types_cat_enums">Enums</string>
+    <string name="types_cat_unions">Unions</string>
+    <string name="types_cat_typedefs">Typedefs</string>
+    <string name="types_cat_links">Vínculos</string>
+
+    <!-- Kind Badges -->
+    <string name="types_badge_struct">STRUCT</string>
+    <string name="types_badge_enum">ENUM</string>
+    <string name="types_badge_union">UNION</string>
+    <string name="types_badge_typedef">TYPEDEF</string>
+    <string name="types_badge_linked">VINCULADO</string>
+
+    <!-- Counts & Metadata -->
+    <string name="types_fields_count">%1$d campos</string>
+    <string name="types_variants_count">%1$d variantes</string>
+    <string name="types_values_count">%1$d valores</string>
+    <string name="types_size_bytes">%1$d B</string>
+    <string name="types_size_hex">0x%1$X B</string>
+    <string name="types_tab_layout">Layout</string>
+    <string name="types_tab_c_source">Código C</string>
+    <string name="types_col_offset">OFFSET</string>
+    <string name="types_col_type">TIPO</string>
+    <string name="types_col_field">CAMPO</string>
+    <string name="types_col_size">TAM.</string>
+    <string name="types_col_name">NOME</string>
+    <string name="types_col_dec">DEC</string>
+    <string name="types_col_hex">HEX</string>
+    <string name="types_pf_format">Formato pf</string>
+    <string name="types_linked_at">Endereços vinculados</string>
+    <string name="types_alias_target">Tipo subjacente</string>
+    <string name="types_no_fields">Nenhum membro disponível</string>
+    <string name="types_copied">Copiado para a área de transferência</string>
+
+    <!-- Empty & Error States -->
+    <string name="types_empty_all_title">Nenhum tipo local ainda</string>
+    <string name="types_empty_all_body">Defina structs, enums, unions ou typedefs em sintaxe C, ou importe um cabeçalho .h para enriquecer a desmontagem e a decompilação do r2ghidra.</string>
+    <string name="types_empty_category">Nenhum item em %1$s carregado ainda.</string>
+    <string name="types_empty_links_title">Nenhum endereço vinculado</string>
+    <string name="types_empty_links_body">Vincule qualquer struct, union ou tipo a um endereço de memória com tl para anotar referências de dados e inspecionar memória estruturada.</string>
+    <string name="types_load_error">Não foi possível carregar os tipos locais</string>
+
+    <!-- C Declaration Editor (td) -->
+    <string name="types_editor_new_title">Definir Tipos C</string>
+    <string name="types_editor_edit_title">Editar %1$s</string>
+    <string name="types_editor_subtitle">Analisado pelo cparse do radare2 (td / to)</string>
+    <string name="types_editor_templates">Modelos</string>
+    <string name="types_editor_quick_tokens">Inserção rápida</string>
+    <string name="types_editor_placeholder">struct Packet {\n    uint32_t magic;\n    uint16_t length;\n    uint8_t payload[64];\n};</string>
+    <string name="types_editor_apply">Aplicar</string>
+    <string name="types_editor_save">Salvar Alterações</string>
+    <string name="types_editor_unbalanced_braces">As chaves { } parecem desbalanceadas</string>
+    <string name="types_defined_success">Declaração de tipo C aplicada</string>
+    <string name="types_updated_success">%1$s atualizado</string>
+
+    <!-- Import Header (to) -->
+    <string name="types_import_title">Importar Cabeçalho C (.h)</string>
+    <string name="types_import_description">Escolha um arquivo de cabeçalho .h no armazenamento ou informe um caminho acessível ao radare2 (to &lt;path&gt;).</string>
+    <string name="types_import_browse">Escolher Arquivo .h…</string>
+    <string name="types_import_path_label">Ou digite o caminho do cabeçalho</string>
+    <string name="types_import_path_hint">/sdcard/Download/types.h</string>
+    <string name="types_import_load_path">Carregar Caminho</string>
+    <string name="types_import_success">Cabeçalho importado: %1$s</string>
+    <string name="types_import_failed">Falha ao importar cabeçalho: %1$s</string>
+
+    <!-- Link Type to Address (tl) -->
+    <string name="types_link_dialog_title">Vincular Tipo ao Endereço</string>
+    <string name="types_link_dialog_subtitle">Vincula um tipo à memória via radare2 tl</string>
+    <string name="types_link_type_label">Nome do tipo</string>
+    <string name="types_link_type_hint">Buscar ou escolher um tipo…</string>
+    <string name="types_link_addr_label">Endereço de destino</string>
+    <string name="types_link_addr_hint">0x401000</string>
+    <string name="types_link_use_cursor">Cursor: %1$s</string>
+    <string name="types_link_confirm">Vincular Tipo</string>
+    <string name="types_link_success">%1$s vinculado em %2$s</string>
+    <string name="types_unlink_success">Vínculo de tipo removido em %1$s</string>
+    <string name="types_link_invalid_addr">Digite um endereço hexadecimal (0x…) ou decimal válido.</string>
+    <string name="types_link_open_hex">Hex</string>
+    <string name="types_link_open_disasm">Disasm</string>
+    <string name="types_preview_empty">Nenhum dado legível neste endereço.</string>
+
+    <!-- Delete Confirmation -->
+    <string name="types_delete_title">Excluir tipo?</string>
+    <string name="types_delete_message">Remover %1$s do banco de tipos do radare2 (t- %1$s)?</string>
+    <string name="types_delete_success">%1$s excluído</string>
+
+    <!-- Enhanced Function Info & Variables Dialogs -->
+    <string name="func_info_edit_signature">Editar Assinatura</string>
+    <string name="func_info_signature_hint">int my_func(struct Ctx *ctx, size_t len)</string>
+    <string name="func_info_signature_empty">Nenhuma assinatura definida — toque em Editar para definir (afs)</string>
+    <string name="func_info_signature_helper">Executa afs; alterar o nome também renomeia a função.</string>
+    <string name="func_info_change_cc">Alterar</string>
+    <string name="func_info_cc_picker_title">Convenção de Chamada (afc)</string>
+    <string name="func_info_cc_search_hint">Filtrar ou digitar CC personalizada…</string>
+    <string name="func_info_cc_apply_custom">Aplicar \"%1$s\"</string>
+    <string name="func_info_metrics_section">Métricas e Detalhes</string>
+    <string name="func_info_open_vars">Variáveis</string>
+    <string name="func_info_no_cc">Padrão</string>
+
+    <string name="func_vars_retype">Alterar Tipo</string>
+    <string name="func_vars_retype_hint">Tipo da variável (afvt)</string>
+    <string name="func_vars_filter_hint">Filtrar variáveis…</string>
+    <string name="func_vars_summary">%1$d args · %2$d locais</string>
+    <string name="func_vars_quick_types">Sugestões de tipo</string>
+    <string name="func_vars_open_types">Gerenciar Tipos</string>
+
+    <!-- Decompiler Menu Shortcuts -->
+    <string name="decompiler_section_function">Função e Tipos</string>
+    <string name="decompiler_func_info">Assinatura da Função e CC</string>
+    <string name="decompiler_func_vars">Variáveis e Tipos da Função</string>
+    <string name="decompiler_local_types">Gerenciador de Tipos Locais</string>
+</resources>

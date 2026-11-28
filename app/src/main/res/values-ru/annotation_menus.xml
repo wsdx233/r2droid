@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_menu_define_submenu">Определить…</string>
+    <string name="annotation_menu_operand_submenu">Операнд…</string>
+    <string name="annotation_menu_name_jump_target">Назвать цель перехода (%1$s)</string>
+</resources>

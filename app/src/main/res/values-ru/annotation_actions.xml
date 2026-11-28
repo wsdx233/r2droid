@@ -1,0 +1,36 @@
+<resources>
+    <string name="annot_code">Код</string>
+    <string name="annot_byte">Байт (1 байт)</string>
+    <string name="annot_word">Слово (2 байта)</string>
+    <string name="annot_dword">Dword (4 байта)</string>
+    <string name="annot_qword">Qword (8 байт)</string>
+    <string name="annot_string">Строка</string>
+    <string name="annot_struct">Структура…</string>
+    <string name="annot_undefine">Отменить определение…</string>
+    <string name="annot_hex">Шестнадцатеричное</string>
+    <string name="annot_dec">Десятичное</string>
+    <string name="annot_bin">Двоичное</string>
+    <string name="annot_char">Символ</string>
+    <string name="annot_offset">Смещение…</string>
+    <string name="annot_enum">Перечисление…</string>
+    <string name="annot_delete_function">Удалить функцию…</string>
+    <string name="annot_resize_function">Изменить конец функции…</string>
+    <string name="annot_name">Назвать адрес…</string>
+    <string name="annot_bookmark">Переключить закладку</string>
+    <string name="annot_address">Адрес: %1$s</string>
+    <string name="annot_range">Функция: от %1$s до %2$s (конец не включён)</string>
+    <string name="annot_delete_warning">Удалить функцию анализа? radare2 также может удалить метаданные в её диапазоне. Байты файла не изменятся.</string>
+    <string name="annot_undefine_warning">Очистить определение, комментарии и форматирование операндов по этому адресу? Флаги, закладки и байты файла сохранятся.</string>
+    <string name="annot_end">Новый конечный адрес (не включён)</string>
+    <string name="annot_offset_target">Целевой адрес указателя</string>
+    <string name="annot_name_new">Создать новый флаг</string>
+    <string name="annot_name_existing">Переименовать: %1$s</string>
+    <string name="annot_name_input">Имя флага</string>
+    <string name="annot_name_invalid">Используйте идентификатор флага, напр. input_buffer. Пробелы и синтаксис команд недопустимы.</string>
+    <string name="annot_type_input">Найти или выбрать тип</string>
+    <string name="annot_no_structs">В этой сессии не определены структуры или форматы вывода.</string>
+    <string name="annot_no_enums">В этой сессии не определены перечисления.</string>
+    <string name="annot_applied">Аннотация обновлена по адресу %1$s</string>
+    <string name="annot_bookmarked">Закладка добавлена: %1$s</string>
+    <string name="annot_unbookmarked">Закладка удалена: %1$s</string>
+</resources>

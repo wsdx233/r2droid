@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,14 +37,52 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import top.wsdx233.r2droid.core.data.model.DecompilationData
 import top.wsdx233.r2droid.feature.project.ProjectViewModel
 import top.wsdx233.r2droid.ui.theme.LocalAppFont
+
+internal const val MIN_DECOMPILER_SCALE = 0.5f
+internal const val MAX_DECOMPILER_SCALE = 3f
+private const val BASE_DECOMPILER_FONT_SIZE = 13f
+private const val BASE_DECOMPILER_LINE_HEIGHT = 18f
+
+internal fun computeDecompilerLineHeightsPx(
+    layout: TextLayoutResult,
+    rawLineStarts: List<Int>
+): List<Int> {
+    if (rawLineStarts.isEmpty() || layout.lineCount <= 0) return emptyList()
+    val maxOffset = layout.layoutInput.text.length
+    val lastVisualLine = layout.lineCount - 1
+    return rawLineStarts.indices.map { i ->
+        val start = rawLineStarts[i].coerceIn(0, maxOffset)
+        val vLine = layout.getLineForOffset(start).coerceIn(0, lastVisualLine)
+        val top = layout.getLineTop(vLine)
+        val bottom = if (i < rawLineStarts.lastIndex) {
+            val nextStart = rawLineStarts[i + 1].coerceIn(0, maxOffset)
+            val nextVLine = layout.getLineForOffset(nextStart).coerceIn(0, lastVisualLine)
+            if (nextVLine > vLine) {
+                layout.getLineTop(nextVLine)
+            } else {
+                layout.getLineBottom(vLine)
+            }
+        } else {
+            layout.getLineBottom(lastVisualLine)
+        }
+        (bottom.roundToInt() - top.roundToInt()).coerceAtLeast(0)
+    }
+}
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -56,7 +95,46 @@ fun DecompilationViewer(
 ) {
     val showLineNumbers by viewModel.decompilerShowLineNumbers.collectAsState()
     val wordWrap by viewModel.decompilerWordWrap.collectAsState()
+    val resetZoomTrigger by viewModel.resetZoomTrigger.collectAsState()
+    val scrollToSelectionTrigger by viewModel.scrollToSelectionTrigger.collectAsState()
 
+    var scale by remember {
+        mutableFloatStateOf(
+            viewModel.decompilerZoomScale.value.coerceIn(MIN_DECOMPILER_SCALE, MAX_DECOMPILER_SCALE)
+        )
+    }
+    LaunchedEffect(resetZoomTrigger) {
+        if (resetZoomTrigger > 0) scale = 1f
+    }
+
+    DecompilationViewerContent(
+        data = data,
+        cursorAddress = cursorAddress,
+        showLineNumbers = showLineNumbers,
+        wordWrap = wordWrap,
+        scale = scale,
+        scrollToSelectionTrigger = scrollToSelectionTrigger,
+        onScaleChange = { scale = it },
+        onScaleChangeCommitted = { viewModel.updateDecompilerZoomScale(it) },
+        onAddressClick = onAddressClick,
+        onJumpAndDecompile = onJumpAndDecompile
+    )
+}
+
+@SuppressLint("ConfigurationScreenWidthHeight")
+@Composable
+internal fun DecompilationViewerContent(
+    data: DecompilationData,
+    cursorAddress: Long,
+    showLineNumbers: Boolean,
+    wordWrap: Boolean,
+    scale: Float,
+    scrollToSelectionTrigger: Int = 0,
+    onScaleChange: (Float) -> Unit = {},
+    onScaleChangeCommitted: (Float) -> Unit = {},
+    onAddressClick: (Long) -> Unit = {},
+    onJumpAndDecompile: (Long) -> Unit = {}
+) {
     if (data.code.isBlank()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No Decompilation Data", style = MaterialTheme.typography.bodyLarge)
@@ -64,18 +142,39 @@ fun DecompilationViewer(
         return
     }
 
-    // Pinch-to-zoom scale (persisted in app settings)
-    val baseFontSize = 13f
-    val baseLineHeight = 18f
-    var scale by remember { mutableFloatStateOf(viewModel.decompilerZoomScale.value) }
-    val resetZoomTrigger by viewModel.resetZoomTrigger.collectAsState()
-    LaunchedEffect(resetZoomTrigger) {
-        if (resetZoomTrigger > 0) scale = 1f
-    }
-    val scaledFontSize = (baseFontSize * scale).sp
-    val scaledLineHeight = (baseLineHeight * scale).sp
+    val effectiveScale = scale.coerceIn(MIN_DECOMPILER_SCALE, MAX_DECOMPILER_SCALE)
+    val scaledFontSize = (BASE_DECOMPILER_FONT_SIZE * effectiveScale).sp
+    val scaledLineHeight = (BASE_DECOMPILER_LINE_HEIGHT * effectiveScale).sp
 
-    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val appFont = LocalAppFont.current
+    val lineHeightStyle = remember {
+        LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.None
+        )
+    }
+    val platformTextStyle = remember { PlatformTextStyle(includeFontPadding = false) }
+    val codeTextStyle = remember(appFont, scaledFontSize, scaledLineHeight) {
+        TextStyle(
+            fontFamily = appFont,
+            fontSize = scaledFontSize,
+            lineHeight = scaledLineHeight,
+            color = Color(0xFFD4D4D4),
+            platformStyle = platformTextStyle,
+            lineHeightStyle = lineHeightStyle
+        )
+    }
+    val lineNumberTextStyle = remember(appFont, scaledFontSize, scaledLineHeight) {
+        TextStyle(
+            fontFamily = appFont,
+            fontSize = scaledFontSize,
+            lineHeight = scaledLineHeight,
+            platformStyle = platformTextStyle,
+            lineHeightStyle = lineHeightStyle
+        )
+    }
+
+    var textLayoutResult by remember(data.code) { mutableStateOf<TextLayoutResult?>(null) }
     val scrollState = rememberScrollState()
 
     // Normalize line endings and track exact line start offsets for accurate cursor/wrap mapping
@@ -181,7 +280,6 @@ fun DecompilationViewer(
     }
     
     // Observe scroll to selection trigger from TopAppBar button
-    val scrollToSelectionTrigger by viewModel.scrollToSelectionTrigger.collectAsState()
     LaunchedEffect(scrollToSelectionTrigger) {
         if (scrollToSelectionTrigger > 0) {
             val layout = textLayoutResult ?: return@LaunchedEffect
@@ -200,10 +298,41 @@ fun DecompilationViewer(
         }
     }
 
-    // Calculate line number width based on total lines and scale
-    val lineNumberWidth = remember(lines.size, scale) {
-        val digits = lines.size.toString().length
-        (digits * 10 * scale + 16).dp
+    // Measure line number width using actual typography so it adapts to zoom, fontScale, and custom fonts
+    val textMeasurer = rememberTextMeasurer()
+    val lineNumberHorizontalPadding = remember(effectiveScale) {
+        (8f * effectiveScale).coerceIn(4f, 12f).dp
+    }
+    val lineNumberWidth = remember(
+        lines.size,
+        lineNumberTextStyle,
+        density,
+        textMeasurer,
+        lineNumberHorizontalPadding
+    ) {
+        val digitCount = lines.size.toString().length.coerceAtLeast(2)
+        val maxLineLabel = lines.size.toString()
+        val measuredWidthPx = maxOf(
+            textMeasurer.measure(
+                text = "8".repeat(digitCount),
+                style = lineNumberTextStyle,
+                maxLines = 1,
+                softWrap = false
+            ).size.width,
+            textMeasurer.measure(
+                text = "0".repeat(digitCount),
+                style = lineNumberTextStyle,
+                maxLines = 1,
+                softWrap = false
+            ).size.width,
+            textMeasurer.measure(
+                text = maxLineLabel,
+                style = lineNumberTextStyle,
+                maxLines = 1,
+                softWrap = false
+            ).size.width
+        )
+        with(density) { measuredWidthPx.toDp() } + lineNumberHorizontalPadding * 2 + 2.dp
     }
 
     val horizontalScrollState = rememberScrollState()
@@ -218,26 +347,28 @@ fun DecompilationViewer(
         starts
     }
 
-    // Compute per-line heights when word wrap is enabled (wrapped lines need more space)
-    val lineHeights = remember(textLayoutResult, wordWrap, rawLineStarts) {
+    // Compute cumulative-rounded per-line heights directly from TextLayoutResult for exact alignment
+    val lineHeightsPx = remember(
+        textLayoutResult,
+        rawLineStarts,
+        data.code,
+        scaledFontSize,
+        scaledLineHeight,
+        wordWrap
+    ) {
         val layout = textLayoutResult ?: return@remember null
-        if (!wordWrap) return@remember null
-        val maxOffset = (layout.layoutInput.text.length - 1).coerceAtLeast(0)
-        rawLineStarts.indices.map { i ->
-            val start = rawLineStarts[i].coerceAtMost(maxOffset)
-            val vLine = layout.getLineForOffset(start)
-            val top = layout.getLineTop(vLine)
-            val bottom = if (i < rawLineStarts.lastIndex) {
-                val ns = rawLineStarts[i + 1].coerceAtMost(maxOffset)
-                layout.getLineTop(layout.getLineForOffset(ns))
-            } else {
-                layout.getLineBottom((layout.lineCount - 1).coerceAtLeast(0))
-            }
-            (bottom - top).coerceAtLeast(0f)
-        }
+        if (layout.layoutInput.text.text != data.code) return@remember null
+        if (layout.layoutInput.softWrap != wordWrap) return@remember null
+        if (layout.layoutInput.style.fontSize != scaledFontSize ||
+            layout.layoutInput.style.lineHeight != scaledLineHeight
+        ) return@remember null
+        computeDecompilerLineHeightsPx(layout, rawLineStarts)
     }
 
     val scaledLineHeightDp = with(density) { scaledLineHeight.toDp() }
+    val currentScale by rememberUpdatedState(effectiveScale)
+    val currentOnScaleChange by rememberUpdatedState(onScaleChange)
+    val currentOnScaleChangeCommitted by rememberUpdatedState(onScaleChangeCommitted)
 
     SelectionContainer {
         Row(
@@ -249,6 +380,7 @@ fun DecompilationViewer(
                     awaitEachGesture {
                         var prevSpan = 0f
                         var zooming = false
+                        var activeScale = currentScale
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val pressed = event.changes.filter { it.pressed }
@@ -261,16 +393,19 @@ fun DecompilationViewer(
                                         (p1.x + p2.x) / 2f,
                                         (p1.y + p2.y) / 2f
                                     )
-                                    val oldScale = scale
+                                    val oldScale = activeScale
                                     val newScale = (oldScale * span / prevSpan)
-                                        .coerceIn(0.5f, 3f)
+                                        .coerceIn(MIN_DECOMPILER_SCALE, MAX_DECOMPILER_SCALE)
                                     if (newScale != oldScale) {
                                         scrollState.dispatchRawDelta(
                                             (scrollState.value + centroid.y) *
                                                 (newScale / oldScale - 1f)
                                         )
-                                        scale = newScale
+                                        activeScale = newScale
+                                        currentOnScaleChange(newScale)
                                     }
+                                } else if (!zooming) {
+                                    activeScale = currentScale
                                 }
                                 prevSpan = span
                                 zooming = true
@@ -280,7 +415,7 @@ fun DecompilationViewer(
                                 prevSpan = 0f
                             }
                         } while (event.changes.any { it.pressed })
-                        if (zooming) viewModel.updateDecompilerZoomScale(scale)
+                        if (zooming) currentOnScaleChangeCommitted(activeScale)
                     }
                 }
         ) {
@@ -292,25 +427,30 @@ fun DecompilationViewer(
                             .width(lineNumberWidth)
                             .background(Color(0xFF252526))
                             .padding(top = 8.dp, bottom = 8.dp)
+                            .testTag("decompiler_line_number_gutter")
                     ) {
                         Column {
                             lines.forEachIndexed { index, _ ->
                                 val isCurrentLine = index == cursorLineIndex
-                                val h = lineHeights?.getOrNull(index)?.let { with(density) { it.toDp() } }
+                                val h = lineHeightsPx?.getOrNull(index)?.let { with(density) { it.toDp() } }
                                     ?: scaledLineHeightDp
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(h)
                                         .background(if (isCurrentLine) highlightBackgroundColor else Color.Transparent),
-                                    contentAlignment = Alignment.CenterEnd
+                                    contentAlignment = Alignment.TopEnd
                                 ) {
                                     Text(
                                         text = (index + 1).toString(),
-                                        fontFamily = LocalAppFont.current,
-                                        fontSize = scaledFontSize,
+                                        style = lineNumberTextStyle,
                                         color = if (isCurrentLine) Color(0xFFFFFFFF) else Color(0xFF858585),
-                                        modifier = Modifier.padding(end = 8.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Visible,
+                                        modifier = Modifier
+                                            .padding(horizontal = lineNumberHorizontalPadding)
+                                            .testTag("decompiler_line_number_${index + 1}")
                                     )
                                 }
                             }
@@ -328,28 +468,27 @@ fun DecompilationViewer(
             ) {
                 Text(
                     text = annotatedString,
-                    fontFamily = LocalAppFont.current,
-                    fontSize = scaledFontSize,
-                    color = Color(0xFFD4D4D4),
-                    lineHeight = scaledLineHeight,
+                    style = codeTextStyle,
                     softWrap = wordWrap,
                     onTextLayout = { textLayoutResult = it },
-                    modifier = Modifier.pointerInput(data, cursorAddress) {
-                        detectTapGestures { pos ->
-                            val layout = textLayoutResult ?: return@detectTapGestures
-                            if (pos.y <= layout.size.height) {
-                                val offset = layout.getOffsetForPosition(pos)
-                                val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
-                                if (note != null && note.offset != 0L) {
-                                    if (note.offset == cursorAddress) {
-                                        onJumpAndDecompile(note.offset)
-                                    } else {
-                                        onAddressClick(note.offset)
+                    modifier = Modifier
+                        .testTag("decompiler_code_text")
+                        .pointerInput(data, cursorAddress) {
+                            detectTapGestures { pos ->
+                                val layout = textLayoutResult ?: return@detectTapGestures
+                                if (pos.y <= layout.size.height) {
+                                    val offset = layout.getOffsetForPosition(pos)
+                                    val note = data.annotations.firstOrNull { it.start <= offset && it.end >= offset }
+                                    if (note != null && note.offset != 0L) {
+                                        if (note.offset == cursorAddress) {
+                                            onJumpAndDecompile(note.offset)
+                                        } else {
+                                            onAddressClick(note.offset)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
                 )
             }
         }

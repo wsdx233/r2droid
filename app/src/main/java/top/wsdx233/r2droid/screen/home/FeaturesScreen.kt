@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FlutterDash
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -149,7 +150,7 @@ fun FeaturesScreen(
             FeatureCard(
                 title = stringResource(R.string.feature_r2flutter_title),
                 description = stringResource(R.string.feature_r2flutter_desc),
-                icon = Icons.Default.Extension,
+                icon = Icons.Default.FlutterDash,
                 iconTint = Color(0xFF00897B),
                 onClick = onNavigateToR2Flutter
             )

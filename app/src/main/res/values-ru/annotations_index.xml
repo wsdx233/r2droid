@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotations_index_bookmarks">Закладки</string>
+    <string name="annotations_index_comments">Комментарии</string>
+    <string name="annotations_index_names">Имена</string>
+    <string name="annotations_index_empty_bookmarks">Закладок пока нет</string>
+    <string name="annotations_index_empty_comments">Комментариев пока нет</string>
+    <string name="annotations_index_empty_names">Имён пока нет</string>
+    <string name="annotations_index_error">Не удалось загрузить аннотации</string>
+</resources>

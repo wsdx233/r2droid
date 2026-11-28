@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Project tab -->
+    <string name="proj_tab_types">Типы</string>
+
+    <!-- Local Types Manager -->
+    <string name="types_title">Локальные типы</string>
+    <string name="types_subtitle_summary">Типов: %1$d · Привязок: %2$d</string>
+    <string name="types_search_hint">Поиск типов, полей, адресов…</string>
+    <string name="types_action_define_c">Объявление C</string>
+    <string name="types_action_import_header">Импорт .h</string>
+    <string name="types_action_link_type">Привязать к адресу</string>
+    <string name="types_action_link_short">Привязать</string>
+    <string name="types_action_edit">Изменить C</string>
+    <string name="types_action_copy_c">Копировать C</string>
+    <string name="types_action_delete">Удалить</string>
+    <string name="types_action_unlink">Отвязать</string>
+    <string name="types_action_preview_memory">Просмотр памяти</string>
+    <string name="types_action_hide_memory">Скрыть память</string>
+    <string name="types_action_open_manager">Локальные типы</string>
+
+    <!-- Categories -->
+    <string name="types_cat_all">Все</string>
+    <string name="types_cat_structs">Структуры</string>
+    <string name="types_cat_enums">Перечисления</string>
+    <string name="types_cat_unions">Объединения</string>
+    <string name="types_cat_typedefs">Typedef</string>
+    <string name="types_cat_links">Привязки</string>
+
+    <!-- Kind Badges -->
+    <string name="types_badge_struct">STRUCT</string>
+    <string name="types_badge_enum">ENUM</string>
+    <string name="types_badge_union">UNION</string>
+    <string name="types_badge_typedef">TYPEDEF</string>
+    <string name="types_badge_linked">ПРИВЯЗАН</string>
+
+    <!-- Counts & Metadata -->
+    <string name="types_fields_count">Полей: %1$d</string>
+    <string name="types_variants_count">Вариантов: %1$d</string>
+    <string name="types_values_count">Значений: %1$d</string>
+    <string name="types_size_bytes">%1$d Б</string>
+    <string name="types_size_hex">0x%1$X Б</string>
+    <string name="types_tab_layout">Структура</string>
+    <string name="types_tab_c_source">Код C</string>
+    <string name="types_col_offset">СМЕЩ.</string>
+    <string name="types_col_type">ТИП</string>
+    <string name="types_col_field">ПОЛЕ</string>
+    <string name="types_col_size">РАЗМЕР</string>
+    <string name="types_col_name">ИМЯ</string>
+    <string name="types_col_dec">DEC</string>
+    <string name="types_col_hex">HEX</string>
+    <string name="types_pf_format">Формат pf</string>
+    <string name="types_linked_at">Привязанные адреса</string>
+    <string name="types_alias_target">Базовый тип</string>
+    <string name="types_no_fields">Члены отсутствуют</string>
+    <string name="types_copied">Скопировано в буфер обмена</string>
+
+    <!-- Empty & Error States -->
+    <string name="types_empty_all_title">Локальных типов пока нет</string>
+    <string name="types_empty_all_body">Определите структуры, перечисления, объединения или typedef на C либо импортируйте заголовок .h, чтобы улучшить дизассемблирование и декомпиляцию r2ghidra.</string>
+    <string name="types_empty_category">Категория «%1$s» пока пуста.</string>
+    <string name="types_empty_links_title">Привязанных адресов нет</string>
+    <string name="types_empty_links_body">Привяжите структуру, объединение или тип к адресу памяти командой tl для аннотации ссылок на данные и просмотра структурированной памяти.</string>
+    <string name="types_load_error">Не удалось загрузить локальные типы</string>
+
+    <!-- C Declaration Editor (td) -->
+    <string name="types_editor_new_title">Определить типы C</string>
+    <string name="types_editor_edit_title">Изменить %1$s</string>
+    <string name="types_editor_subtitle">Разбор через radare2 cparse (td / to)</string>
+    <string name="types_editor_templates">Шаблоны</string>
+    <string name="types_editor_quick_tokens">Быстрая вставка</string>
+    <string name="types_editor_placeholder">struct Packet {\n    uint32_t magic;\n    uint16_t length;\n    uint8_t payload[64];\n};</string>
+    <string name="types_editor_apply">Применить</string>
+    <string name="types_editor_save">Сохранить изменения</string>
+    <string name="types_editor_unbalanced_braces">Фигурные скобки { } не сбалансированы</string>
+    <string name="types_defined_success">Объявление типа C применено</string>
+    <string name="types_updated_success">Обновлено: %1$s</string>
+
+    <!-- Import Header (to) -->
+    <string name="types_import_title">Импорт заголовка C (.h)</string>
+    <string name="types_import_description">Выберите заголовочный файл .h из хранилища или укажите путь, доступный radare2 (to &lt;path&gt;).</string>
+    <string name="types_import_browse">Выбрать файл .h…</string>
+    <string name="types_import_path_label">Или введите путь к заголовку</string>
+    <string name="types_import_path_hint">/sdcard/Download/types.h</string>
+    <string name="types_import_load_path">Загрузить путь</string>
+    <string name="types_import_success">Заголовок импортирован: %1$s</string>
+    <string name="types_import_failed">Ошибка импорта заголовка: %1$s</string>
+
+    <!-- Link Type to Address (tl) -->
+    <string name="types_link_dialog_title">Привязать тип к адресу</string>
+    <string name="types_link_dialog_subtitle">Привязывает тип к памяти через radare2 tl</string>
+    <string name="types_link_type_label">Имя типа</string>
+    <string name="types_link_type_hint">Найдите или выберите тип…</string>
+    <string name="types_link_addr_label">Целевой адрес</string>
+    <string name="types_link_addr_hint">0x401000</string>
+    <string name="types_link_use_cursor">Курсор: %1$s</string>
+    <string name="types_link_confirm">Привязать тип</string>
+    <string name="types_link_success">Тип %1$s привязан к %2$s</string>
+    <string name="types_unlink_success">Привязка типа по адресу %1$s удалена</string>
+    <string name="types_link_invalid_addr">Введите корректный hex (0x…) или десятичный адрес.</string>
+    <string name="types_link_open_hex">Hex</string>
+    <string name="types_link_open_disasm">Дизасм</string>
+    <string name="types_preview_empty">По этому адресу нет читаемых данных.</string>
+
+    <!-- Delete Confirmation -->
+    <string name="types_delete_title">Удалить тип?</string>
+    <string name="types_delete_message">Удалить %1$s из базы типов radare2 (t- %1$s)?</string>
+    <string name="types_delete_success">Удалено: %1$s</string>
+
+    <!-- Enhanced Function Info & Variables Dialogs -->
+    <string name="func_info_edit_signature">Изменить сигнатуру</string>
+    <string name="func_info_signature_hint">int my_func(struct Ctx *ctx, size_t len)</string>
+    <string name="func_info_signature_empty">Сигнатура не задана — нажмите «Изменить» (afs)</string>
+    <string name="func_info_signature_helper">Выполняет afs; изменение имени также переименовывает функцию.</string>
+    <string name="func_info_change_cc">Изменить</string>
+    <string name="func_info_cc_picker_title">Соглашение о вызовах (afc)</string>
+    <string name="func_info_cc_search_hint">Фильтр или своё соглашение…</string>
+    <string name="func_info_cc_apply_custom">Применить \"%1$s\"</string>
+    <string name="func_info_metrics_section">Метрики и детали</string>
+    <string name="func_info_open_vars">Переменные</string>
+    <string name="func_info_no_cc">По умолчанию</string>
+
+    <string name="func_vars_retype">Сменить тип</string>
+    <string name="func_vars_retype_hint">Тип переменной (afvt)</string>
+    <string name="func_vars_filter_hint">Фильтр переменных…</string>
+    <string name="func_vars_summary">Аргументов: %1$d · Локальных: %2$d</string>
+    <string name="func_vars_quick_types">Подсказки типов</string>
+    <string name="func_vars_open_types">Управление типами</string>
+
+    <!-- Decompiler Menu Shortcuts -->
+    <string name="decompiler_section_function">Функция и типы</string>
+    <string name="decompiler_func_info">Сигнатура и соглашение о вызовах</string>
+    <string name="decompiler_func_vars">Переменные и типы функции</string>
+    <string name="decompiler_local_types">Менеджер локальных типов</string>
+</resources>

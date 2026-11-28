@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotations_index_bookmarks">Marcadores</string>
+    <string name="annotations_index_comments">Comentários</string>
+    <string name="annotations_index_names">Nomes</string>
+    <string name="annotations_index_empty_bookmarks">Nenhum marcador ainda</string>
+    <string name="annotations_index_empty_comments">Nenhum comentário ainda</string>
+    <string name="annotations_index_empty_names">Nenhum nome ainda</string>
+    <string name="annotations_index_error">Não foi possível carregar as anotações</string>
+</resources>

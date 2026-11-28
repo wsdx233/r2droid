@@ -2,6 +2,8 @@ package top.wsdx233.r2droid.feature.r2flutter
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,27 +14,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FlutterDash
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -46,8 +54,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -56,6 +69,8 @@ import top.wsdx233.r2droid.core.data.prefs.SettingsManager
 import top.wsdx233.r2droid.util.FlutterTargetResolver
 import top.wsdx233.r2droid.util.R2FlutterInstallState
 import top.wsdx233.r2droid.util.R2FlutterInstaller
+
+private val FlutterAccent = Color(0xFF00897B)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,7 +130,7 @@ fun R2FlutterScreen(
                                 installed = false
                                 R2FlutterInstaller.resetState()
                             },
-                            enabled = !installing
+                            enabled = !installing && !resolving
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.r2flutter_reinstall))
                         }
@@ -139,77 +154,167 @@ fun R2FlutterScreen(
                     onInstall = { scope.launch { R2FlutterInstaller.install(context) } }
                 )
             } else {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.r2flutter_backend_ready)) },
-                    supportingContent = {
-                        Text(
-                            if (SettingsManager.useProotMode) {
-                                stringResource(R.string.r2flutter_backend_proot)
-                            } else {
-                                stringResource(R.string.r2flutter_backend_native)
-                            }
+                R2FlutterReadyContent(
+                    selectedTarget = selectedTarget,
+                    resolving = resolving,
+                    targetError = targetError,
+                    onPickTarget = {
+                        picker.launch(
+                            arrayOf(
+                                "application/vnd.android.package-archive",
+                                "application/zip",
+                                "application/octet-stream",
+                                "*/*"
+                            )
                         )
                     },
-                    leadingContent = {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    }
+                    onOpenTarget = onOpenTarget
                 )
+            }
+        }
+    }
+}
 
-                FilledTonalButton(
-                    onClick = { picker.launch(arrayOf("application/vnd.android.package-archive", "application/zip", "application/octet-stream", "*/*")) },
+@Composable
+private fun R2FlutterReadyContent(
+    selectedTarget: FlutterTargetResolver.Target?,
+    resolving: Boolean,
+    targetError: String?,
+    onPickTarget: () -> Unit,
+    onOpenTarget: (String) -> Unit
+) {
+    FlutterStatusBannerCard(
+        icon = Icons.Default.CheckCircle,
+        iconTint = FlutterAccent,
+        title = stringResource(R.string.r2flutter_backend_ready),
+        subtitle = stringResource(
+            if (SettingsManager.useProotMode) {
+                R.string.r2flutter_backend_proot
+            } else {
+                R.string.r2flutter_backend_native
+            }
+        )
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            selectedTarget?.let { target ->
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !resolving
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(stringResource(R.string.r2flutter_choose_target))
-                }
-
-                if (resolving) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(Modifier.size(24.dp))
-                        Spacer(Modifier.size(12.dp))
-                        Text(stringResource(R.string.r2flutter_resolving_target))
-                    }
-                }
-
-                selectedTarget?.let { target ->
-                    ListItem(
-                        headlineContent = {
-                            Text(target.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        },
-                        supportingContent = {
-                            Text(target.path, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        },
-                        leadingContent = {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(FlutterAccent.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
-                                if (target.extractedFromApk) Icons.Default.Archive else Icons.Default.Extension,
-                                contentDescription = null
+                                imageVector = if (target.extractedFromApk) Icons.Default.Archive else Icons.Default.FlutterDash,
+                                contentDescription = null,
+                                tint = FlutterAccent,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                    )
-                    Button(
-                        onClick = { onOpenTarget(target.path) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.r2flutter_open_analysis))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = target.displayName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = target.path,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
+            }
 
-                targetError?.let { error ->
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.common_error)) },
-                        supportingContent = { Text(error) },
-                        leadingContent = {
-                            Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                        }
+            if (resolving) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.r2flutter_resolving_target),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
+
+            FilledTonalButton(
+                onClick = onPickTarget,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !resolving
+            ) {
+                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.r2flutter_choose_target))
+            }
+        }
+    }
+
+    targetError?.let { error ->
+        FlutterErrorCard(
+            title = stringResource(R.string.common_error),
+            message = error
+        )
+    }
+
+    selectedTarget?.let { target ->
+        Button(
+            onClick = { onOpenTarget(target.path) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            enabled = !resolving
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.r2flutter_open_analysis))
         }
     }
 }
@@ -220,59 +325,243 @@ private fun R2FlutterInstallContent(
     installing: Boolean,
     onInstall: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Icon(
-            Icons.Default.Extension,
-            contentDescription = null,
-            modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-    }
-
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.r2flutter_backend_not_installed)) },
-        supportingContent = {
-            Text(
-                if (SettingsManager.useProotMode) {
-                    stringResource(R.string.r2flutter_install_proot_desc)
-                } else {
-                    stringResource(R.string.r2flutter_install_native_desc)
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(FlutterAccent.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.FlutterDash,
+                contentDescription = null,
+                modifier = Modifier.size(38.dp),
+                tint = FlutterAccent
             )
-        },
-        leadingContent = { Icon(Icons.Default.CloudDownload, contentDescription = null) }
-    )
-
-    if (installing) {
-        LinearProgressIndicator(
-            progress = { state.progress.coerceIn(0f, 1f) },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(state.message, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 
-    if (state.status == R2FlutterInstallState.Status.ERROR) {
-        ListItem(
-            headlineContent = { Text(stringResource(R.string.r2flutter_install_failed)) },
-            supportingContent = { Text(state.message) },
-            leadingContent = {
-                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+    FlutterStatusBannerCard(
+        icon = Icons.Default.CloudDownload,
+        iconTint = MaterialTheme.colorScheme.primary,
+        title = stringResource(R.string.r2flutter_backend_not_installed),
+        subtitle = stringResource(
+            if (SettingsManager.useProotMode) {
+                R.string.r2flutter_install_proot_desc
+            } else {
+                R.string.r2flutter_install_native_desc
             }
         )
+    )
+
+    AnimatedContent(
+        targetState = state.status,
+        label = "r2flutter_install_status"
+    ) { status ->
+        when (status) {
+            R2FlutterInstallState.Status.FETCHING,
+            R2FlutterInstallState.Status.DOWNLOADING,
+            R2FlutterInstallState.Status.VERIFYING,
+            R2FlutterInstallState.Status.INSTALLING -> {
+                val hasDeterminateProgress = state.progress > 0f
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (hasDeterminateProgress) {
+                            LinearProgressIndicator(
+                                progress = { state.progress.coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth(),
+                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                            )
+                            Text(
+                                text = "${(state.progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                            )
+                        }
+                    }
+                }
+            }
+
+            R2FlutterInstallState.Status.ERROR -> {
+                FlutterErrorCard(
+                    title = stringResource(R.string.r2flutter_install_failed),
+                    message = state.message
+                )
+            }
+
+            R2FlutterInstallState.Status.IDLE,
+            R2FlutterInstallState.Status.DONE -> Unit
+        }
     }
 
     Button(
         onClick = onInstall,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(12.dp),
         enabled = !installing
     ) {
-        Text(
-            if (state.status == R2FlutterInstallState.Status.ERROR) {
-                stringResource(R.string.common_retry)
-            } else {
-                stringResource(R.string.r2flutter_install)
-            }
-        )
+        if (installing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.r2flutter_install))
+        } else {
+            Icon(
+                imageVector = if (state.status == R2FlutterInstallState.Status.ERROR) {
+                    Icons.Default.Refresh
+                } else {
+                    Icons.Default.Download
+                },
+                contentDescription = null
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (state.status == R2FlutterInstallState.Status.ERROR) {
+                    stringResource(R.string.common_retry)
+                } else {
+                    stringResource(R.string.r2flutter_install)
+                }
+            )
+        }
     }
-    Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun FlutterStatusBannerCard(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconTint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlutterErrorCard(
+    title: String,
+    message: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                )
+            }
+        }
+    }
 }

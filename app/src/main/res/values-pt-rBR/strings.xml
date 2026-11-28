@@ -894,11 +894,11 @@
     <string name="features_title">Recursos</string>
     <string name="feature_r2frida_title">r2frida</string>
     <string name="feature_r2frida_desc">Integração poderosa de instrumentação dinâmica</string>
-    <string name="feature_r2flutter_title">Flutter AOT</string>
-    <string name="feature_r2flutter_desc">Analise snapshots AOT do Dart em aplicativos Flutter</string>
+    <string name="feature_r2flutter_title">Flutter</string>
+    <string name="feature_r2flutter_desc">Analisar snapshots Dart AOT</string>
 
     <!-- r2flutter -->
-    <string name="r2flutter_title">Flutter AOT</string>
+    <string name="r2flutter_title">Flutter</string>
     <string name="r2flutter_reinstall">Reinstalar backend</string>
     <string name="r2flutter_backend_ready">Backend pronto</string>
     <string name="r2flutter_backend_native">Backend ARM64 nativo</string>
@@ -938,7 +938,7 @@
     <string name="feature_custom_start_desc">Execute um comando R2 totalmente personalizado</string>
     <string name="feature_terminal_title">Terminal Avançado</string>
     <string name="feature_terminal_desc">Console de terminal nativo, suporta interações complexas</string>
-    <string name="feature_manual_title">Manual do Usuário R2</string>
+    <string name="feature_manual_title">Manual do Usuário</string>
     <string name="feature_manual_desc">Navegue pela ajuda de comandos do Radare2 offline</string>
     <string name="feature_plugins_title">Gerenciamento de Plugins</string>
     <string name="feature_plugins_desc">Instale e gerencie recursos estendidos</string>

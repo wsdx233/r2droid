@@ -896,11 +896,11 @@
     <string name="features_title">功能</string>
     <string name="feature_r2frida_title">r2frida</string>
     <string name="feature_r2frida_desc">强大的动态插桩工具集成</string>
-    <string name="feature_r2flutter_title">Flutter AOT</string>
-    <string name="feature_r2flutter_desc">分析 Flutter 应用中的 Dart AOT 快照</string>
+    <string name="feature_r2flutter_title">Flutter</string>
+    <string name="feature_r2flutter_desc">分析 Dart AOT 快照</string>
 
     <!-- r2flutter -->
-    <string name="r2flutter_title">Flutter AOT</string>
+    <string name="r2flutter_title">Flutter</string>
     <string name="r2flutter_reinstall">重新安装后端</string>
     <string name="r2flutter_backend_ready">后端已就绪</string>
     <string name="r2flutter_backend_native">原生 ARM64 后端</string>
@@ -940,7 +940,7 @@
     <string name="feature_custom_start_desc">运行完全自定义的 R2 指令</string>
     <string name="feature_terminal_title">高级终端</string>
     <string name="feature_terminal_desc">原生终端控制台，支持复杂交互</string>
-    <string name="feature_manual_title">R2 使用手册</string>
+    <string name="feature_manual_title">使用手册</string>
     <string name="feature_manual_desc">查阅离线的 Radare2 指令帮助</string>
     <string name="feature_plugins_title">插件管理</string>
     <string name="feature_plugins_desc">安装和管理扩展功能</string>
