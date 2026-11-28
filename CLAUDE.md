@@ -157,7 +157,7 @@
 - **Manifest**: `app/src/main/AndroidManifest.xml`
   - 包含 `MANAGE_EXTERNAL_STORAGE`、`FOREGROUND_SERVICE`、外部文件 `VIEW/SEND` intent-filter。
 - **Gradle 配置**: `app/build.gradle.kts`
-  - `minSdk = 24`, `compileSdk = 36`, Java/Kotlin target 17。
+  - `minSdk = 24`, `compileSdk = 37`, Java/Kotlin target 17。
 
 ---
 

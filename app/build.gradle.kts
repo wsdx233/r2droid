@@ -63,7 +63,7 @@ android {
     namespace = "top.wsdx233.r2droid"
     ndkVersion = nativeRuntimeNdkVersion
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
