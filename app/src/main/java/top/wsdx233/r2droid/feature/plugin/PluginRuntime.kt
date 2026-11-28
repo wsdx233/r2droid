@@ -792,16 +792,37 @@ object PluginRuntime {
             .redirectErrorStream(true)
 
         val env = processBuilder.environment()
-        val pathSep = File.pathSeparator
-
-        // 对齐 r2pipe 关键运行环境，保证插件进程可找到 radare2 依赖库
+        // 对齐 r2pipe 关键运行环境，保证插件进程可找到 radare2 依赖库与配置
         val appFilesDir = appContextRef.get()?.filesDir ?: context.installDir
+        configureProcessEnvironment(
+            env = env,
+            appFilesDir = appFilesDir,
+            installDir = context.installDir,
+            dataDir = dataDir,
+            tmpDir = tmpDir
+        )
 
-        val r2LibDir = File(appFilesDir, "radare2/lib")
+        val process = processBuilder.start()
+        registerProcessReader(context.pluginId, sessionId, key, process)
+        return "ok"
+    }
+
+    internal fun configureProcessEnvironment(
+        env: MutableMap<String, String>,
+        appFilesDir: File,
+        installDir: File,
+        dataDir: File,
+        tmpDir: File
+    ) {
+        val pathSep = File.pathSeparator
+        val r2PrefixDir = File(appFilesDir, "radare2")
+        val r2LibDir = File(r2PrefixDir, "lib")
         val libsDir = File(appFilesDir, "libs")
         val existingLd = env["LD_LIBRARY_PATH"]?.takeIf { it.isNotBlank() }
         val myLd = "${r2LibDir.absolutePath}:${libsDir.absolutePath}"
         env["LD_LIBRARY_PATH"] = if (existingLd != null) "$myLd:$existingLd" else myLd
+        // Resolve bundled radare2 data/calling-convention files instead of build-time prefix.
+        env["R2_PREFIX"] = r2PrefixDir.absolutePath
 
         val xdgDataHome = File(appFilesDir, "r2work")
         val xdgCacheHome = File(appFilesDir, ".cache")
@@ -810,10 +831,11 @@ object PluginRuntime {
         env["XDG_DATA_HOME"] = xdgDataHome.absolutePath
         env["XDG_CACHE_HOME"] = xdgCacheHome.absolutePath
 
-        val r2BinDir = File(appFilesDir, "radare2/bin")
-        env["HOME"] = env["HOME"].takeUnless { it.isNullOrBlank() }
-            ?: if (r2BinDir.exists()) r2BinDir.absolutePath else dataDir.absolutePath
-        env["PWD"] = context.installDir.absolutePath
+        val r2BinDir = File(r2PrefixDir, "bin")
+        // Align HOME with R2Runtime so bundled radare2/r2mcp loads radare2/bin/.radare2rc
+        // instead of inheriting an unwritable system HOME.
+        env["HOME"] = if (r2BinDir.exists()) r2BinDir.absolutePath else dataDir.absolutePath
+        env["PWD"] = installDir.absolutePath
         env["TMPDIR"] = tmpDir.absolutePath
         env["TMP"] = tmpDir.absolutePath
         env["TEMP"] = tmpDir.absolutePath
@@ -823,15 +845,11 @@ object PluginRuntime {
         val systemPath = env["PATH"]?.takeIf { it.isNotBlank() }
             ?: "/system/bin:/system/xbin"
         val extraPath = listOf(
-            context.installDir.absolutePath,
+            installDir.absolutePath,
             dataDir.absolutePath,
             r2BinDir.absolutePath
         ).joinToString(pathSep)
         env["PATH"] = "$extraPath$pathSep$systemPath"
-
-        val process = processBuilder.start()
-        registerProcessReader(context.pluginId, sessionId, key, process)
-        return "ok"
     }
 
     private fun writeProcess(context: RunContext, sessionId: String, input: String): String {
